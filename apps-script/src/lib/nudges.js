@@ -91,7 +91,7 @@ var Nudges = (function () {
   /**
    * The digest's "Awaiting action" list, most urgent first; empty groups dropped.
    * a: {files, outbox, boards, unstaffed:[{what, when, booked}], reserved:[{what, when}], reviews, intake, unitRequests, council,
-   *     toBook:[{title, stage, days, type}], openSlots} -> [{title, items:[text]}]
+   *     toBook:[{title, stage, days, type}], closeReview:[{title, why}], openSlots} -> [{title, items:[text]}]
    * toBook is split into one group per session type (type = Intake | ESSPPR | EBoR).
    */
   function awaiting(a) {
@@ -115,6 +115,8 @@ var Nudges = (function () {
       return { title: 'Scouts waiting to book ' + BOOK_WHAT[type], items: (a.toBook || []).filter(function (x) { return x.type === type; })
         .sort(function (x, y) { return y.days - x.days; }).map(function (x) { return x.title + ': ' + x.stage + ', ' + age(x.days); }) };
     })).concat([
+      { title: 'Exceptions to review (' + (a.closeReview || []).length + '): Close record…, or Keep open in the dashboard Action menu',
+        items: (a.closeReview || []).map(function (x) { return x.title + ': ' + x.why; }) },
       { title: 'Open times (next 30 days)', items: (a.openSlots || []).map(function (x) { return x.label + ': ' + x.count + (x.next ? ' (next ' + x.next + ')' : ''); }) }
     ]);
     return g.filter(function (x) { return x.items.length; });

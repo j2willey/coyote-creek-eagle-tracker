@@ -144,3 +144,56 @@ describe('Dashboard: Closed stays out of the Exceptions tab count', () => {
     expect(p.closedCount).toBe(0);
   });
 });
+
+describe('Closing.suggest: rows that look terminal (a person decides)', () => {
+  const Nudges = require('../apps-script/src/lib/nudges.js');
+  const base = { section: 'proposal_not_approved', birth: '2009-06-01', lastActivity: '2026-10-01', stageSince: '2026-05-01', snoozeUntil: '' };
+  const opts = { today: '2026-11-10', reviewDays: 180 };
+  it('age 18 or older in Proposal Not Approved or EBoR Paused', () => {
+    expect(Closing.suggest({ ...base, birth: '2008-11-10' }, opts)).toBe('Age 18: 18 or older');           // the birthday itself
+    expect(Closing.suggest({ ...base, birth: '2008-11-11' }, opts)).toBe('');                              // day before the 18th birthday
+    expect(Closing.suggest({ ...base, section: 'ebor_paused', birth: '2007-01-01' }, opts)).toBe('Age 19: 18 or older');
+  });
+  it('no log line or update for closeReviewDays', () => {
+    expect(Closing.suggest({ ...base, lastActivity: '2026-05-10', stageSince: '2026-05-01' }, opts)).toBe('No log line or update in 184 days');
+    expect(Closing.suggest({ ...base, lastActivity: '2026-05-14', stageSince: '2026-05-01' }, opts)).toBe('No log line or update in 180 days');
+    expect(Closing.suggest({ ...base, lastActivity: '2026-05-15' }, opts)).toBe('');                       // 179 days
+  });
+  it('counts from the later of the last activity and the day it reached the stage', () => {
+    expect(Closing.suggest({ ...base, lastActivity: '2025-01-01', stageSince: '2026-10-20' }, opts)).toBe('');
+    expect(Closing.suggest({ ...base, lastActivity: '', stageSince: '2026-01-01' }, opts)).toMatch(/^No log line or update in 313 days/);
+    expect(Closing.suggest({ ...base, lastActivity: '', stageSince: '' }, opts)).toBe('');                  // nothing known: no guess
+  });
+  it('uses Settings closeReviewDays, defaulting to 180', () => {
+    expect(Closing.suggest({ ...base, lastActivity: '2026-09-01', stageSince: '' }, { ...opts, reviewDays: 60 })).toMatch(/70 days/);
+    expect(Closing.suggest({ ...base, lastActivity: '2026-09-01', stageSince: '' }, { ...opts, reviewDays: '' })).toBe('');
+    expect(Closing.suggest({ ...base, lastActivity: '2026-01-01', stageSince: '' }, { today: '2026-11-10' })).toMatch(/313 days/);
+  });
+  it('never suggests Beyond Age, Eagle Not Awarded, Closed or an active stage', () => {
+    ['beyond_age', 'eagle_not_awarded', 'closed', 'proposal_received', 'ebor_booked'].forEach(k =>
+      expect(Closing.suggest({ ...base, section: k, birth: '2000-01-01', lastActivity: '2020-01-01' }, opts)).toBe(''));
+  });
+  it('Keep open snoozes until the date, then it is suggested again', () => {
+    const old = { ...base, birth: '2000-01-01' };
+    expect(Closing.suggest({ ...old, snoozeUntil: '2026-11-11' }, opts)).toBe('');
+    expect(Closing.suggest({ ...old, snoozeUntil: '2026-11-10' }, opts)).not.toBe('');   // the snooze ran out today
+    expect(Closing.suggest({ ...old, snoozeUntil: 'junk' }, opts)).not.toBe('');
+    expect(Closing._util.addDays('2026-11-10', 90)).toBe('2027-02-08');
+  });
+  it('suggestions() lists the ids', () => {
+    const list = Closing.suggestions([{ recordId: 'R-1', ...base, birth: '2000-01-01' }, { recordId: 'R-2', ...base }], opts);
+    expect(list).toEqual([{ recordId: 'R-1', why: 'Age 26: 18 or older' }]);
+  });
+  it('reads _stage_since only for the stage the row is in', () => {
+    expect(Closing.stageSinceDate('proposal_not_approved 2026-05-01', 'proposal_not_approved')).toBe('2026-05-01');
+    expect(Closing.stageSinceDate('ebor_paused 2026-05-01', 'proposal_not_approved')).toBe('');
+    expect(Closing.stageSinceDate('', 'proposal_not_approved')).toBe('');
+  });
+  it('the digest lists them under "Exceptions to review (n)"', () => {
+    const g = Nudges.awaiting({ closeReview: [{ title: 'Scout_1 (T910)', why: 'Age 18: 18 or older' }, { title: 'Pat Q (T999)', why: 'No log line or update in 200 days' }] });
+    expect(g).toHaveLength(1);
+    expect(g[0].title).toMatch(/^Exceptions to review \(2\)/);
+    expect(g[0].items).toEqual(['Scout_1 (T910): Age 18: 18 or older', 'Pat Q (T999): No log line or update in 200 days']);
+    expect(Nudges.awaiting({ closeReview: [] })).toEqual([]);
+  });
+});

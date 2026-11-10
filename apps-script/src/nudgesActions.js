@@ -195,6 +195,10 @@ function digestAwaiting_() {
   part('council', function () {
     return Board.councilWaiting(Board.build(boardRecords_(), s.sections, todayYmd_(), s.councilAckDays)).filter(function (x) { return x.overdue; });
   });
+  part('closeReview', function () {                         // Proposal Not Approved / EBoR Paused that look terminal (lib/closing.js)
+    var why = closeSuggestions_();
+    return Object.keys(why).filter(function (id) { return byId[id]; }).map(function (id) { return { title: title(byId[id]), why: why[id] }; });
+  });
   a.toBook = recs.filter(function (r) { return Nudges.TO_BOOK[r.section] && r.days != null; })
     .map(function (r) { return { title: title(r), stage: SettingsModel.sectionLabel(s, r.section), days: r.days, type: Nudges.TO_BOOK[r.section] }; });
   return { groups: Nudges.awaiting(a), upcoming: upcoming };

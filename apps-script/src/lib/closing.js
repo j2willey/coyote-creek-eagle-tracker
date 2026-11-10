@@ -107,11 +107,64 @@ var Closing = (function () {
     return shortDate + ' [' + (str(by) || 'committee') + '] Reopened to ' + str(toLabel) + ': ' + str(reason).replace(/\s+/g, ' ');
   }
 
+  // ---------- review suggestions (a person decides) ----------
+
+  /** Whole years of age at a date; null when either date is missing. */
+  function ageYears(birthYmd, atYmd) {
+    var b = YMD.exec(str(birthYmd)), a = YMD.exec(str(atYmd));
+    if (!b || !a) return null;
+    var years = +a[1] - +b[1];
+    if (+a[2] < +b[2] || (+a[2] === +b[2] && +a[3] < +b[3])) years--;
+    return years;
+  }
+
+  /** "proposal_not_approved 2026-05-01" (_stage_since) -> '2026-05-01' while the row is still in that stage, else ''. */
+  function stageSinceDate(cell, section) {
+    var m = /^(\S+)\s+(\d{4}-\d\d-\d\d)$/.exec(str(cell));
+    return m && m[1] === section ? m[2] : '';
+  }
+
+  /**
+   * Does this record look terminal? -> the reason to show ('' = no suggestion).
+   *   rec: {section, birth ('YYYY-MM-DD'), lastActivity (newest log line / update, 'YYYY-MM-DD' or ''),
+   *         stageSince (date it reached the stage or ''), snoozeUntil ('YYYY-MM-DD' or '')}
+   *   opts: {today, reviewDays (Settings closeReviewDays, default 180)}
+   * Only Proposal Not Approved and EBoR Paused; Beyond Age is never suggested (it has an approved extension).
+   * Age 18 or older, or no log line or update for reviewDays (counted from the later of the last activity and the
+   * day it reached the stage). "Keep open" hides it until snoozeUntil.
+   */
+  function suggest(rec, opts) {
+    opts = opts || {};
+    var today = str(opts.today);
+    if (REVIEW_SECTIONS.indexOf(rec.section) < 0 || !isYmd(today)) return '';
+    if (isYmd(rec.snoozeUntil) && str(rec.snoozeUntil) > today) return '';
+    var age = ageYears(rec.birth, today);
+    if (age !== null && age >= 18) return 'Age ' + age + ': 18 or older';
+    var days = posInt(opts.reviewDays, DEFAULT_REVIEW_DAYS);
+    var last = [str(rec.lastActivity), str(rec.stageSince)].filter(isYmd).sort().pop();
+    if (last) {
+      var idle = daysBetween(last, today);
+      if (idle >= days) return 'No log line or update in ' + idle + ' days';
+    }
+    return '';
+  }
+
+  /** records [rec...] with recordId -> [{recordId, why}] for the ones that look terminal. */
+  function suggestions(records, opts) {
+    var out = [];
+    (records || []).forEach(function (r) {
+      var why = suggest(r, opts);
+      if (why) out.push({ recordId: r.recordId, why: why });
+    });
+    return out;
+  }
+
   return { SECTION: SECTION, FROM_SECTIONS: FROM_SECTIONS, REVIEW_SECTIONS: REVIEW_SECTIONS, REASONS: REASONS, OTHER: OTHER,
     DEFAULT_REVIEW_DAYS: DEFAULT_REVIEW_DAYS, DEFAULT_SNOOZE_DAYS: DEFAULT_SNOOZE_DAYS, DEFAULT_FOLDER: DEFAULT_FOLDER,
     COLUMN: COLUMN, SNOOZE_COLUMN: SNOOZE_COLUMN,
     closedCell: closedCell, parseClosed: parseClosed, reasonKey: reasonKey, closePlan: closePlan, closeLine: closeLine,
-    reopenPlan: reopenPlan, reopenLine: reopenLine,
+    reopenPlan: reopenPlan, reopenLine: reopenLine, ageYears: ageYears, stageSinceDate: stageSinceDate,
+    suggest: suggest, suggestions: suggestions,
     _util: { isYmd: isYmd, daysBetween: daysBetween, addDays: addDays, nice: nice, posInt: posInt, str: str }
   };
 })();

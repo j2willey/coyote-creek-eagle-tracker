@@ -64,3 +64,36 @@ function actionClosing_(c, req) {
   addRecordNote_(rec.recordId, short + ' [' + by + '] Kept open: close review snoozed ' + days + ' days' + (n ? ' (' + n + ')' : ''));
   return { message: scout + ': kept open; no "Close?" suggestion for ' + days + ' days.', outboxId: '' };
 }
+
+/**
+ * Which open Exceptions rows look terminal: {recordId: why}. Proposal Not Approved / EBoR Paused only (lib/closing.js).
+ * Last activity = the newest Activity tab line of the record (every log line and Scout update lands there); read only
+ * when there are such rows. Settings → closeReviewDays; "Keep open" snoozes a row (hidden _close_snooze column).
+ * Feeds the dashboard's amber "Close?" tag and the digest's "Exceptions to review". Never throws.
+ */
+function closeSuggestions_() {
+  var out = {};
+  try {
+    var s = getSettings_();
+    var recs = Records.all(['scout_name', 'birth_date', STAGE_SINCE_COL, Closing.SNOOZE_COLUMN])
+      .filter(function (r) { return Closing.REVIEW_SECTIONS.indexOf(r.section) >= 0 && String(r.scout_name || '').trim(); });
+    if (!recs.length) return out;
+    var want = {}, last = {}, tz = digestTz_();
+    recs.forEach(function (r) { want[r.recordId] = true; });
+    try {
+      Tabs.read(ACTIVITY_TAB).forEach(function (x) {
+        var id = String(x['Record ID'] || '');
+        if (!want[id]) return;
+        var d = x['When'] instanceof Date ? x['When'] : new Date(x['When']);
+        if (isNaN(d.getTime())) return;
+        var ymd = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+        if (!last[id] || ymd > last[id]) last[id] = ymd;
+      });
+    } catch (e) { console.warn('closeSuggestions_ activity: ' + e); }
+    Closing.suggestions(recs.map(function (r) {
+      return { recordId: r.recordId, section: r.section, birth: Intake.dateKey(r.birth_date) || '', lastActivity: last[r.recordId] || '',
+        stageSince: Closing.stageSinceDate(r[STAGE_SINCE_COL], r.section), snoozeUntil: Intake.dateKey(r[Closing.SNOOZE_COLUMN]) || '' };
+    }), { today: todayYmd_(), reviewDays: s.closeReviewDays }).forEach(function (x) { out[x.recordId] = x.why; });
+  } catch (e) { console.warn('closeSuggestions_: ' + e); }
+  return out;
+}
