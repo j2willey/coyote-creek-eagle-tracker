@@ -122,9 +122,9 @@ function closedArchiveReport_() {
 
 /**
  * Admin: archive the Closed records of past years. Per record: the Scout's folder moves to <Scouts folder>/Archive/Closed
- * (Settings → closedFolder, created when missing), a row (no contact details) goes to the "Closed Records" tab, the
+ * (Settings → closedFolder, created when missing), a row (no contact details) goes to the "Closed Archive" tab, the
  * move is logged, and the row leaves the tracking tab. A record whose folder can't be moved is left on the tracking tab
- * and reported; nothing is deleted before its row is on the Closed Records tab. Without confirm: the dry-run list.
+ * and reported; nothing is deleted before its row is on the Closed Archive tab. Without confirm: the dry-run list.
  * req: {session, confirm}
  */
 function actionAdminClosedArchive_(req) {

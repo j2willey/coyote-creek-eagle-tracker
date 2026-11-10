@@ -199,7 +199,7 @@ inside functions (`test/gas-load.test.js` checks this and that every entry point
   (a "Keep open" decision hides the "Close?" suggestion until that date). They travel with the row.
 - **Tabs the tool adds:** Settings, Intake Queue, Uploads Log, Committee (Name | Initials | Email | Active), Unit Info
   (Unit | Under Review | … ; any mark in a column titled "Under Review" / "…restrict…" = under review), Unit Contacts,
-  Key 3, Activity, Digest Log, Outbox, Unit Requests, Stats History (past years for the Stats page), Closed Records (January archive of Closed records), `_Sessions` (hidden). Setup / repair tabs adds missing tabs,
+  Key 3, Activity, Digest Log, Outbox, Unit Requests, Stats History (past years for the Stats page), Closed Archive (January archive of Closed records), `_Sessions` (hidden). Setup / repair tabs adds missing tabs,
   columns, Settings keys and sections, and never deletes anything.
 - **Schedule sheet** (separate file, Settings → `scheduleSheetId`): one row per session, hidden machine row with
   `date, day, time, scout_name, unit, reps, board_members, slot_type, location, address, duration_min, record_id,
@@ -830,7 +830,7 @@ Run by `digestHourly`; each fires once (Script Properties `bm:` / `pb:` / `br:`)
 - **January archive of Closed records** (2026-11-10; `lib/closing.js`, `closingActions.js`): Closed rows **closed in a past year**
   are listed first (a dry run: names, closed date, reason; rows with no closed date, moved to Closed by hand, are never
   archived). **Archive** then, for each: the Scout's folder moves to `<Scouts folder>/Archive/Closed` (Settings
-  `closedFolder`, created when missing; logged in the Scout's log), a row goes to the **Closed Records** tab (Record ID,
+  `closedFolder`, created when missing; logged in the Scout's log), a row goes to the **Closed Archive** tab (Record ID,
   Scout, Unit, Closed, Reason, Note, Closed by, Stage before closing, Proposal approved, EBoR date, Folder link, Archived on;
   **no contact details**), and the row is deleted from the tracking tab (same safe delete as below). A record whose folder
   can't be moved stays put and is reported; the tab and its columns are checked before anything moves; the year's numbers

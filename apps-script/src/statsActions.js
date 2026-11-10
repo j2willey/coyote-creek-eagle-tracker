@@ -41,7 +41,7 @@ function actionStats_(req) {
 
 /**
  * January archive: add the finished year to Stats History (once). A year already there without closure numbers (a row
- * added before the Closed Records columns existed) gets them filled in, only when blank.
+ * added before the Closed Archive columns existed) gets them filled in, only when blank.
  */
 function addStatsYear_(year) {
   try {

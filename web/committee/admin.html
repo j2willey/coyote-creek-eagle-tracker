@@ -91,7 +91,7 @@
       </section>
       <section class="admsec">
         <h2>January: archive last year's Closed records</h2>
-        <p class="hint">Closed records from a past year are cleared once a year. For each: a row (no contact details) goes to the "Closed Records" tab next to the tracking sheet, the Scout's folder moves to <b id="clFolder">Archive/Closed</b> (Settings → closedFolder), and the row leaves the tracking tab. Nothing happens until you press Archive; the list below is what it would do.</p>
+        <p class="hint">Closed records from a past year are cleared once a year. For each: a row (no contact details) goes to the "Closed Archive" tab next to the tracking sheet, the Scout's folder moves to <b id="clFolder">Archive/Closed</b> (Settings → closedFolder), and the row leaves the tracking tab. Nothing happens until you press Archive; the list below is what it would do.</p>
         <div id="closedArch"></div>
       </section>
     </div>
@@ -269,7 +269,7 @@
         try {
           const p = await api('adminClosedArchive', { session });
           confirmDo('Archive ' + p.rows.length + ' Closed record' + (p.rows.length === 1 ? '' : 's') + '?', [
-            el('p', { textContent: 'Each Scout\'s folder moves to ' + p.folder + '/, a row goes to the Closed Records tab, and the row leaves the tracking tab:' }),
+            el('p', { textContent: 'Each Scout\'s folder moves to ' + p.folder + '/, a row goes to the Closed Archive tab, and the row leaves the tracking tab:' }),
             el('ul', { className: 'waitlist' }, ...p.rows.map(x => el('li', { textContent: x.name + (x.unit ? ' (' + x.unit + ')' : '') + ' · closed ' + x.closed + ' · ' + x.reason })))], 'Archive', async () => {
               const r = await api('adminClosedArchive', { session, confirm: true });
               return r.message;

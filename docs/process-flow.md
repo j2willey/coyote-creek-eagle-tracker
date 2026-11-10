@@ -115,7 +115,7 @@ flowchart TD
 extension denied, moved out of district, duplicate or error). A member closes it from an Exceptions stage with a reason
 and a date; **Reopen** puts it back. No email, the folder stays put. Rows that look terminal (Proposal Not Approved or
 EBoR Paused at 18 or older, or idle for `closeReviewDays`) get a "Close?" tag and a digest line; a person decides. Each
-January the previous years' Closed rows are archived (Closed Records tab, folder to `Archive/Closed`).
+January the previous years' Closed rows are archived (Closed Archive tab, folder to `Archive/Closed`).
 
 Online booking per type follows Settings → `onlineBooking` (production: `all` since 2026-10-26); a type not online
 would be scheduled by the committee (committee page or schedule sheet) and the Scout's page says so. The committee can

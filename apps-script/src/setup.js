@@ -8,7 +8,7 @@
  *  _Sessions     hidden    hashed session tokens (M2); never shown to committee
  *  Activity      visible   one row per Life to Eagle Log line; feeds the digest (digest.js)
  *  Digest Log    visible   one row per scheduled digest: sent / no changes / error
- *  Closed Records visible  the January archive of Closed records (adminActions.js / closingActions.js)
+ *  Closed Archive visible  the January archive of Closed records (adminActions.js / closingActions.js)
  */
 var TAB_HEADERS_ = {
   'Intake Queue': ['Submitted', 'Queue ID', 'Status', 'Path', 'Eagle Candidate', 'Preferred Name', 'Unit', 'Birth Date',
@@ -28,7 +28,7 @@ var TAB_HEADERS_ = {
   'Stats History': ['Year', 'Total Eagles', 'Female Eagles', 'Avg Age', 'Min Age', 'Max Age', 'Projects Approved',
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Note', 'Closed', 'Closed Reasons'],
   // January archive of Closed records (lib/closing.js ARCHIVE_HEADERS; test/gas-load.test.js keeps the two in step). No contact details.
-  'Closed Records': ['Record ID', 'Scout', 'Unit', 'Closed', 'Reason', 'Note', 'Closed by', 'Stage before closing',
+  'Closed Archive': ['Record ID', 'Scout', 'Unit', 'Closed', 'Reason', 'Note', 'Closed by', 'Stage before closing',
     'Proposal approved', 'EBoR date', 'Folder', 'Archived on'],
   'Council Applications': ['Received', 'Ref', 'Name on form', 'Unit on form', 'Match', 'Scout', 'Record ID', 'How', 'Files', 'Not attached', 'Folder', 'Email', 'Checked', 'Stage'],
   'Unit Requests': ['Id', 'Submitted', 'Unit', 'From', 'Scout', 'Record ID', 'Date', 'Time', 'Place', 'Note', 'Status', 'Done', 'Done by'],
@@ -40,6 +40,13 @@ function setupTabs_() {
   var created = [];
   if (ensureSettingsTab_()) created.push('Settings');
   try { var mu = migrateLegacyUnitInfo_(); if (mu) created.push(mu); } catch (e) { created.push('Unit Info migration skipped: ' + e.message); }
+  // 2026-11-10: the January archive tab was first called "Closed Records"; rename it once (never two tabs).
+  var oldClosed = ss.getSheetByName('Closed Records');
+  if (oldClosed && !ss.getSheetByName('Closed Archive')) {
+    oldClosed.setName('Closed Archive');
+    oldClosed.getRange(1, 1).setNote(closedArchiveNote_());
+    created.push('Closed Records tab renamed to Closed Archive');
+  }
   Object.keys(TAB_HEADERS_).forEach(function (name) {
     var sh = ss.getSheetByName(name);
     var h = TAB_HEADERS_[name];
@@ -52,9 +59,8 @@ function setupTabs_() {
       if (name === 'Unit Info') seedUnitInfo_(sh);
       if (name === 'Unit Contacts') seedUnitContacts_(sh);
       if (name === 'Stats History') seedStatsHistory_(sh);
-      if (name === 'Closed Records') {
-        sh.getRange(1, 1).setNote('Records closed in a past year, archived each January from the tracking tab (Admin page). ' +
-          'No contact details on purpose: these are minors\' records. The Scout\'s folder (Folder column) holds the paperwork.');
+      if (name === 'Closed Archive') {
+        sh.getRange(1, 1).setNote(closedArchiveNote_());
         sh.setColumnWidth(6, 260);
       }
       if (name === 'Key 3') { sh.getRange(1, 1).setNote(key3Note_('')); protectKey3_(sh); }
@@ -530,4 +536,11 @@ function ensureIntakeFolders_() {
     made.push('Scout Folders (DEV)');
   }
   return made;
+}
+
+/** Note on the Closed Archive tab's A1: what fills it, and where the live closed records are. */
+function closedArchiveNote_() {
+  return 'Filled only by the January archive (Admin page): records closed in a past year. Records closed this year are in ' +
+    'the Closed section at the bottom of the tracking tab (dashboard: Exceptions, Show closed). No contact details on purpose: ' +
+    'these are minors\' records. The Scout\'s folder (Folder column, in Archive/Closed) holds the paperwork.';
 }

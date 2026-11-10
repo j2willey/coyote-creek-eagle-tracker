@@ -7,7 +7,7 @@
  *                      reads `from`; cleared on Reopen
  *   _close_snooze      hidden column, 'YYYY-MM-DD': a "Keep open" decision hides the "Close?" suggestion until then
  *   suggestions        humans decide: rows that look terminal get an amber "Close?" tag and a digest line
- *   January archive    Closed rows closed in a past year -> "Closed Records" tab (no contact details) + folder to
+ *   January archive    Closed rows closed in a past year -> "Closed Archive" tab (no contact details) + folder to
  *                      Archive/Closed + row deleted from the tracking tab
  */
 var Closing = (function () {
@@ -161,8 +161,8 @@ var Closing = (function () {
 
   // ---------- January archive ----------
 
-  var ARCHIVE_TAB = 'Closed Records';
-  /** The "Closed Records" tab. No contact details on purpose (no emails, phones, birth date, address, BSA ID): minors'
+  var ARCHIVE_TAB = 'Closed Archive';
+  /** The "Closed Archive" tab. No contact details on purpose (no emails, phones, birth date, address, BSA ID): minors'
    *  records kept long-term; the Scout's folder holds the paperwork. */
   var ARCHIVE_HEADERS = ['Record ID', 'Scout', 'Unit', 'Closed', 'Reason', 'Note', 'Closed by', 'Stage before closing',
     'Proposal approved', 'EBoR date', 'Folder', 'Archived on'];
@@ -196,7 +196,7 @@ var Closing = (function () {
   }
 
   /**
-   * One row of the Closed Records tab, keyed by ARCHIVE_HEADERS.
+   * One row of the Closed Archive tab, keyed by ARCHIVE_HEADERS.
    * rec: {recordId, scout_name, unit, closed (parseClosed), approved, ebor ('YYYY-MM-DD' or ''), folderId}
    * ctx: {stageLabel(sectionKey), archivedOn ('YYYY-MM-DD')}. Takes only these fields: nothing else can leak in.
    */

@@ -225,7 +225,7 @@ describe('Closing: January archive', () => {
     expect(Closing.folderPath(' Old\\Done / 2026 ')).toEqual(['Old', 'Done', '2026']);
     expect(Closing.folderPath('')).toEqual(['Archive', 'Closed']);
   });
-  it('the Closed Records row has the agreed columns and NO contact details', () => {
+  it('the Closed Archive row has the agreed columns and NO contact details', () => {
     const full = { ...recs[0], approved: '2025-01-15', ebor: '2025-05-10', folderId: 'FOLDER1',
       scout_email: 'scout@example.org', parent_email: 'parent@example.org', scout_phone: '555-0100', birth: '2008-01-01', birth_date: '2008-01-01',
       bsa_id: '12345678', address: '1 Sample St', notes: 'private log' };

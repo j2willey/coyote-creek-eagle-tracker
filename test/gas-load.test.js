@@ -29,9 +29,9 @@ describe('Apps Script bundle', () => {
     }
   });
 
-  it('Setup creates the Closed Records tab with the archive columns (and the Stats History closure columns)', () => {
+  it('Setup creates the Closed Archive tab with the archive columns (and the Stats History closure columns)', () => {
     const tabs = vm.runInContext('TAB_HEADERS_', ctx);
-    expect(tabs['Closed Records']).toEqual(vm.runInContext('Closing.ARCHIVE_HEADERS', ctx));
+    expect(tabs['Closed Archive']).toEqual(vm.runInContext('Closing.ARCHIVE_HEADERS', ctx));
     expect(tabs['Stats History']).toEqual(vm.runInContext('Stats.HISTORY_HEADERS', ctx));
   });
 
