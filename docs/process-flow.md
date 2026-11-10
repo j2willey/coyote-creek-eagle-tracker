@@ -100,10 +100,22 @@ flowchart TD
 
   NA(["Proposal Not Approved"]):::side
   BA(["Beyond Age: Special Needs"]):::side
+  CL(["Closed"]):::side
+  EP -. "Close record" .-> CL
+  EN -. "Close record" .-> CL
+  NA -. "Close record" .-> CL
+  BA -. "Close record" .-> CL
+  CL -. "Reopen (back where it came from)" .-> NA
   RB -. "Review outcome: not approved" .-> NA
   NA -. "new project title on an update" .-> PRC
   PRC -. "Action" .-> BA
 ```
+
+**Closed** (side section, last on the tab): a record that will not come back (withdrew, aged out with no extension,
+extension denied, moved out of district, duplicate or error). A member closes it from an Exceptions stage with a reason
+and a date; **Reopen** puts it back. No email, the folder stays put. Rows that look terminal (Proposal Not Approved or
+EBoR Paused at 18 or older, or idle for `closeReviewDays`) get a "Close?" tag and a digest line; a person decides. Each
+January the previous years' Closed rows are archived (Closed Records tab, folder to `Archive/Closed`).
 
 Online booking per type follows Settings → `onlineBooking` (production: `all` since 2026-10-26); a type not online
 would be scheduled by the committee (committee page or schedule sheet) and the Scout's page says so. The committee can

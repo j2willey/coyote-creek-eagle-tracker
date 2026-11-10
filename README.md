@@ -5,7 +5,7 @@ Life Scout from the first Eagle Project Proposal through the Eagle Board of Revi
 book their Pre-Review Call, Proposal Review and Eagle Board of Review online; unit leaders enter their board members;
 committee members schedule sessions on a calendar page and keep working in the tracking spreadsheet they already use.
 
-> **Status (2026-11-10, API 0.61.0):** **production** runs as the Council account (`cc-advancement@…`) on the
+> **Status (2026-11-10, API 0.62.0):** **production** runs as the Council account (`cc-advancement@…`) on the
 > real tracking sheet at **https://ccac.svmbc.org**, **live since 2026-10-22**, all booking online since 2026-10-26
 > (test mode off, `onlineBooking` = `all`): Proposals come in only through the website (email first), and Scouts book
 > their Pre-Review Call, Proposal Review and EBoR online. Committee members work on the web pages (dashboard, schedule,
@@ -61,6 +61,7 @@ Section names and order live in Settings (columns D:G); keys never change.
 | `ebor_booked` / `ebor_paused` | EBoR Booked / EBoR Paused | Invite to Scout, parent, reps and unit board members |
 | `eagle_earned` / `eagle_not_awarded` | Eagle Earned / Eagle Not Awarded | Outcome |
 | `beyond_age`, `proposal_not_approved` | Beyond Age: Special Needs, Proposal Not Approved | Side sections (bottom of the tab) |
+| `closed` | Closed | Terminal side section (last): withdrew, aged out, extension denied, moved away, duplicate. Status only; Scout's page: "Your record is closed. Questions? Reply to the committee." No email, folder stays put. Closed in a past year: archived each January (see Admin page) |
 
 Committee members move Scouts with the row's **Action** dropdown (rows land at the **top** of the new section).
 Every event and typed note is kept in a per-Scout **Life to Eagle Log** (Google Doc), linked from the Notes cell.
@@ -100,6 +101,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     stageActions.js       dashboard row actions per stage (dates recorded, row move, email, column filled when sent)
     proposalOutcome.js    Review outcome: initials (AB, CD → AB&CD), signed file name, Archive plan, dates, dashboard counts
     reminders.js          EBoR reminder (4.3.c): which boards are due, board list text
+    closing.js            Closed records: reasons, close / reopen plans, the _closed cell, "Close?" suggestions, January archive rows (no contact details), closures by reason
     nudges.js             hourly nudges (4.1.h, 6.2.b, 6.2.c), _stage_since, the digest's "Awaiting action" list
     adminRules.js         Admin page: held web submissions and their actions; January archive (years, rows to delete)
     sectionSort.js        EBoR Booked in EBoR Date order (latest at the top): wanted order + row moves
@@ -133,6 +135,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     reviewActions.js      committee dashboard counts and rows; Review outcome (upload signed Proposal, dates, move, log, email draft)
     committeeUploadActions.js  Scout detail → Add files…: a member files a Scout's files (same naming / versions as a Scout upload)
     remindersActions.js   hourly EBoR reminder → Outbox
+    closingActions.js     Close record… / Reopen… / Keep open row actions, "Close?" suggestions, January archive of Closed records
     nudgesActions.js      hourly nudges, digest "Awaiting action" data, daily health check (6.9.e)
     adminActions.js       Admin page: held submissions (attach / promote / resend / spam), January archive
     unitRequests.js       unit "host a board" requests (Unit Requests tab)
@@ -191,10 +194,12 @@ inside functions (`test/gas-load.test.js` checks this and that every entry point
   (`R-yymmddhhmm-XXX`) on each Scout row. A Scout's status is the nearest `S:` above it (position = status).
 - **Hidden columns at the far right:** `_folder_id`, `_log_id`, `_cc`, `_pending_since`, `_request` (the committee's
   last request, shown on the Scout's page), `_stage_since` (`<section> <date>`: when the Scout reached the stage; reset
-  by the hourly run whenever the section differs, so hand-dragged rows count too). They travel with the row.
+  by the hourly run whenever the section differs, so hand-dragged rows count too), `_closed` (Closed records: JSON
+  `{r: reason, d: date, by: initials, from: stage key, n: note}`, so Reopen knows where it came from) and `_close_snooze`
+  (a "Keep open" decision hides the "Close?" suggestion until that date). They travel with the row.
 - **Tabs the tool adds:** Settings, Intake Queue, Uploads Log, Committee (Name | Initials | Email | Active), Unit Info
   (Unit | Under Review | … ; any mark in a column titled "Under Review" / "…restrict…" = under review), Unit Contacts,
-  Key 3, Activity, Digest Log, Outbox, Unit Requests, Stats History (past years for the Stats page), `_Sessions` (hidden). Setup / repair tabs adds missing tabs,
+  Key 3, Activity, Digest Log, Outbox, Unit Requests, Stats History (past years for the Stats page), Closed Records (January archive of Closed records), `_Sessions` (hidden). Setup / repair tabs adds missing tabs,
   columns, Settings keys and sections, and never deletes anything.
 - **Schedule sheet** (separate file, Settings → `scheduleSheetId`): one row per session, hidden machine row with
   `date, day, time, scout_name, unit, reps, board_members, slot_type, location, address, duration_min, record_id,
@@ -287,6 +292,9 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `eborReminderDays`, `dayOfContact` | 3, | EBoR reminders drafted this many days before; "Running late?" line |
 | `councilAckDays`, `svmbcReceivedMark`, `councilEaglesEmail` | 7, `*`, (blank) | Waiting on Council; Council Eagle Services address (Self-check flags it when empty) |
 | `eborDoneColor`, `exceptionsFolder`, `unitPipeline` | #93c47d, Exceptions, TRUE | Eagle earned paint; folder; unit page candidate list |
+| `closeReviewDays` | 180 | Proposal Not Approved / EBoR Paused with no log line or update for this many days: amber "Close?" tag and digest line (also at 18 or older). Beyond Age is never suggested |
+| `closeSnoozeDays` | 90 | "Keep open" hides the "Close?" suggestion for this many days |
+| `closedFolder` | Archive/Closed | January archive: Closed Scouts' folders move to `<Scouts folder>/<this path>` (created when missing) |
 | `eborSignupUrl`, `reviewSignupUrl` | | `{scheduleLink}` while those types aren't booked online |
 
 ## Features in detail
@@ -523,6 +531,9 @@ Each dashboard row has an **Action** dropdown (⋯) with the actions allowed for
 | EBoR paused… | EBoR Booked | EBoR Date | EBoR Paused | "EBoR paused" with what must be completed (Outbox draft) |
 | Eagle not awarded… | EBoR Booked | EBoR Date | Eagle Not Awarded | "Eagle not awarded" with the stated reasons (Outbox draft) |
 | Eagle not awarded (no reconvening)… | EBoR Paused | (EBoR Date unchanged) | Eagle Not Awarded | "Eagle not awarded" with the stated reasons (Outbox draft) |
+| **Close record…** | EBoR Paused, Eagle Not Awarded, Beyond Age, Proposal Not Approved | Reason (required: Withdrew, Aged out (no extension), Extension denied, Moved out of district, Duplicate or error, Other + text), date (default today, not future), optional note → hidden `_closed`; clears "new files" | Closed | none (Email… still works). Log line "Closed: <reason> (<note>)". The folder does not move |
+| **Reopen…** | Closed | Reason (required, logged); `_closed` cleared | where it came from (`_closed`), or a stage you pick | none |
+| Keep open | Proposal Not Approved, EBoR Paused, **only rows with a "Close?" tag** | `_close_snooze` = today + `closeSnoozeDays`; logged | | none |
 | ✓ Checked: nothing to do | any proposal/EBoR stage, **only rows with new files** | | | none (stops the new-files clock) |
 
 Any committee member. Dates default to today, editable, never in the future; a changed date or an odd order is a
@@ -816,6 +827,16 @@ Run by `digestHourly`; each fires once (Script Properties `bm:` / `pb:` / `br:`)
 - **Draft an email for several Scouts:** stage → email → tick Scouts (those with it waiting or sent in the last 14
   days start unticked; ones that can't get it say why) → one Outbox draft per Scout (max 40 per run).
 - **Email templates: preview and test** (see Emails).
+- **January archive of Closed records** (2026-11-10; `lib/closing.js`, `closingActions.js`): Closed rows **closed in a past year**
+  are listed first (a dry run: names, closed date, reason; rows with no closed date, moved to Closed by hand, are never
+  archived). **Archive** then, for each: the Scout's folder moves to `<Scouts folder>/Archive/Closed` (Settings
+  `closedFolder`, created when missing; logged in the Scout's log), a row goes to the **Closed Records** tab (Record ID,
+  Scout, Unit, Closed, Reason, Note, Closed by, Stage before closing, Proposal approved, EBoR date, Folder link, Archived on;
+  **no contact details**), and the row is deleted from the tracking tab (same safe delete as below). A record whose folder
+  can't be moved stays put and is reported; the tab and its columns are checked before anything moves; the year's numbers
+  (closures by reason too) go to Stats History first. Logged on Activity.
+- **Closed records, review:** "Close?" tags and the digest's "Exceptions to review (n)" are suggestions for a person
+  (see Settings `closeReviewDays`, `closeSnoozeDays`); the dashboard's Exceptions tab hides Closed behind "Show closed (n)".
 - **January archive:** a past year's Eagle Earned rows → spreadsheet "CC Eagles <year>" next to the tracking sheet
   (a copy of the tab pruned to that year), then removed from the tracking tab; the year's numbers go to Stats History.
 
@@ -861,6 +882,8 @@ projects approved), right now (stage counts, open approvals by year), coming up 
 Eagle), how long things take (approval → Eagle, submitted → verified), Eagles by unit, committee sessions held by
 month and member. **Past years** come from the **Stats History** tab (seeded from Eagle Comparisons; edit a number
 there and the page shows it; the January archive adds each finished year).
+**Closed records** (2026-11-10): a card with this year's closures by reason (live, from the Closed rows on the tracking
+tab) and, for past years, the Stats History columns `Closed` and `Closed Reasons` (filled by the January archive).
 
 ### Speed
 

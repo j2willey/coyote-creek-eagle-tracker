@@ -75,6 +75,13 @@ _Avoid_: rejected, failed
 A Proposal Review outcome in which the project cannot meet requirements and the Scout needs a different project.
 _Avoid_: unapproved (the sheet's "Unapproved Proposals" section mixes denial and pending states)
 
+**Closed**:
+The terminal stage (side section, last on the tracking tab) for a Candidate Record that will not come back: withdrew, aged out (no extension), extension denied, moved out of district, duplicate or error, or other. A member closes it from an Exceptions stage (**Close record…**) and can **Reopen…** it back to where it came from. Never emailed automatically; the Scout's page says "Your record is closed." Shown on the dashboard only behind "Show closed (n)". The committee decides: the tool only suggests (**Close?** tag) and never closes by itself.
+_Avoid_: archived (that is the January step), deleted, rejected
+
+**Closed Records**:
+The tab of the tracking spreadsheet that the January archive appends to: one row per Closed record from a past year (Record ID, Scout, unit, closed date, reason, note, who closed it, stage before closing, Proposal approved date, EBoR date, folder link, archived on). Deliberately **no contact details** (no emails, phones, birth date, address, BSA ID): these are minors' records, and the Scout's folder (moved to `Archive/Closed`) holds the paperwork.
+
 **Quiet Period**:
 The span between Proposal approval and Eagle Application submission, when the district usually hears nothing.
 
