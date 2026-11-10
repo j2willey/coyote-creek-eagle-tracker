@@ -45,6 +45,9 @@ var StageActions = (function () {
   var PROPOSAL_STAGES = ['proposal_received', 'proposal_incomplete', 'intake_to_book', 'intake_booked', 'intake_revisions',
     'review_to_book', 'review_booked', 'proposal_revisions', 'proposal_approved', 'app_submitted', 'app_verified', 'ebor_booked'];
 
+  var EXCEPTIONS = ['ebor_paused', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved'];   // lib/closing.js FROM_SECTIONS
+  var CLOSE_REVIEW = ['proposal_not_approved', 'ebor_paused'];                                   // lib/closing.js REVIEW_SECTIONS
+
   // email: 'note' = the member's note goes into the email (draft always in the Outbox); booking: the "Book: <type>"
   // email (online type: as the sheet's Action does, template Mode decides; not online: Outbox draft with {scheduleLink}).
   var ACTIONS = [
@@ -99,7 +102,11 @@ var StageActions = (function () {
       past: 'Eagle not awarded (board did not reconvene)', template: 'Eagle not awarded', email: 'note', emailDate: 'ebor',
       noteLabel: 'Reasons (as the board agreed to state them)' },
     // New files looked at, nothing to change (only on rows with new files waiting)
-    { key: 'checked', label: '✓ Checked: nothing to do', sections: PROPOSAL_STAGES, ifPending: true, past: 'New files checked (no change)' }
+    { key: 'checked', label: '✓ Checked: nothing to do', sections: PROPOSAL_STAGES, ifPending: true, past: 'New files checked (no change)' },
+    // Closed records (Jim W., 2026-11-10; lib/closing.js, closingActions.js): no email, folder stays put
+    { key: 'close', label: 'Close record…', sections: EXCEPTIONS, closing: 'close', dateLabel: 'Date closed', past: 'Record closed' },
+    { key: 'keep_open', label: 'Keep open (hide "Close?")', sections: CLOSE_REVIEW, closing: 'keep', ifSuggest: true, past: 'Kept open' },
+    { key: 'reopen', label: 'Reopen…', sections: ['closed'], closing: 'reopen', past: 'Record reopened' }
   ];
 
   var FILE_LABELS = { application: 'signed Eagle Scout Rank Application (PDF)', report: 'signed Advancement Report (PDF)', photo: 'EBoR photos' };
@@ -126,6 +133,7 @@ var StageActions = (function () {
       if (a.dateLabel) o.dateLabel = a.dateLabel;
       if (a.dateDefault) o.dateDefault = a.dateDefault;
       if (a.ifPending) o.ifPending = true;
+      if (a.closing) { o.closing = a.closing; if (a.ifSuggest) o.ifSuggest = true; }   // handled by closingActions.js
       if (a.ifCouncil) o.ifCouncil = true;          // only rows waiting on Council's acknowledgement
       if (a.ifNot) o.ifNot = a.ifNot;               // hidden when the row already has it (e.g. paperwork sent)
       if (a.email === 'note') o.noteToEmail = true;
@@ -141,6 +149,9 @@ var StageActions = (function () {
     if (a.toUnit) return 'Saving drafts the email to the Scout, parent and unit contacts in the Outbox, where you check it and send it.' +
       (a.onSent === 'emailedEbor' ? ' The "Emailed to set up EBoR" date is filled in when it is sent.' : '');
     if (a.email === 'note') return 'Saving drafts the email to the Scout and parent in the Outbox, with your note as the list of changes; check it and send it there.';
+    if (a.closing === 'close') return 'No email is sent (use Email… if the family should hear from you). The row moves to Closed and the folder stays where it is; Reopen puts it back.';
+    if (a.closing === 'keep') return 'No email is sent. The "Close?" suggestion is hidden for a while (Settings → closeSnoozeDays).';
+    if (a.closing === 'reopen') return 'No email is sent. The row goes back to the stage you pick, and the reason goes into the log.';
     if (a.key === 'eagle_earned') return 'Saving files the scans and photos in the Scout\'s folder, paints the EBoR date green, and drafts two emails in the Outbox: ' +
       'the signed paperwork to Council (with the scans) and the congratulations to the Scout, family, unit and board (with the photos). Replies go to you.';
     if (a.key === 'paperwork') return 'Saving files the scans and drafts the email to Council with both attached in the Outbox. "Signed paperwork sent" is filled in when it is sent.';

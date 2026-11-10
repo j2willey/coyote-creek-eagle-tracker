@@ -81,8 +81,8 @@ function boardRecords_() {
   var formsite = {};                                         // red "Formsite" tag: Council Applications rows to check
   try { formsite = CouncilApp.flags(Tabs.read(CouncilApp.TAB), function (d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'M/d'); }); }
   catch (e) { /* no Council Applications tab yet */ }
-  return Records.all(['scout_name', 'preferred_name', 'unit', 'birth_date', aCol, eCol, 'notes', Pending.COLUMN, '_folder_id', sc.signedSent, sc.svmbcReceived, ProposalOutcome.SIGNING_COLUMN].filter(String)).map(function (r) {
-    return { recordId: r.recordId, section: r.section, scout_name: r.scout_name, preferred_name: r.preferred_name, unit: r.unit,
+  return Records.all(['scout_name', 'preferred_name', 'unit', 'birth_date', aCol, eCol, 'notes', Pending.COLUMN, '_folder_id', sc.signedSent, sc.svmbcReceived, ProposalOutcome.SIGNING_COLUMN, Closing.COLUMN].filter(String)).map(function (r) {
+    return { recordId: r.recordId, section: r.section, closed: Closing.parseClosed(r[Closing.COLUMN]), scout_name: r.scout_name, preferred_name: r.preferred_name, unit: r.unit,
       birth: Intake.dateKey(r.birth_date) || '', approved: aCol ? (Intake.dateKey(r[aCol]) || '') : '', ebor: Intake.dateKey(r[eCol]) || '',
       notes: r.notes, pending: Pending.ms(r[Pending.COLUMN]), folderId: r._folder_id,
       signedSent: sc.signedSent ? (Intake.dateKey(r[sc.signedSent]) || '') : '', svmbcReceived: sc.svmbcReceived ? r[sc.svmbcReceived] : '',
@@ -106,6 +106,8 @@ function actionCommitteeHome_(req) {
     }),
     tabs: (function () { var t = Board.build(boardRecords_(), s.sections, todayYmd_(), s.councilAckDays); return t; })(),
     actions: StageActions.bySection((s.sections || []).map(function (x) { return x.key; })),
+    closing: { reasons: Closing.REASONS, stages: (s.sections || []).filter(function (x) { return x.key !== Closing.SECTION && x.label; })
+      .map(function (x) { return { key: x.key, label: x.label }; }) },
     admin: adminCounts_(),
     testMode: s.testMode !== false
   };

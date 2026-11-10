@@ -254,6 +254,7 @@ function syncSectionHeaders_() {
  *   _folder_id  the Scout's Drive folder (the Scout name cell links to it)
  *   _log_id     the Scout's Life to Eagle Log (the Notes cell links to it)
  *   _cc         "Others to invite" to the EBoR, entered by the Scout/parent
+ *   _closed, _close_snooze   Closed records: why/when/from where; "Keep open" snooze (lib/closing.js)
  * They travel with the row when it is dragged or copied to next year's tab.
  */
 function ensureHiddenColumns_() {
@@ -261,7 +262,7 @@ function ensureHiddenColumns_() {
   var top = sh.getRange(1, 1, Math.min(15, sh.getLastRow()), sh.getLastColumn()).getValues();
   var m = SheetModel.findMachineRow(top);
   if (!m) return [];
-  var all = ['_folder_id', '_log_id', '_cc', '_pending_since', '_request', '_stage_since'];
+  var all = ['_folder_id', '_log_id', '_cc', '_pending_since', '_request', '_stage_since', '_closed', '_close_snooze'];
   var want = all.filter(function (n) { return m.map[n] === undefined; });
   if (want.length) {
     var last = sh.getLastColumn();

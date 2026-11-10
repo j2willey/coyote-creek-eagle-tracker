@@ -329,7 +329,7 @@ describe('section order (Jim W., 2026-10-18)', () => {
   it('New Submissions first; Beyond Age and Unapproved last', () => {
     const keys = SettingsModel.parse([]).sections.map(s => s.key);
     expect(keys[0]).toBe('proposal_received');
-    expect(keys.slice(-5)).toEqual(['ebor_paused', 'eagle_earned', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved']);
+    expect(keys.slice(-6)).toEqual(['ebor_paused', 'eagle_earned', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved', 'closed']);   // Closed last (2026-11-10)
     expect(SettingsModel.pagePhase('ebor_paused')).toBe('status');
     expect(SettingsModel.pagePhase('eagle_not_awarded')).toBe('status');
     expect(SettingsModel.pagePhase('eagle_earned')).toBe('status');

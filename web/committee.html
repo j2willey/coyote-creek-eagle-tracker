@@ -81,6 +81,15 @@
           <p class="muted" id="actWho"></p>
           <div id="actDateBox"><label for="actDate" id="actDateLabel">Date</label>
           <input id="actDate" type="date"></div>
+          <div id="actCloseBox" hidden>
+            <label for="actReason">Reason</label>
+            <select id="actReason"></select>
+            <input id="actReasonText" type="text" maxlength="200" placeholder="What is the reason?" hidden>
+          </div>
+          <div id="actToBox" hidden>
+            <label for="actTo">Reopen in</label>
+            <select id="actTo"></select>
+          </div>
           <div id="actFiles"></div>
           <label for="actNote" id="actNoteLabel">Note</label>
           <textarea id="actNote" maxlength="2000"></textarea>
@@ -131,7 +140,7 @@
         (st.key === 'arrival' && st.dir === 1 ? ' Booked stages: soonest session first.' : '');
     }
     const CACHE_KEY = 'ccacHome', TAB_KEY = 'ccacHomeTab';
-    let data = null, tab = 'proposals';
+    let data = null, tab = 'proposals', showClosed = false;   // Exceptions: Closed rows stay hidden until "Show closed (n)"
     try { tab = localStorage.getItem(TAB_KEY) || 'proposals'; } catch {}
 
     const short = (ymd) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || ''); return m ? +m[2] + '/' + +m[3] + '/' + m[1].slice(2) : ''; };
@@ -141,7 +150,8 @@
     function renderTabs() {
       $('tabs').replaceChildren(...data.tabs.map(t => {
         const b = el('button', { type: 'button', role: 'tab', className: 'obtab' + (t.key === tab ? ' on' : ''),
-          textContent: t.label + ' (' + t.count + (t.pending ? ' · ' + t.pending + ' new' : '') + (t.council ? ' · ' + t.council + ' Council?' : '') + ')' });
+          textContent: t.label + ' (' + t.count + (t.pending ? ' · ' + t.pending + ' new' : '') + (t.council ? ' · ' + t.council + ' Council?' : '') +
+            (t.closeReview ? ' · ' + t.closeReview + ' Close?' : '') + ')' });
         b.onclick = () => { tab = t.key; try { localStorage.setItem(TAB_KEY, tab); } catch {} renderTabs(); renderBoard(); };
         return b;
       }));
@@ -165,7 +175,8 @@
         return el('th', { className: cls, ariaSort: on ? (st.dir === 1 ? 'ascending' : 'descending') : 'none' }, b);
       };
       const table = el('table', { className: 'board' }, el('thead', {}, el('tr', {}, ...head.map(th))));
-      t.groups.forEach(g => {
+      const groups = t.groups.filter(g => g.key !== t.closedGroup || showClosed);
+      groups.forEach(g => {
         const body = el('tbody');
         const mc = g.months;     // EBoR Booked: what's left this month, lined up next month, later
         const mtxt = mc ? [mc.thisMonth + ' left in ' + mc.thisLabel, mc.next + ' in ' + mc.nextLabel, mc.later + ' later']
@@ -184,6 +195,12 @@
                 textContent: 'Signing: ' + r.signing.waiting.join(', '),
                 title: 'Signed by ' + r.signing.signed.join('&') + '; waiting on ' + r.signing.waiting.join(', ') + ' since ' + r.signing.since +
                   '. The Scout has not been emailed yet.\n\nClick: add a signature, or finish with the signatures there are.' }), ' '] : []),
+              // Closed: why and when. "Close?": looks terminal, a person decides (Close record… or Keep open in the Action menu).
+              ...(r.closed ? [el('span', { className: 'tag closed', textContent: r.closed.reason.split(':')[0] + (r.closed.date ? ' ' + short(r.closed.date) : ''),
+                title: 'Closed' + (r.closed.date ? ' ' + short(r.closed.date) : '') + (r.closed.by ? ' by ' + r.closed.by : '') + ': ' + r.closed.reason +
+                  (r.closed.from ? '\nWas in: ' + r.closed.from : '') + '\n\nReopen is in the Action menu.' }), ' '] : []),
+              ...(r.closeWhy ? [el('span', { className: 'tag closeq', textContent: 'Close?',
+                title: r.closeWhy + '\n\nAction menu: Close record…, or Keep open to hide this for a while.' }), ' '] : []),
               ...(r.formsite ? [el(r.formsite.folder ? 'a' : 'span', { className: 'tag formsite', textContent: 'Formsite',
                 ...(r.formsite.folder ? { href: r.formsite.folder, target: '_blank', rel: 'noopener' } : {}),
                 title: r.formsite.why + '\n\nClick: open the Scout\'s folder. When sorted out, tick Checked on the Council Applications tab.' }), ' '] : []),
@@ -216,9 +233,12 @@
       });
       const reset = el('button', { type: 'button', className: 'linkbtn', textContent: 'Back to sheet order' });
       reset.onclick = () => { delete sorts[t.key]; renderBoard(); };
+      const closedBtn = el('button', { type: 'button', className: 'linkbtn', textContent: showClosed ? 'Hide closed' : 'Show closed (' + t.closedCount + ')',
+        title: 'Closed records are kept out of sight; Reopen puts one back' });
+      closedBtn.onclick = () => { showClosed = !showClosed; renderTabs(); renderBoard(); };
       $('board').replaceChildren(
         el('p', { className: 'hint sortline' }, sortLabel(st) + ' Click a column heading to sort, again to reverse. ',
-          ...(st.key !== 'arrival' || st.dir !== 1 ? [reset] : [])),
+          ...(st.key !== 'arrival' || st.dir !== 1 ? [reset, ' '] : []), ...(t.closedGroup ? [closedBtn] : [])),
         el('div', { className: 'boardwrap' }, table));
     }
 
@@ -452,7 +472,7 @@
 
     // ---------- row actions (lib/stageActions.js) ----------
     function actionControl(r, g, list) {
-      list = list.filter(a => (!a.ifPending || r.pending) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifNot || !r[a.ifNot]));
+      list = list.filter(a => (!a.ifPending || r.pending) && (!a.ifSuggest || r.closeWhy) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifNot || !r[a.ifNot]));
       const email = EMAIL_OK(g.key);
       if (!list.length && !email) return [];
       const sel = el('select', { className: 'actsel', title: 'Actions for ' + r.name },
@@ -481,14 +501,24 @@
       $('actDateLabel').textContent = a.dateLabel || 'Date';
       $('actDate').value = a.dateDefault === 'ebor' && r.ebor && r.ebor <= todayYmd() ? r.ebor : todayYmd();   // the board's date
       $('actDate').max = todayYmd();
-      $('actNoteLabel').replaceChildren(a.noteLabel ? a.noteLabel + ' ' : a.noteToEmail ? 'What should the Scout change? ' : 'Note ', el('span', { className: 'opt',
-        textContent: a.noteToEmail ? '(goes into the email draft, the Notes cell and the Scout\'s log)' : '(optional; goes into the Notes cell and the Scout\'s log)' }));
+      // Closed records (lib/closing.js): reason (+ text for Other), or the stage to reopen in; the note is the log reason
+      const isClose = a.closing === 'close', isReopen = a.closing === 'reopen', cl = data.closing || { reasons: [], stages: [] };
+      $('actCloseBox').hidden = !isClose; $('actToBox').hidden = !isReopen;
+      $('actReason').required = isClose; $('actNote').required = isReopen;
+      $('actReason').replaceChildren(el('option', { value: '', textContent: '— pick the reason —' }), ...cl.reasons.map(x => el('option', { value: x, textContent: x })));
+      $('actReasonText').value = ''; $('actReasonText').hidden = true;
+      $('actTo').replaceChildren(el('option', { value: '', textContent: r.closed && r.closed.from ? 'Back where it came from: ' + r.closed.from : 'Pick the stage (no record of where it came from)' }),
+        ...cl.stages.map(x => el('option', { value: x.key, textContent: x.label })));
+      $('actNoteLabel').replaceChildren(a.noteLabel ? a.noteLabel + ' ' : isReopen ? 'Why is it being reopened? ' : a.noteToEmail ? 'What should the Scout change? ' : 'Note ', el('span', { className: 'opt',
+        textContent: a.noteToEmail ? '(goes into the email draft, the Notes cell and the Scout\'s log)' : isReopen ? '(required; goes into the Notes cell and the Scout\'s log)'
+          : '(optional; goes into the Notes cell and the Scout\'s log)' }));
       $('actNote').value = ''; $('actMsg').textContent = '';
       $('actEmail').textContent = a.emailHint || '';
       renderFiles(a);
       $('actDlg').showModal();
     }
-    ['actDate', 'actNote'].forEach(id => $(id).addEventListener('input', resetAct));
+    ['actDate', 'actNote', 'actReason', 'actReasonText', 'actTo'].forEach(id => $(id).addEventListener('input', resetAct));
+    $('actReason').addEventListener('change', () => { $('actReasonText').hidden = $('actReason').value !== 'Other'; if (!$('actReasonText').hidden) $('actReasonText').focus(); });
     // File pickers for actions that take files (Eagle earned: signed scans + photos).
     const FILE_UI = {
       application: { label: 'Signed Eagle Scout Rank Application (PDF scan)', accept: '.pdf,application/pdf' },
@@ -546,7 +576,9 @@
         const bad = $('actFiles').querySelector('.err');
         if (bad) throw new Error(bad.textContent);
         let res = await api('rowAction', { session, recordId: act.r.recordId, kind: act.a.key, date: act.a.dateLabel ? $('actDate').value : '',
-          note: $('actNote').value, confirm: confirmNext, files: [...new Set(files.map(x => x.kind))] });
+          note: $('actNote').value, confirm: confirmNext, files: [...new Set(files.map(x => x.kind))],
+          ...(act.a.closing === 'close' ? { reason: $('actReason').value, reasonText: $('actReasonText').value } : {}),
+          ...(act.a.closing === 'reopen' ? { to: $('actTo').value } : {}) });
         if (res.uploadToken) {
           const ymd = act.a.dateLabel ? $('actDate').value : todayYmd();
           const noExif = await uploadAll(res.uploadToken, files, ymd);

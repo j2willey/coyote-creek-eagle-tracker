@@ -46,6 +46,9 @@ var SettingsModel = (function () {
     eborSignupUrl: '',
     reviewSignupUrl: '',
     exceptionsFolder: 'Exceptions', // Scouts folder child for Eagle Not Awarded / Proposal Not Approved (year folders = Eagles only)
+    closeReviewDays: 180,         // Proposal Not Approved / EBoR Paused with no log line or update for this long: "Close?" suggestion (lib/closing.js)
+    closeSnoozeDays: 90,          // "Keep open" hides the "Close?" suggestion for this long
+    closedFolder: 'Archive/Closed', // January archive: Closed Scouts' folders move to <Scouts folder>/<this path>
     councilEaglesEmail: '',       // Council Eagle Services address for the signed EBoR paperwork (set on the Settings tab)
     eborDoneColor: '#93c47d',     // EBoR Date cell painted on "Eagle earned" (the sheet's old green), blank = no paint
     signedSentColumn: '',         // "signed paperwork sent to Council" date / SVMBC Received columns; blank = found by name
@@ -135,7 +138,10 @@ var SettingsModel = (function () {
     { key: 'beyond_age', label: 'Beyond Age: Special Needs', aliases: ['Beyond Age of Eligibility'],
       scoutStatus: 'Under committee review', order: 200 },
     { key: 'proposal_not_approved', label: 'Proposal Not Approved', aliases: ['Unapproved Proposals', 'Denied Proposals'],
-      scoutStatus: 'Received; the committee is looking at your Proposal', order: 210 }
+      scoutStatus: 'Received; the committee is looking at your Proposal', order: 210 },
+    // Terminal, visible, reversible (Jim W., 2026-11-10; lib/closing.js): withdrew, aged out, extension denied...
+    { key: 'closed', label: 'Closed', aliases: [],
+      scoutStatus: 'Your record is closed. Questions? Reply to the committee.', order: 220 }
   ];
 
   function toBool(v, fallback) {
@@ -266,7 +272,7 @@ var SettingsModel = (function () {
    *  'proposal' files + update form + booking; 'ebor' EBoR booking + others to invite; 'status' status only.
    */
   var EBOR_SECTIONS = ['app_verified', 'ebor_booked'];
-  var STATUS_ONLY = ['proposal_approved', 'app_submitted', 'beyond_age', 'ebor_paused', 'eagle_earned', 'eagle_not_awarded'];
+  var STATUS_ONLY = ['proposal_approved', 'app_submitted', 'beyond_age', 'ebor_paused', 'eagle_earned', 'eagle_not_awarded', 'closed'];
   function pagePhase(sectionKey) {
     if (EBOR_SECTIONS.indexOf(sectionKey) >= 0) return 'ebor';
     if (STATUS_ONLY.indexOf(sectionKey) >= 0) return 'status';

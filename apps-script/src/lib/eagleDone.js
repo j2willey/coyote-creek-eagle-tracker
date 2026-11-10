@@ -8,7 +8,8 @@
  *
  * Folder placement (Scouts folder): active Scouts in 202x; once an EBoR date is set, the EBoR year folder (2026, ...;
  * every folder in a year folder is an Eagle or about to be one); Eagle Not Awarded / Proposal Not Approved in the
- * exceptions folder. EBoR Paused stays where it is until the board is booked again.
+ * exceptions folder. EBoR Paused stays where it is until the board is booked again. Closed stays where it is too
+ * (the January archive moves it to Archive/Closed; Reopen puts the row back without moving the folder).
  */
 var EagleDone = (function () {
   function str(v) { return v == null ? '' : String(v).trim(); }
@@ -26,6 +27,7 @@ var EagleDone = (function () {
     var y = /^(\d{4})-\d{2}-\d{2}/.exec(str(eborYmd));
     if (YEAR_SECTIONS.indexOf(sectionKey) >= 0) return y ? y[1] : null;          // booked without a date yet: leave it
     if (sectionKey === 'ebor_paused') return null;                                // until the board is booked again
+    if (sectionKey === 'closed') return null;                                     // stays put; the January archive moves it (Archive/Closed)
     return str(s.inProgressFolder) || '202x';
   }
 

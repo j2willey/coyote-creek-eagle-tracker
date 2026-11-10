@@ -205,6 +205,8 @@ table.cmp th:first-child { width: 9rem; }
 .tag.board-big { background: #d9d9d6; color: #3b3b38; }
 .tag.formsite { background: #c62828; color: #fff; }
 .tag.signing { background: #b26a00; color: #fff; text-decoration: none; }
+.tag.closeq { background: #f6d27a; color: #4a3300; }   /* looks terminal: a person decides */
+.tag.closed { background: #d9d9d6; color: #3b3b38; }
 a.tag { text-decoration: none; cursor: pointer; }
 a.tag:hover, a.tag:focus-visible { text-decoration: underline; }
 .tag.reps { background: color-mix(in srgb, currentColor 10%, transparent); }

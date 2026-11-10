@@ -91,7 +91,7 @@ var MigrationPlan = (function () {
       missing = missing.filter(function (k) { return k !== 'intake_to_book'; });
     }
     // EBoR-workflow sections and New Submissions are added later by Admin → Setup / repair tabs (ensureSectionRows_), not by the migration.
-    missing = missing.filter(function (k) { return ['app_verified', 'ebor_booked', 'ebor_paused', 'eagle_earned', 'eagle_not_awarded', 'proposal_received', 'intake_booked', 'intake_revisions'].indexOf(k) < 0; });
+    missing = missing.filter(function (k) { return ['app_verified', 'ebor_booked', 'ebor_paused', 'eagle_earned', 'eagle_not_awarded', 'proposal_received', 'intake_booked', 'intake_revisions', 'closed'].indexOf(k) < 0; });
     missing.forEach(function (k) { warnings.push('Section not found on sheet: ' + k); });
 
     // Order check: not a blocker (the scripts don't care); the committee drags whole sections afterwards

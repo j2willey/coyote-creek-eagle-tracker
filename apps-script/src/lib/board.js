@@ -13,8 +13,9 @@ var Board = (function () {
     { key: 'underway', label: 'Underway', cols: ['approved'], sections: ['proposal_approved'] },
     { key: 'ebors', label: 'EBoRs', cols: ['ebor'], sections: ['app_submitted', 'app_verified', 'ebor_booked'] },
     { key: 'eagles', label: 'Eagles', cols: ['ebor'], sections: ['eagle_earned'], ageAt: 'ebor' },
-    { key: 'exceptions', label: 'Exceptions', cols: ['approved', 'ebor'], stage: true,
-      sections: ['ebor_paused', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved'] }
+    // Closed (2026-11-10, lib/closing.js) is the last group; the page hides it behind "Show closed (n)" and the tab's count leaves it out.
+    { key: 'exceptions', label: 'Exceptions', cols: ['approved', 'ebor'], stage: true, closedGroup: 'closed',
+      sections: ['ebor_paused', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved', 'closed'] }
   ];
 
   function str(v) { return v == null ? '' : String(v).trim(); }
@@ -114,6 +115,10 @@ var Board = (function () {
         g.rows.push({ recordId: r.recordId, name: display(r.scout_name, r.preferred_name), unit: str(r.unit), age: age(r.birth, at),
           approved: str(r.approved), ebor: str(r.ebor), note: firstLine(r.notes), pending: r.pending > 0,
           folder: str(r.folderId) ? 'https://drive.google.com/drive/folders/' + str(r.folderId) : '',
+          // Closed: why and when ({reason, date, by, from}); closeWhy: "Close?" suggestion text (lib/closing.js), '' = none
+          closed: r.closed && str(r.closed.reason) ? { reason: str(r.closed.reason), date: str(r.closed.date), by: str(r.closed.by),
+            from: label[r.closed.from] || str(r.closed.from) } : null,
+          closeWhy: r.section === 'closed' ? '' : str(r.closeWhy),
           councilSent: str(r.signedSent), councilWait: councilWait(r.signedSent, r.svmbcReceived, today),
           councilOverdue: (councilWait(r.signedSent, r.svmbcReceived, today) || 0) >= overdueAfter,
           band: EBOR_SECTIONS.indexOf(r.section) >= 0 ? eborBand(r.ebor, today) : '',
@@ -133,11 +138,14 @@ var Board = (function () {
             ? (r.boardSize < BOARD_MIN ? 'short' : r.boardSize > BOARD_MAX ? 'big' : 'ok') : '' });
       });
       groups.forEach(function (g) { if (g.key === 'ebor_booked') g.months = monthCounts(g.rows, today); });
-      var rows = groups.reduce(function (n, g) { return n + g.rows.length; }, 0);
-      var pend = groups.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.pending; }).length; }, 0);
-      var council = groups.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.councilWait !== null; }).length; }, 0);
+      var shown = groups.filter(function (g) { return g.key !== t.closedGroup; });       // the tab's numbers leave the hidden-by-default group out
+      var rows = shown.reduce(function (n, g) { return n + g.rows.length; }, 0);
+      var pend = shown.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.pending; }).length; }, 0);
+      var council = shown.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.councilWait !== null; }).length; }, 0);
+      var closedRows = groups.filter(function (g) { return g.key === t.closedGroup; }).reduce(function (n, g) { return n + g.rows.length; }, 0);
+      var review = shown.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.closeWhy; }).length; }, 0);
       return { key: t.key, label: t.label, cols: t.cols, stage: !!t.stage, ageLocked: t.ageAt === 'ebor',
-        count: rows, pending: pend, council: council, groups: groups };
+        count: rows, pending: pend, council: council, closedGroup: t.closedGroup || '', closedCount: closedRows, closeReview: review, groups: groups };
     });
   }
 

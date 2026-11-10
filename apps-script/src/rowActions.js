@@ -40,6 +40,8 @@ function rowCheck_(req) {
 
 function actionRowAction_(req) {
   var c = committeeMe_(req.session);
+  var ka = StageActions.get(String(req.kind || ''));
+  if (ka && ka.closing) return actionClosing_(c, req);                // Close record… / Reopen… / Keep open (closingActions.js)
   var ck = rowCheck_(req);
   if (ck.warnings.length && !req.confirm) return { needsConfirm: true, warnings: ck.warnings };
   if (ck.a.files && (req.files || []).length) {
