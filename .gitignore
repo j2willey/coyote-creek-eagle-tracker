@@ -1,0 +1,22 @@
+node_modules/
+.clasp.json
+.clasp.*.json
+.clasprc.json
+.firebaserc
+.firebase/
+*.log
+.DS_Store
+Thumbs.db
+# never commit real data
+*.xlsx
+*.csv
+# editor swap/backup files
+*.swp
+*.swo
+*~
+# local deploy script
+/pub
+/workbooks/bob.sh
+/bob.sh
+# blank BSA workbooks kept locally for testing
+/workbooks/

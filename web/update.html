@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Update · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <main>
+    <header class="brand" data-site-header></header><script src="js/header.js"></script>
+    <h1>Your Eagle Project</h1>
+    <p class="muted env-note" hidden></p>
+    <p><a href="/signin">← Back</a></p>
+
+    <p id="loadMsg" class="muted">Loading…</p>
+
+    <section class="card" id="statusCard" hidden>
+      <h2 id="scoutName"></h2>
+      <p>Status: <b id="status"></b></p>
+      <div class="request" id="request" hidden>
+        <p class="reqhead" id="requestHead">The committee asked for:</p>
+        <p id="requestText"></p>
+      </div>
+      <h3 class="proposalOnly">Files the committee has</h3>
+      <ul id="files" class="proposalOnly"></ul>
+      <p class="hint proposalOnly">Only the latest version of each file is listed. The committee keeps earlier versions.</p>
+    </section>
+
+    <section class="card" id="bookCard" hidden>
+      <h2 id="bookTitle"></h2>
+      <div id="booked" hidden>
+        <p id="bookedText"></p>
+        <p id="whereLine" hidden></p>
+        <p id="meetLine" hidden>Join: <a id="meetLink" target="_blank" rel="noopener"></a></p>
+        <p><button type="button" id="changeBtn" hidden>Change time</button> <button type="button" id="cancelBtn">Cancel this call</button></p>
+        <p class="hint" id="cancelHint"></p>
+      </div>
+      <div id="picker" hidden>
+        <p class="hint" id="adultNotice"></p>
+        <div class="viewtoggle" role="group" aria-label="Show open times as"><button type="button" id="vList" class="on">List</button><button type="button" id="vCal">Calendar</button></div>
+        <div id="slotList"></div>
+        <div id="slotCal" class="calbox" hidden></div>
+        <p class="hint" id="picked" hidden></p>
+        <label id="adultBox" style="font-weight:400;display:flex;gap:.5rem;align-items:flex-start">
+          <input type="checkbox" id="adult" style="width:auto;margin-top:.3rem">
+          <span>A parent/guardian or another adult 21 or older will be with me.</span>
+        </label>
+        <p><button type="button" class="primary" id="bookBtn">Book this time</button></p>
+      </div>
+      <p id="bookMsg" role="status"></p>
+    </section>
+
+    <section class="card" id="ccCard" hidden>
+      <h2>Others to invite to your board</h2>
+      <p class="hint">Add anyone who should get the calendar invitation: a parent, or your current Scoutmaster if the unit's
+        leader has changed. The committee is told about new names.</p>
+      <div id="ccRows"></div>
+      <p><button type="button" id="ccAdd">+ Add a person</button></p>
+      <p><button type="button" class="primary" id="ccSave">Save</button></p>
+      <p id="ccMsg" role="status"></p>
+    </section>
+
+    <form id="f" class="card" hidden novalidate>
+      <h2>Send an update</h2>
+      <p class="hint">Correct any details below and/or add new files. New files become the next version
+        (for example, a revised Proposal becomes ESSPP-V2).</p>
+      <div id="fields"></div>
+      <p class="hint">Need to change the name, unit, birth date or an email address? Email the committee.</p>
+
+      <h3>New files <span class="muted" style="font-weight:400">(optional)</span></h3>
+      <div class="figrow proposalOnly">
+        <img src="images/workbook-cover-200.jpg" width="200" height="258" alt="Cover of the Eagle Scout Service Project Workbook">
+        <p class="hint">Revised your Proposal? Attach the updated <b>Eagle Scout Service Project Workbook</b> file and mark it
+          <b>ESSPP</b>. It becomes the next version. <a href="/proposal-guide" target="_blank" rel="noopener">How to keep it small</a>.</p>
+      </div>
+      <div id="fileRows"></div>
+      <p><button type="button" id="addFile">+ Add a file</button></p>
+
+      <label for="desc">Briefly describe what you changed <span class="opt" id="descOpt">(required when you send a new file)</span></label>
+      <textarea id="desc" rows="3" maxlength="500" placeholder="For example: added the beneficiary letter, fixed the materials list, moved the project date to March."></textarea>
+      <p class="hint" id="descCount">0 / 500</p>
+
+      <p id="msg" role="status"></p>
+      <p><button type="submit" class="primary" id="go">Send update</button></p>
+    </form>
+
+    <section class="card" id="done" hidden>
+      <h2>Update received</h2>
+      <p id="doneMsg"></p>
+      <ul id="doneList"></ul>
+      <p><a href="" id="again">See your record</a></p>
+    </section>
+  </main>
+
+  <script type="module">
+    import { api } from './js/api.js';
+    import { addFileRow as fileRow, chosenFiles, readBase64, uploadText } from './js/files.js';
+    import { mountCalendar } from './js/calendarView.js';
+    const $ = (id) => document.getElementById(id);
+    const recordId = new URLSearchParams(location.search).get('r');
+    let session = null;
+    try { session = localStorage.getItem('ccacSession'); } catch {}
+    let tags = ['ESSPP', 'Signatures', 'Slides', 'Photo', 'Other'];
+    let editable = [];
+
+    const say = (text, cls = 'muted') => { $('msg').textContent = text; $('msg').className = cls; };
+    const li = (text) => Object.assign(document.createElement('li'), { textContent: text });
+
+    const addFileRow = (tag) => fileRow($('fileRows'), tags, tag);
+
+    async function load() {
+      if (!session || !recordId) { $('loadMsg').innerHTML = 'Please <a href="/signin">sign in</a> first.'; return; }
+      try {
+        const r = await api('myRecord', { session, recordId });
+        tags = r.tags || tags;
+        $('scoutName').textContent = r.scoutName || '';
+        $('status').textContent = r.status;
+        // The committee's latest request (the note from their email), while it still applies.
+        $('request').hidden = !r.request;
+        if (r.request) {
+          const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(r.request.date || '');
+          $('requestHead').textContent = 'The committee asked for' + (d ? ' (' + (+d[2]) + '/' + (+d[3]) + ')' : '') + ':';
+          $('requestText').textContent = r.request.text;
+        }
+        const proposal = r.phase === 'proposal';
+        document.querySelectorAll('.proposalOnly').forEach(e => e.hidden = !proposal);
+        $('ccCard').hidden = r.phase !== 'ebor';
+        if (r.phase === 'ebor') {
+          $('ccRows').replaceChildren(...((r.cc && r.cc.length) ? r.cc : [{}]).map(ccRow));
+        }
+        $('loadMsg').hidden = true; $('statusCard').hidden = false;
+        if (!proposal) { $('f').hidden = true; await showBooking(r); return; }
+        $('files').replaceChildren(...(r.files.length ? r.files.map(f => li(`${f.name} (${f.date})`)) : [li('None yet')]));
+        const box = $('fields');
+        box.replaceChildren();
+        editable = [];
+        for (const f of r.fields) {
+          const lab = Object.assign(document.createElement('label'), { textContent: f.label + (f.required ? ' (required: please add it)' : '') });
+          if (f.editable) {
+            const input = Object.assign(document.createElement('input'), { id: 'f_' + f.key, value: f.value });
+            if (f.required) { input.required = true; input.type = 'email'; }
+            input.dataset.original = f.value;
+            lab.htmlFor = input.id;
+            box.append(lab, input);
+            editable.push(f.key);
+          } else {
+            box.append(lab, Object.assign(document.createElement('div'), { textContent: f.value || '—' }));
+          }
+        }
+        $('fileRows').replaceChildren();
+        addFileRow('ESSPP');
+        $('loadMsg').hidden = true; $('statusCard').hidden = false; $('f').hidden = false;
+        await showBooking(r);
+      } catch (e) {
+        $('loadMsg').innerHTML = '';
+        $('loadMsg').append(e.message + ' ', Object.assign(document.createElement('a'), { href: '/signin', textContent: 'Sign in' }));
+        $('loadMsg').className = 'err';
+      }
+    }
+
+    let needAdult = true, changing = false;
+    const bsay = (t, cls = 'muted') => { $('bookMsg').textContent = t; $('bookMsg').className = cls; };
+
+    async function showBooking(r) {
+      $('bookCard').hidden = true; $('booked').hidden = true; $('picker').hidden = true; bsay('');
+      if (r.booking) {
+        $('bookTitle').textContent = 'Your ' + r.booking.type;
+        $('bookedText').textContent = r.booking.when + (r.booking.member ? ' with ' + r.booking.member : '') + '.';
+        $('whereLine').hidden = !r.booking.where;
+        $('whereLine').textContent = r.booking.where ? 'Where: ' + r.booking.where : '';
+        $('meetLine').hidden = !r.booking.meetUrl;
+        if (r.booking.meetUrl) { $('meetLink').href = r.booking.meetUrl; $('meetLink').textContent = r.booking.meetUrl; }
+        $('cancelBtn').hidden = !r.booking.canCancel;
+        $('cancelBtn').textContent = 'Cancel this ' + (/call/i.test(r.booking.type) ? 'call' : 'booking');
+        $('changeBtn').hidden = !r.booking.canChange;
+        changing = false;
+        $('cancelHint').textContent = r.booking.canCancel ? 'You can change or cancel up to 24 hours before.' : 'Less than 24 hours away: email the committee to change it.';
+        $('booked').hidden = false; $('bookCard').hidden = false;
+        return;
+      }
+      if (!r.canBook) return;
+      $('bookTitle').textContent = 'Book your ' + r.canBook;
+      $('bookCard').hidden = false;
+      await showSlots(false);
+    }
+
+    // The list of open times: to book, or to move an existing booking ("Change time").
+    async function showSlots(change) {
+      changing = change;
+      $('bookBtn').textContent = change ? 'Move to this time' : 'Book this time';
+      $('bookBtn').disabled = false;
+      try {
+        const s = await api('slots', { session, recordId, change: change || undefined });
+        $('adultNotice').textContent = s.adultNotice || '';
+        needAdult = s.adult !== false;            // fail safe: show the youth-protection box unless the server says it's not needed
+        $('adultBox').style.display = needAdult ? 'flex' : 'none';
+        if (!s.slots.length) {
+          bsay(change ? 'No other open times right now. Your current time stays booked.'
+            : 'No open times right now. The committee adds new times regularly: please check back in a few days, or reply to your last email from the committee to ask.');
+          return;
+        }
+        $('slotList').replaceChildren(...s.slots.map((x, i) => {
+          const lab = document.createElement('label');
+          lab.style.cssText = 'font-weight:400;display:flex;gap:.5rem;align-items:center;margin:.35rem 0';
+          const rb = Object.assign(document.createElement('input'), { type: 'radio', name: 'slot', value: x.key, checked: i === 0 });
+          rb.style.width = 'auto';
+          lab.append(rb, x.when + (x.where ? ' · ' + x.where : '') + (x.member ? ' · with ' + x.member : ''));
+          return lab;
+        }));
+        slotsNow = s.slots;
+        if (calView) await showCal(); else { $('slotCal').hidden = true; $('slotList').hidden = false; $('picked').hidden = true; }
+        $('picker').hidden = false;
+      } catch (e) { bsay(e.message, 'err'); }
+    }
+
+    // List / Calendar: the radios stay the source of truth; the calendar just picks one.
+    let slotsNow = [], calView = false, cal = null;
+    try { calView = localStorage.getItem('ccacSlotView') === 'cal'; } catch {}
+    const pickedText = () => {
+      const pick = document.querySelector('input[name=slot]:checked');
+      const x = pick && slotsNow.find(s => s.key === pick.value);
+      $('picked').textContent = x ? 'Selected: ' + x.when + (x.where ? ' · ' + x.where : '') + (x.member ? ' · with ' + x.member : '') : 'Click a time on the calendar.';
+    };
+    async function showCal() {
+      $('slotList').hidden = true; $('slotCal').hidden = false; $('picked').hidden = false;
+      const evs = slotsNow.filter(x => x.start).map(x => ({ id: x.key, title: x.member ? 'Open · ' + x.member : 'Open', start: x.start, end: x.end, color: '#1f8a4c' }));
+      try {
+        if (!cal) cal = await mountCalendar($('slotCal'), evs, { onPick: (key) => {
+          const rb = document.querySelector('input[name=slot][value="' + key + '"]'); if (rb) rb.checked = true; pickedText(); } });
+        else cal.setEvents(evs);
+        const pick = document.querySelector('input[name=slot]:checked'); if (pick) cal.select(pick.value);
+        pickedText();
+      } catch (e) { bsay(e.message, 'err'); setView(false); }
+    }
+    function setView(toCal) {
+      calView = toCal;
+      try { localStorage.setItem('ccacSlotView', toCal ? 'cal' : 'list'); } catch {}
+      $('vList').classList.toggle('on', !toCal); $('vCal').classList.toggle('on', toCal);
+      if (toCal) showCal(); else { $('slotCal').hidden = true; $('slotList').hidden = false; $('picked').hidden = true; }
+    }
+    $('vList').onclick = () => setView(false);
+    $('vCal').onclick = () => setView(true);
+
+    $('bookBtn').onclick = async () => {
+      const pick = document.querySelector('input[name=slot]:checked');
+      if (!pick) { bsay('Pick a time.', 'err'); return; }
+      if (calView && !$('picked').textContent.startsWith('Selected')) { bsay('Click a time on the calendar first.', 'err'); return; }
+      if (needAdult && !$('adult').checked) { bsay('Please confirm the adult 21+ will be with you.', 'err'); return; }
+      $('bookBtn').disabled = true; bsay('Booking…');
+      try {
+        const r = await api(changing ? 'changeBooking' : 'book', { session, recordId, slotKey: pick.value, adultConfirmed: needAdult ? true : undefined });
+        await load();
+        bsay(r.message, 'ok');
+      } catch (e) { bsay(e.message, 'err'); $('bookBtn').disabled = false; }
+    };
+
+    $('changeBtn').onclick = async () => {
+      $('changeBtn').disabled = true; bsay('Loading open times…');
+      await showSlots(true);
+      if ($('bookMsg').textContent === 'Loading open times…') bsay('Pick a new time. Your current time is kept until the new one is booked.');
+      $('changeBtn').disabled = false;
+    };
+
+    $('cancelBtn').onclick = async () => {
+      $('cancelBtn').disabled = true; bsay('Cancelling…');
+      try {
+        const r = await api('cancelBooking', { session, recordId });
+        await load();
+        bsay(r.message, 'ok');
+      } catch (e) { bsay(e.message, 'err'); $('cancelBtn').disabled = false; }
+    };
+
+    function ccRow(x = {}) {
+      const row = document.createElement('div');
+      row.className = 'filerow';
+      row.style.gridTemplateColumns = '1.4fr 1fr';
+      row.append(Object.assign(document.createElement('input'), { type: 'email', placeholder: 'Email', value: x.email || '' }),
+                 Object.assign(document.createElement('input'), { placeholder: 'Who (optional)', value: x.note || '' }));
+      return row;
+    }
+    $('ccAdd').onclick = () => $('ccRows').append(ccRow());
+    $('ccSave').onclick = async () => {
+      const people = [...$('ccRows').children].map(r => ({ email: r.children[0].value.trim(), note: r.children[1].value.trim() }))
+        .filter(p => p.email || p.note);
+      $('ccSave').disabled = true; $('ccMsg').textContent = 'Saving…'; $('ccMsg').className = 'muted';
+      try { const r = await api('saveCc', { session, recordId, people }); $('ccMsg').textContent = r.message; $('ccMsg').className = 'ok'; }
+      catch (e) { $('ccMsg').textContent = e.message; $('ccMsg').className = 'err'; }
+      $('ccSave').disabled = false;
+    };
+
+    $('addFile').onclick = () => addFileRow('Slides');
+
+    $('f').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const fields = {};
+      for (const k of editable) {
+        const el = $('f_' + k);
+        if (el.value.trim() !== el.dataset.original) fields[k] = el.value.trim();
+      }
+      const { ok, files } = chosenFiles($('fileRows'));
+      if (!ok) { say('One of the files can\'t be sent: see the note under it.', 'err'); return; }
+      if (!files.length && !Object.keys(fields).length) { say('Nothing to send: change a field or add a file.', 'err'); return; }
+      const description = $('desc').value.trim();
+      if (files.length && !description) { say('Please describe briefly what you changed (a sentence or two).', 'err'); $('desc').focus(); return; }
+
+      $('go').disabled = true;
+      try {
+        say('Checking…');
+        const { uploadToken } = await api('startUpdate', { session, recordId, fields, description });
+        for (let i = 0; i < files.length; i++) {
+          say(uploadText(i, files.length, files[i].file));
+          await api('uploadUpdateFile', { uploadToken, name: files[i].file.name, tag: files[i].tag, data: await readBase64(files[i].file) });
+        }
+        say('Finishing…');
+        const r = await api('finishUpdate', { uploadToken });
+        $('doneMsg').textContent = r.message;
+        $('doneList').replaceChildren(...r.files.map(n => li('Added ' + n)), ...r.changes.map(c => li(c)));
+        $('again').href = location.pathname + location.search;
+        $('desc').value = ''; $('descCount').textContent = '0 / 500';
+        $('f').hidden = true; $('statusCard').hidden = true; $('done').hidden = false;
+        window.scrollTo(0, 0);
+      } catch (e) {
+        say(e.message, 'err');
+        $('go').disabled = false;
+      }
+    });
+
+    await load();
+  </script>
+  <script>
+    (function () {
+      var d = document.getElementById('desc'), c = document.getElementById('descCount');
+      if (d && c) d.addEventListener('input', function () { c.textContent = d.value.length + ' / 500'; });
+    })();
+  </script>
+</body>
+</html>

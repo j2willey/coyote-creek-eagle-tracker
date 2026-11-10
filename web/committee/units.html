@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Units · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Units</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+    <div id="app" hidden>
+      <p class="hint">Each unit's meetings and contacts. The Unit Leader and Committee Chair come from Council's Key 3 (only the committee
+        can change them); the other contacts come from the unit. Contacts get the unit's EBoR emails and can sign in to the unit page.
+        Units missing a Unit Leader or Committee Chair email are marked.</p>
+      <div class="unitgrid">
+        <div class="unitlist" id="list"></div>
+        <section class="statcard" id="panel"><p class="muted">Pick a unit.</p></section>
+      </div>
+    </div>
+  </main>
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    import { mountUnitContacts } from '/js/unitContacts.js';
+    const meLine = renderNav($('cnav'), 'units');
+    let units = [], sel = new URLSearchParams(location.search).get('u') || '';
+    function renderList() {
+      $('list').replaceChildren(...units.map(u => {
+        const b = el('button', { type: 'button', className: 'obitem' + (u.code === sel ? ' sel' : '') },
+          el('b', { textContent: u.unit }), u.underReview ? el('span', { className: 'tag ur', textContent: ' under review' }) : '',
+          el('div', { className: 'muted', textContent: u.key3 + ' Key 3 · ' + u.contacts + ' contact' + (u.contacts === 1 ? '' : 's') }),
+          ...(u.missing.length ? [el('div', { className: 'err', textContent: 'No ' + u.missing.join(' / ') + ' email' })] : []));
+        b.onclick = () => { sel = u.code; history.replaceState(null, '', '?u=' + encodeURIComponent(sel)); renderList(); open(); };
+        return b;
+      }));
+    }
+    function open() {
+      if (!sel) return;
+      mountUnitContacts($('panel'), { session, unit: sel, onChange: refresh });
+    }
+    async function refresh() { const r = await api('unitDirectory', { session }); units = r.units; renderList(); }
+    if (!session) needSignIn($('msg'));
+    else {
+      try { const c = JSON.parse(localStorage.getItem('ccacHome') || 'null'); if (c && c.session === session) meLine.textContent = meText(c.d.me, c.d.testMode); } catch {}
+      refresh().then(() => { $('msg').hidden = true; $('app').hidden = false; open(); })
+        .catch(e => { if (isSignedOut(e)) needSignIn($('msg'), e.message); else { $('msg').textContent = e.message; $('msg').className = 'err'; } });
+    }
+  </script>
+</body>
+</html>

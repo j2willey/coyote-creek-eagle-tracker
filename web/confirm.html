@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Confirm · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <main>
+    <header class="brand" data-site-header></header><script src="js/header.js"></script>
+    <h1>Eagle Project Proposals</h1>
+    <section class="card">
+      <h2 id="h">Confirming…</h2>
+      <p id="msg" class="muted">One moment.</p>
+      <p id="next" hidden><a href="/signin">See your status</a></p>
+    </section>
+  </main>
+  <script type="module">
+    import { api } from './js/api.js';
+    const $ = (id) => document.getElementById(id);
+    const token = new URLSearchParams(location.search).get('c');
+    history.replaceState(null, '', location.pathname);          // don't leave the token in the address bar
+    try {
+      if (!token) throw new Error('This page needs the link from your email.');
+      const r = await api('confirmIntake', { token });
+      if (r.session) { try { localStorage.setItem('ccacSession', r.session); } catch {} }
+      $('h').textContent = { promoted: 'Proposal received', attached: 'Files received' }[r.status] || 'Submission confirmed';
+      $('msg').textContent = r.message; $('msg').className = 'ok';
+      $('next').hidden = false;
+    } catch (e) {
+      $('h').textContent = 'Could not confirm';
+      $('msg').textContent = e.message; $('msg').className = 'err';
+      $('next').hidden = false;
+    }
+  </script>
+</body>
+</html>

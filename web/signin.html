@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Sign In · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <main>
+    <header class="brand" data-site-header></header><script src="js/header.js"></script>
+    <h1>Eagle Project Proposals</h1>
+    <p class="muted env-note" hidden></p>
+
+    <section class="card" id="wait" hidden>
+      <h2 id="waitTitle">Signing you in…</h2>
+      <p class="muted"><span class="spin" aria-hidden="true"></span>One moment: this usually takes a few seconds.</p>
+    </section>
+
+    <section class="card" id="ask" hidden>
+      <h2>Sign in or start a Proposal</h2>
+      <p>Enter your email address. We'll email you a link.</p>
+      <ul class="hint">
+        <li><b>Scouts:</b> use your own email. If we have it, the link signs you in to your page (status, updates, booking).
+          If you're new, the link opens the form to submit your Eagle Project Proposal.</li>
+        <li><b>Unit leaders and committee members:</b> use the address the committee has on file for you.</li>
+      </ul>
+      <form id="f">
+        <input id="email" type="email" autocomplete="email" required placeholder="you@example.com"
+               style="width:100%;font:inherit;padding:.6rem;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)">
+        <p><button type="submit" style="font:inherit;padding:.6rem 1.2rem;border-radius:8px;border:0;background:var(--fg);color:var(--bg)">Email me a link</button></p>
+      </form>
+      <p id="askMsg"></p>
+      <form id="cf" hidden>
+        <label for="code" style="margin-top:.4rem">Got the email? Type its 6-digit code here, or open its link.</label>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456"
+                 style="width:9rem;font:inherit;letter-spacing:.12em;padding:.6rem;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)">
+          <button type="submit" id="cGo" style="font:inherit;padding:.6rem 1.2rem;border-radius:8px;border:0;background:var(--fg);color:var(--bg)">Sign in</button>
+        </div>
+        <p id="cMsg"></p>
+      </form>
+      <p class="hint">Parents and guardians: you're copied on every email to your Scout; the Scout signs in with their own address.</p>
+    </section>
+
+    <section class="card" id="mm" hidden>
+      <h2>Open this link where you asked for it</h2>
+      <p id="mmMsg"></p>
+      <p><button type="button" id="mmBtn" style="font:inherit;padding:.6rem 1.2rem;border-radius:8px;border:0;background:var(--fg);color:var(--bg)">Send a fresh link to this browser</button></p>
+      <p id="mmOut"></p>
+      <p class="hint">On a phone, the email app may open links in its own browser. That's fine: open the fresh link from the same app.</p>
+    </section>
+
+    <section class="card" id="me" hidden>
+      <h2>Signed in</h2>
+      <p id="who"></p>
+      <p id="committeeLine" hidden></p>
+      <ul id="recs"></ul>
+      <p id="unitLine" hidden></p>
+      <p><button id="out" style="font:inherit;padding:.4rem 1rem;border-radius:8px">Sign out</button></p>
+    </section>
+  </main>
+
+  <style>
+    .spin { display: inline-block; width: 1em; height: 1em; margin-right: .5em; vertical-align: -.15em; border: 2px solid var(--line);
+            border-top-color: var(--fg); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+  <script type="module">
+    import { api, browserInfo } from './js/api.js';
+    const KEY = 'ccacSession';
+    const ME = 'ccacMe';                                   // last "signed in" view, shown at once on return visits
+    const $ = (id) => document.getElementById(id);
+    const store = {
+      get() { try { return localStorage.getItem(KEY); } catch { return null; } },
+      set(v) { try { localStorage.setItem(KEY, v); } catch {} },
+      clear() { try { localStorage.removeItem(KEY); } catch {} }
+    };
+
+    const show = (id) => ['wait', 'ask', 'mm', 'me'].forEach(x => { $(x).hidden = x !== id; });
+    const wait = (title) => { $('waitTitle').textContent = title; show('wait'); };
+    const ask = (msg) => { if (msg) { $('askMsg').textContent = msg; $('askMsg').className = 'err'; } show('ask'); };
+
+    function render(r) {
+      $('who').textContent = r.email;
+      $('recs').replaceChildren(...r.records.map(x => {
+        const li = document.createElement('li');
+        li.append(`${x.scoutName}: ${x.status} · `);
+        li.append(Object.assign(document.createElement('a'), { href: '/update?r=' + encodeURIComponent(x.recordId),
+          textContent: /\bbook\b/i.test(x.status) ? 'Book now →' : 'View / send an update' }));
+        return li;
+      }));
+      $('unitLine').hidden = !(r.units && r.units.length);
+      if (r.units && r.units.length) {
+        $('unitLine').replaceChildren('Unit contact for ' + r.units.map(u => u.unit).join(', ') + ' · ',
+          Object.assign(document.createElement('a'), { href: '/unit', textContent: 'Eagle Boards of Review for your unit(s)' }));
+      }
+      $('committeeLine').hidden = !r.committee;
+      if (r.committee) {
+        $('committeeLine').replaceChildren('Committee member' + (r.committee.initials ? ' (' + r.committee.initials + ')' : '') + ' · ',
+          Object.assign(document.createElement('a'), { href: '/committee', textContent: 'Committee pages →' }));
+      }
+      show('me');
+    }
+
+    /** A fresh sign-in (emailed link or code): keep the session, then go on. */
+    function signedIn(r) {
+      store.set(r.session);
+      remember(r.session, r);
+      if (!onward(r, true)) render(r);
+    }
+
+    /** After a fresh sign-in: go where this person most likely wants to be. */
+    function onward(r, arrived) {
+      let next = null;
+      try { next = localStorage.getItem('ccacNext'); localStorage.removeItem('ccacNext'); } catch {}
+      const only = r.committee && !r.records.length && !(r.units && r.units.length);
+      if (next && /^\/committee(\/[a-z]+)?(\?[\w=&%-]*)?$/.test(next) && r.committee) { location.replace(next); return true; }
+      if (only && arrived) { location.replace('/committee'); return true; }
+      // A Scout with one record (and no unit/committee role) goes straight to their page after the emailed link.
+      const scoutOnly = r.records.length === 1 && !r.committee && !(r.units && r.units.length);
+      if (scoutOnly && arrived) { location.replace('/update?r=' + encodeURIComponent(r.records[0].recordId)); return true; }
+      return false;
+    }
+
+    function remember(session, r) { try { localStorage.setItem(ME, JSON.stringify({ session, r })); } catch {} }
+    function remembered(session) {
+      try { const c = JSON.parse(localStorage.getItem(ME) || 'null'); return c && c.session === session ? c.r : null; } catch { return null; }
+    }
+
+    // Decide what to show BEFORE waiting on the server (which takes several seconds).
+    const t = new URLSearchParams(location.search).get('t');
+    if (t) {
+      history.replaceState(null, '', location.pathname);   // don't leave the token in the address bar
+      wait('Signing you in…');
+      try {
+        const r = await api('redeemLink', { token: t, ...browserInfo() });  // the reply already holds the signed-in view
+        if (r.mismatch) {                                  // opened in another browser than the one that asked (forwarded?)
+          $('mmMsg').textContent = r.message; show('mm');
+          $('mmBtn').onclick = async () => {
+            $('mmBtn').disabled = true; $('mmOut').textContent = 'Sending…'; $('mmOut').className = 'muted';
+            try { const f = await api('freshLink', { token: t, ...browserInfo() }); $('mmOut').textContent = f.message; $('mmOut').className = 'ok'; }
+            catch (e) { $('mmOut').textContent = e.message; $('mmOut').className = 'err'; $('mmBtn').disabled = false; }
+          };
+        } else signedIn(r);
+      } catch (e) { ask(e.message); }
+    } else if (store.get()) {
+      const session = store.get();
+      const cached = remembered(session);
+      if (cached) render(cached); else wait('Checking your sign-in…');
+      try {
+        const r = await api('whoami', { session });
+        remember(session, r);
+        if (!onward(r, false)) render(r);
+      } catch (e) {
+        store.clear();
+        try { localStorage.removeItem(ME); } catch {}
+        ask(/signed out/i.test(e.message) ? 'Your sign-in has expired. Enter your email for a new link.' : e.message);
+      }
+    } else {
+      show('ask');
+    }
+
+    $('f').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      $('askMsg').textContent = 'Sending…'; $('askMsg').className = 'muted';
+      try {
+        const r = await api('requestLink', { email: $('email').value, ...browserInfo() });
+        $('askMsg').textContent = r.message; $('askMsg').className = 'ok';
+        if (r.codeEntry) { $('cf').hidden = false; $('code').focus(); }   // Settings signinCode
+      } catch (e) { $('askMsg').textContent = e.message; $('askMsg').className = 'err'; }
+    });
+
+    $('cf').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      $('cGo').disabled = true; $('cMsg').textContent = 'Checking…'; $('cMsg').className = 'muted';
+      try { signedIn(await api('redeemCode', { code: $('code').value, ...browserInfo() })); $('cMsg').textContent = ''; }
+      catch (e) { $('cMsg').textContent = e.message; $('cMsg').className = 'err'; }
+      $('cGo').disabled = false;
+    });
+
+    $('out').addEventListener('click', async () => {
+      const session = store.get();
+      store.clear();
+      try { localStorage.removeItem(ME); } catch {}
+      try { await api('signOut', { session }); } catch {}
+      $('me').hidden = true; $('ask').hidden = false;
+    });
+  </script>
+</body>
+</html>

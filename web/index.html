@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Coyote Creek Eagle Proposals</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <main>
+    <header class="brand" data-site-header></header><script src="js/header.js"></script>
+    <h1>Eagle Project Proposals</h1>
+    <p class="muted env-note" hidden></p>
+
+    <a class="path card" href="/intake">
+      <h2>Submit my Eagle Project Proposal for District Review</h2>
+      <div class="figrow">
+        <img src="images/workbook-cover-200.jpg" width="200" height="258" alt="Cover of the Eagle Scout Service Project Workbook">
+        <p>First time sending your signed Proposal to the district. Have the Proposal from your <b>Eagle Scout Service
+          Project Workbook</b> ready as a file (PDF preferred). You start with <b>your own email address</b>: we email you a
+          link to the form.</p>
+      </div>
+      <p class="hint">Submitting starts the review; it is not an approval. The committee checks your Proposal, sets up a
+        short Pre-Review Call, then a Proposal Review. Don't start work on the project until your Proposal is approved.</p>
+    </a>
+    <p class="hint">Preparing the file? <a href="/proposal-guide">How to keep your Proposal small and complete</a>.</p>
+
+    <a class="path card" href="/signin">
+      <h2>Sign in: check status or send an update</h2>
+      <p>Already submitted? Enter the Scout's own email and we'll send a link.
+        Unit contacts and committee members sign in here too, with the address the committee has on file.</p>
+    </a>
+    <p class="hint" id="signedIn" hidden>You are signed in on this browser · <a href="/signin">Your page</a> · <a href="#" id="signOut">Sign out</a></p>
+
+    <section class="card">
+      <h2>Questions?</h2>
+      <p>Email the Coyote Creek District Advancement Committee at
+        <a href="mailto:coyotecreekadvancement@googlegroups.com?subject=Eagle%20Project%20question">coyotecreekadvancement@googlegroups.com</a>.
+        Please include the Scout's name and unit.</p>
+    </section>
+
+    <p class="hint" id="status">Checking connection…</p>
+  </main>
+
+  <script type="module">
+    import { api } from './js/api.js';
+    let session = null;
+    try { session = localStorage.getItem('ccacSession'); } catch {}
+    if (session) {
+      document.getElementById('signedIn').hidden = false;
+      document.getElementById('signOut').onclick = async (ev) => {
+        ev.preventDefault();
+        try { localStorage.removeItem('ccacSession'); } catch {}
+        document.getElementById('signedIn').textContent = 'Signed out.';
+        try { await api('signOut', { session }); } catch {}
+      };
+    }
+    const el = document.getElementById('status');
+    try {
+      const r = await api('ping');
+      el.textContent = `Connected. API ${r.version}` + (r.testMode ? ' (test mode: email goes to the developer only)' : '');
+    } catch (e) {
+      el.textContent = 'Not connected: ' + e.message;
+      el.className = 'hint err';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Submit a Proposal for District Review · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <main>
+    <header class="brand" data-site-header></header><script src="js/header.js"></script>
+    <h1>Submit your Eagle Project Proposal for District Review</h1>
+    <p>This starts the district review. Your Proposal still needs to be reviewed and approved before you begin work on the project.</p>
+    <p class="muted env-note" hidden></p>
+    <p><a href="/">← Back</a></p>
+
+    <!-- Email-first (email-first-intake-design.md): the form opens only from the link we email to an address not on file. -->
+    <section class="card" id="gate" hidden>
+      <h2>Start with your email</h2>
+      <p><b>Scouts:</b> enter <b>your own</b> email address. We'll email you a link: to this form if you're new, or to sign in
+        if you've submitted before.</p>
+      <form id="gf">
+        <input id="gEmail" type="email" autocomplete="email" required placeholder="you@example.com">
+        <p><button type="submit" class="primary" id="gGo">Email me a link</button></p>
+      </form>
+      <p id="gMsg" role="status"></p>
+    </section>
+
+    <section class="card" id="wait" hidden><p class="muted">Opening your form…</p></section>
+
+    <section class="card notice" id="whoNote" hidden>
+      <p><b>Scouts:</b> your email address isn't on file yet, so please continue below to submit your Proposal.</p>
+      <p><b>Already submitted a Proposal before</b> (on this site, by email or on the old sign-up sheet)? Please don't submit again:
+        <a href="/signin">sign in</a> with the email address you used then, or email the committee.</p>
+      <p><b>Parents and guardians:</b> you're copied on every email we send your Scout; your Scout signs in and submits with
+        their own email address.</p>
+      <p><b>Adult leaders:</b> this address isn't on file as an authorized unit leader or committee member. If you think it should be,
+        check with your unit leader or email the committee.</p>
+    </section>
+
+    <section class="card notice" id="scoutOnly" hidden>
+      <h2>For the Life Scout to complete</h2>
+      <p>The Eagle Project is the Scout's own, so <b>the Scout fills in and submits this form</b>. The committee writes to the Scout,
+        with the parent or guardian copied on every email.</p>
+      <p class="hint">Parents and leaders: thank you for helping. Please sit with your Scout while they submit it, rather than submitting it for them.</p>
+    </section>
+
+    <form id="f" class="card" novalidate hidden>
+      <h2>Scout</h2>
+      <label for="scout_name">Scout's full name</label>
+      <input id="scout_name" autocomplete="name" required>
+      <label for="preferred_name">Preferred name <span class="opt">(optional: the name you go by, if different)</span></label>
+      <input id="preferred_name" autocomplete="nickname" placeholder="e.g. Teddy">
+      <div class="row2">
+        <div><label for="unit_number">Unit</label>
+          <div style="display:grid;grid-template-columns:7.5rem 1fr;gap:.5rem">
+            <select id="unit_type" aria-label="Unit type" required>
+              <option value="">Type…</option><option value="T">Troop</option><option value="C">Crew</option><option value="S">Ship</option>
+            </select>
+            <input id="unit_number" inputmode="numeric" placeholder="910" aria-label="Unit number" required>
+          </div></div>
+        <div><label for="birth_date">Birth date</label><input id="birth_date" type="date" required></div>
+      </div>
+      <label for="scout_email">Scout email</label>
+      <input id="scout_email" type="email" autocomplete="email" required readonly>
+      <p class="hint">The address our link went to. It's how you sign in later to check status, send updates and book reviews.</p>
+      <label for="parent_email">Parent/guardian email</label>
+      <input id="parent_email" type="email" required>
+      <p class="hint">Copied on every email we send you. Only the Scout's own address signs in.</p>
+      <div class="row2">
+        <div><label for="scout_phone">Scout phone <span class="opt">(optional)</span></label><input id="scout_phone" type="tel" autocomplete="tel"></div>
+        <div><label for="bsa_id">BSA ID <span class="opt">(optional)</span></label><input id="bsa_id" inputmode="numeric"></div>
+      </div>
+      <p class="hint">BSA ID: your member number in Scoutbook. Please look it up once if you can.</p>
+
+      <h2>Project</h2>
+      <label for="proj_title">Project title</label>
+      <input id="proj_title" required>
+      <label for="beneficiary">Beneficiary (organization the project serves)</label>
+      <input id="beneficiary" required>
+      <label for="proj_address">Project address <span class="opt">(optional)</span></label>
+      <input id="proj_address">
+      <div class="row2">
+        <div><label for="proj_coach">Project coach <span class="opt">(optional)</span></label><input id="proj_coach"></div>
+        <div><label for="est_fundraising">Estimated fundraising <span class="opt">(optional)</span></label><input id="est_fundraising" placeholder="$500"></div>
+      </div>
+
+      <div class="hp" aria-hidden="true"><label for="website">Leave empty</label><input id="website" tabindex="-1" autocomplete="off"></div>
+
+      <h2>Files</h2>
+      <div class="figrow">
+        <img src="images/workbook-cover-200.jpg" width="200" height="258" alt="Cover of the Eagle Scout Service Project Workbook">
+        <p>Attach the <b>Proposal</b> section of your <b>Eagle Scout Service Project Workbook</b> (the file with this cover),
+          with the signatures it needs. <a href="/proposal-guide" target="_blank" rel="noopener">How to prepare the file</a>.</p>
+      </div>
+      <p class="hint">The <b>signed Proposal (ESSPP)</b> is required. Slides, photos or a separate signature page are optional.
+        PDF, PPTX, DOCX, JPG, PNG or HEIC, up to 20 MB each. We rename files to the district standard.</p>
+      <div id="files"></div>
+      <p><button type="button" id="addFile">+ Add another file</button></p>
+
+      <label style="font-weight:400;display:flex;gap:.5rem;align-items:flex-start;margin-top:1rem">
+        <input type="checkbox" id="iamscout" style="width:auto;margin-top:.3rem">
+        <span>I am the Life Scout named above, submitting my own Eagle Project Proposal.</span>
+      </label>
+      <p id="msg" role="status"></p>
+      <p><button type="submit" class="primary" id="go">Submit</button></p>
+    </form>
+
+    <section class="card" id="done" hidden>
+      <h2>Thank you</h2>
+      <p id="doneMsg"></p>
+      <p id="doneNext" class="hint"><a href="/signin">Go to your page →</a></p>
+    </section>
+  </main>
+
+  <script type="module">
+    import { api, browserInfo } from './js/api.js';
+    import { addFileRow as fileRow, chosenFiles, readBase64, uploadText } from './js/files.js';
+    const $ = (id) => document.getElementById(id);
+    const TAGS = ['ESSPP', 'Signatures', 'Slides', 'Photo', 'Other'];
+    const FIELDS = ['scout_name', 'preferred_name', 'unit_type', 'unit_number', 'birth_date', 'scout_email', 'parent_email', 'scout_phone', 'bsa_id',
+      'proj_title', 'beneficiary', 'proj_address', 'proj_coach', 'est_fundraising', 'website'];
+
+    const addFileRow = (tag) => fileRow($('files'), TAGS, tag);
+    addFileRow('ESSPP');
+    $('addFile').onclick = () => addFileRow('Slides');
+
+    // ---------- email-first gate ----------
+    const KEY = 'ccacIntake';                                    // {formToken, email} for this tab (survives a reload)
+    const saved = () => { try { return JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch { return null; } };
+    let form = saved();
+    function openForm(f) {
+      form = f;
+      try { sessionStorage.setItem(KEY, JSON.stringify(f)); } catch {}
+      $('scout_email').value = f.email;
+      ['wait', 'gate'].forEach(id => $(id).hidden = true);
+      ['whoNote', 'scoutOnly', 'f'].forEach(id => $(id).hidden = false);
+    }
+    function showGate(msg) {
+      $('wait').hidden = true; $('gate').hidden = false;
+      if (msg) { $('gMsg').textContent = msg; $('gMsg').className = 'err'; }
+    }
+    $('gf').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      $('gGo').disabled = true; $('gMsg').textContent = 'Sending…'; $('gMsg').className = 'muted';
+      try { const r = await api('requestLink', { email: $('gEmail').value, ...browserInfo() }); $('gMsg').textContent = r.message; $('gMsg').className = 'ok'; }
+      catch (e) { $('gMsg').textContent = e.message; $('gMsg').className = 'err'; }
+      $('gGo').disabled = false;
+    });
+    const t = new URLSearchParams(location.search).get('t');
+    if (t) {
+      history.replaceState(null, '', location.pathname);         // don't leave the token in the address bar
+      $('wait').hidden = false;
+      try { openForm(await api('startIntake', { token: t })); }
+      catch (e) { try { sessionStorage.removeItem(KEY); } catch {} showGate(e.message); }
+    } else if (form && form.formToken) openForm(form);
+    else showGate();
+
+    const say = (text, cls = 'muted') => { $('msg').textContent = text; $('msg').className = cls; };
+
+    $('f').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!$('iamscout').checked) { say('Please tick the box: this form is for the Life Scout to submit.', 'err'); $('iamscout').focus(); return; }
+      const data = {};
+      FIELDS.forEach(k => data[k] = $(k).value.trim());
+      data.formToken = form && form.formToken;
+
+      const missing = [...$('f').querySelectorAll('input[required], select[required]')].filter(i => !i.value.trim());
+      if (missing.length) {
+        const names = [...new Set(missing.map(i => (i.labels[0] || { textContent: 'Unit' }).textContent.trim()))];
+        say('Please fill in: ' + names.join(', ') + '.', 'err'); missing[0].focus(); return;
+      }
+      const { ok, files } = chosenFiles($('files'));
+      if (!ok) { say('One of the files can\'t be sent: see the note under it.', 'err'); return; }
+      if (!files.some(x => x.tag === 'ESSPP')) { say('Please attach the signed Proposal and mark it ESSPP.', 'err'); return; }
+
+      $('go').disabled = true;
+      try {
+        say('Sending your details…');
+        const { uploadToken } = await api('submitIntake', data);
+        for (let i = 0; i < files.length; i++) {
+          say(uploadText(i, files.length, files[i].file));
+          await api('uploadIntakeFile', { uploadToken, name: files[i].file.name, tag: files[i].tag, data: await readBase64(files[i].file) });
+        }
+        say('Finishing…');
+        const r = await api('finishIntake', { uploadToken, formToken: form.formToken });
+        try { sessionStorage.removeItem(KEY); } catch {}
+        if (r.session) {                                         // promoted: the Scout is signed in on this browser
+          try { localStorage.setItem('ccacSession', r.session); localStorage.removeItem('ccacMe'); } catch {}
+        } else $('doneNext').hidden = true;
+        ['f', 'whoNote', 'scoutOnly'].forEach(id => $(id).hidden = true);
+        $('doneMsg').textContent = r.message;
+        $('done').hidden = false;
+        window.scrollTo(0, 0);
+      } catch (e) {
+        say(e.message, 'err');
+        if (/expired|entering your email/i.test(e.message)) { try { sessionStorage.removeItem(KEY); } catch {} }
+        $('go').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

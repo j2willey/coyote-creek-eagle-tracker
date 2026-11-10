@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Committee Schedule · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"
+          integrity="sha384-B1OFx8Gy9GjPu8UbUyXbGQpzll9ubAUQ9agInFJ8NnD7nYG1u/CLR+Sqr5yifl4q" crossorigin="anonymous"></script>
+</head>
+<body>
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Schedule</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+    <div id="app" hidden>
+      <p class="hint">Click a day to add a session. Click a session to change or delete it, or drag it to another day or time. The schedule sheet stays the master record; changes here are written there.</p>
+      <div class="legend" id="legend"></div>
+      <div id="cal"></div>
+    </div>
+  </main>
+
+  <dialog id="slotDlg">
+    <form id="slotForm" method="dialog">
+      <h2 id="slotTitle">New session</h2>
+      <fieldset><legend>Type</legend><div id="typeChoices"></div></fieldset>
+      <div class="grid3">
+        <div><label for="fDate">Date</label><input id="fDate" type="date" required></div>
+        <div><label for="fTime">Start</label><input id="fTime" type="time" step="300" required></div>
+        <div><label for="fMin">Minutes</label><input id="fMin" type="number" min="5" max="720" step="5" required></div>
+      </div>
+      <div id="moreBox">
+        <div id="moreTimes"></div>
+        <p class="moreBtns"><button type="button" id="addNext">＋ Another time, right after</button> <button type="button" id="addNextDay">＋ Same time, next day</button></p>
+        <p class="hint" id="moreNote" hidden>Several times: each becomes its own session with the same type, length, members, place and lead time. Nobody is booked into them; once they are saved you can email the Scouts who are ready to book.</p>
+      </div>
+      <label class="choice" id="wholeDayBox" hidden><input type="checkbox" id="fWholeDay"> Whole day</label>
+      <label class="choice" id="onlineBox" hidden><input type="checkbox" id="fOnline"> Online (Google Meet): the invitation gets a Meet link, no place (an exception, e.g. a Scout who lives too far)</label>
+      <div id="placeBox">
+        <label for="fLoc" id="locLabel">Location</label><input id="fLoc" autocomplete="off">
+        <div id="addrBox"><label for="fAddr">Address <span class="opt">(optional)</span></label><input id="fAddr" autocomplete="off"></div>
+      </div>
+      <div id="resBox">
+        <label class="choice"><input type="checkbox" id="fReserved"> Reserved: hold this time (e.g. for a unit); Scouts and units can't book it. Assign a Scout later.</label>
+        <div id="resUnitBox" hidden><label for="fUnit">Unit <span class="opt">(optional)</span></label><select id="fUnit"></select></div>
+      </div>
+      <div id="leadBox">
+        <label for="fLead">Lead time, hours <span class="opt">(optional)</span></label>
+        <input id="fLead" type="number" min="0" max="720" step="1" inputmode="numeric" style="max-width:8rem">
+        <p class="hint" id="leadNote"></p>
+      </div>
+      <p id="blockNote" class="hint" hidden>Blocked times are never offered to Scouts and create no invitation.</p>
+      <p id="onlineNote" class="hint" hidden>Online: a Google Meet link is added to the invitation when a Scout books.</p>
+      <div id="scoutBox">
+        <label for="fScout">Scout <span class="opt">(optional: book a Scout into it now)</span></label>
+        <select id="fScout"></select>
+        <p class="hint" id="scoutNote"></p>
+      </div>
+      <fieldset><legend id="repLegend">Committee member(s)</legend><div class="reps" id="repChoices"></div>
+        <p class="hint" id="repNote">No committee member yet? You can still save it: nobody can book it until one signs up, and the digest lists it.</p></fieldset>
+      <p id="moveNote" class="hint" hidden></p>
+      <div id="warnBox" class="warnbox" hidden><strong>Please check:</strong><ul id="warnList"></ul></div>
+      <p id="formMsg" role="status"></p>
+      <div class="actions">
+        <button type="button" class="primary" id="saveBtn">Save</button>
+        <button type="button" id="closeBtn">Close</button>
+        <span class="spacer"></span>
+        <button type="button" class="danger" id="delBtn" hidden>Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="obDlg">
+    <div class="actions" style="margin:0 0 .6rem"><h2 style="margin:0">Outbox</h2><span class="spacer"></span><a href="/committee/outbox">Full page</a><button type="button" id="obClose">Close</button></div>
+    <div id="obRoot"></div>
+  </dialog>
+
+  <dialog id="otDlg">
+    <h2 id="otTitle">Email the Scouts ready to book</h2>
+    <div id="otTypeBox" hidden><label for="otType">Session type</label><select id="otType"></select></div>
+    <p class="hint" id="otIntro"></p>
+    <fieldset><legend>Times in the email</legend>
+      <ul id="otTimes"></ul>
+      <label class="choice" id="otOthersBox" hidden><input type="checkbox" id="otOthers"> Also list the other open times (<span id="otOthersN">0</span>)</label>
+      <p class="hint" id="otHeld" hidden></p>
+    </fieldset>
+    <fieldset><legend>To: the Scouts (Cc their parents/guardians and the committee)</legend><div class="reps" id="otScouts"></div></fieldset>
+    <p id="otMsg" role="status"></p>
+    <div class="actions">
+      <button type="button" class="primary" id="otDraft">Draft the email</button>
+      <button type="button" id="otClose">Not now</button>
+    </div>
+  </dialog>
+
+  <dialog id="infoDlg">
+    <h2 id="infoTitle"></h2>
+    <dl class="info" id="infoList"></dl>
+    <fieldset id="bkReps" hidden><legend>Committee member(s)</legend><div class="reps" id="bkRepChoices"></div></fieldset>
+    <fieldset id="ubBox" hidden>
+      <legend>Unit Board Members <button type="button" class="linkbtn" id="ubEdit" title="Edit the Unit Board Members">✎ Edit</button></legend>
+      <div id="ubList"></div>
+      <div id="ubForm" hidden>
+        <div id="ubRows"></div>
+        <p><button type="button" id="ubAdd">+ Add a member</button></p>
+        <div class="actions" style="margin-top:.3rem"><button type="button" class="primary" id="ubSave">Save Unit Board Members</button><button type="button" id="ubCancel">Cancel</button></div>
+      </div>
+      <p class="hint" id="ubCount"></p>
+    </fieldset>
+    <p class="hint" id="infoHint"></p>
+    <p id="infoMsg" role="status"></p>
+    <div class="actions">
+      <button type="button" class="primary" id="bkSave" hidden>Save members</button>
+      <button type="button" id="bkMove" hidden>Change date, time or place…</button>
+      <button type="button" id="infoClose">Close</button>
+      <span class="spacer"></span>
+      <button type="button" class="danger" id="bkCancel" hidden>Cancel booking…</button>
+    </div>
+  </dialog>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, renderNav, needSignIn, isSignedOut, actionButton, setOutboxCount } from '/js/committee.js';
+    import { mountOutbox } from '/js/outbox.js';
+    // Page actions next to the title (2026-11-05, option B); the Outbox is the bar's tab (its popup still opens
+    // after an open-times email is drafted).
+    const newBtn = actionButton({ label: 'New session', icon: 'plus', primary: true, title: 'Add a session (or click a day on the calendar)' });
+    const otBtn = actionButton({ label: 'Email open times', icon: 'mail', id: 'otBtn', title: 'Email the Scouts who are ready to book about the open times' });
+    renderNav($('cnav'), 'schedule', [newBtn, otBtn,
+      actionButton({ label: 'Record outcomes', href: '/committee/review', icon: 'check', count: 'review', title: 'Record the outcome of a review that was held' })]);
+    newBtn.onclick = () => { if (data) newOn(new Date(), false); };
+
+    const COLORS = { Intake: '#2a6db0', ESSPPR: '#1f8a4c', EBoR: '#7b3fa0', CCAC: '#8a8a84', Other: '#8a8a84' };
+    const SHORT = { Intake: 'Pre-Review', ESSPPR: 'Review', EBoR: 'EBoR' };
+    let data = null, cal = null, editing = null, confirmNext = false, moving = false, pendingRevert = null;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const ymd = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    const hm = (d) => pad(d.getHours()) + ':' + pad(d.getMinutes());
+    const nice = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const typeOf = (code) => data.types.find(t => t.code === code);
+    const nameOf = (ini) => (data.members.find(m => m.initials.toLowerCase() === String(ini).toLowerCase()) || {}).name || ini;
+
+    function toEvent(x) {
+      const c = COLORS[x.type] || COLORS.Other;
+      const reps = x.reps.join('/');
+      const solid = x.booked || !x.editable || x.type === 'CCAC';
+      const warn = x.unstaffed ? '⚠ ' : '';   // no committee member: not bookable (reserved-slots-design.md)
+      const title = x.booked
+        ? warn + (x.shadow ? '◐ ' : '') + (x.scoutName || 'Booked') + (x.unit ? ' (' + x.unit + ')' : '') + (reps ? ' · ' + reps : '')
+        : x.type === 'CCAC' ? (x.location || 'Blocked')
+        : x.reserved ? warn + 'Reserved ' + (SHORT[x.type] || x.label) + (x.unit ? ' · ' + x.unit : '') + (reps ? ' · ' + reps : ' · no member')
+        : x.editable ? warn + 'Open ' + (SHORT[x.type] || x.label) + (reps ? ' · ' + reps : ' · no member') : (x.location || x.label);
+      const me = String((data.me && data.me.initials) || '').toLowerCase();
+      const mine = !!me && x.reps.some(r => String(r).toLowerCase() === me);   // I'm signed up for it
+      const classNames = [x.reserved ? 'ev-reserved' : '', x.unstaffed ? 'ev-unstaffed' : '', mine ? 'ev-mine' : ''].filter(Boolean);
+      const draggable = x.editable && x.end > Date.now() && !(x.booked && x.start <= Date.now());
+      return { id: x.key, title, start: x.start, end: x.end, allDay: !!x.allDay, extendedProps: x, classNames, startEditable: draggable,
+        backgroundColor: solid ? c : 'transparent', borderColor: c, textColor: solid ? '#fff' : c };
+    }
+
+    // "Highlight my sessions" switch: on by default, remembered per browser (a convenience; storage may be unavailable).
+    const HL_KEY = 'ccacHighlightMine';
+    function highlightMine() { try { return localStorage.getItem(HL_KEY) !== '0'; } catch { return true; } }
+    function setHighlightMine(on) {
+      $('cal').classList.toggle('hl-mine', on);
+      try { localStorage.setItem(HL_KEY, on ? '1' : '0'); } catch {}
+    }
+
+    function legend() {
+      const hl = el('input', { type: 'checkbox', checked: highlightMine() });
+      hl.onchange = () => setHighlightMine(hl.checked);
+      setHighlightMine(hl.checked);
+      $('legend').replaceChildren(
+        el('label', { className: 'hl-toggle', title: 'Gold ring around the sessions you are signed up for' }, hl,
+          el('i', { className: 'sw mine' }), 'Highlight my sessions' + (data.me.initials ? ' (' + data.me.initials + ')' : '')),
+        ...data.types.map(t => el('span', {}, Object.assign(el('i', { className: 'sw' }),
+          { style: `border-color:${COLORS[t.code]}` + (t.block ? `;background:${COLORS[t.code]}` : '') }), t.label)),
+        el('span', {}, 'Outline = open · Solid = booked · Dashed + stripes = reserved (committee only) · ⚠ = no committee member (not bookable) · ◐ = shadow (mirror of the old schedule)'));
+    }
+
+    // ---------- the form ----------
+    // "Online (Google Meet)" on an In-Person Review / EBoR: the place becomes "Online (Google Meet)" (lib/booking.js isVirtual).
+    let savedPlace = null;
+    function onlineChanged() {
+      const on = $('fOnline').checked;
+      if (on) { if (!/^\s*online\b/i.test($('fLoc').value)) savedPlace = { loc: $('fLoc').value, addr: $('fAddr').value }; $('fLoc').value = 'Online (Google Meet)'; $('fAddr').value = ''; }
+      else if (/^\s*online\b/i.test($('fLoc').value)) { $('fLoc').value = savedPlace ? savedPlace.loc : ''; $('fAddr').value = savedPlace ? savedPlace.addr : ''; }
+      const t = typeOf(document.querySelector('input[name=type]:checked') ? document.querySelector('input[name=type]:checked').value : '') || {};
+      $('placeBox').hidden = !!t.virtual || on; $('onlineNote').hidden = !(t.virtual || on);
+    }
+    $('fOnline').onchange = () => { onlineChanged(); resetConfirm(); };
+    function setType(code, keepValues) {
+      const t = typeOf(code);
+      $('onlineBox').hidden = !t.canBeOnline;
+      if (!t.canBeOnline) $('fOnline').checked = false;
+      $('placeBox').hidden = t.virtual || $('fOnline').checked; $('onlineNote').hidden = !(t.virtual || $('fOnline').checked);
+      $('addrBox').hidden = !!t.block; $('blockNote').hidden = $('wholeDayBox').hidden = !t.block; $('scoutBox').hidden = !!t.block;
+      $('resBox').hidden = !!t.block; $('repNote').hidden = !!t.block;
+      if (t.block) $('fReserved').checked = false;
+      reservedChanged();
+      $('locLabel').textContent = t.block ? 'Description (e.g. CCAC meeting, Thanksgiving)' : 'Location';
+      $('repLegend').textContent = t.block ? 'Committee member(s) (optional)' : 'Committee member(s)';
+      if (!t.block) $('fWholeDay').checked = false;
+      wholeDayChanged();
+      if (!keepValues) { $('fMin').value = t.minutes; $('fLoc').value = t.location; $('fAddr').value = t.address; $('fOnline').checked = false; onlineChanged(); }
+      $('leadBox').hidden = !!t.block || moving;
+      $('leadNote').textContent = t.block ? '' : 'Scouts can book this until that many hours before it starts. Blank = the usual ' + (t.leadHours || 0) +
+        ' hours (Settings). Use a short one (e.g. 2) when you can take a session at short notice. Committee members can always book.';
+      $('moreBox').hidden = !!editing || !!t.block;
+      if (t.block) $('moreTimes').replaceChildren();
+      fillScouts(code);
+      moreChanged();
+    }
+
+    // Scout list; on a reserved slot the reserved unit's Scouts come first.
+    function fillScouts(code) {
+      const keep = $('fScout').value;
+      const resUnit = $('fReserved').checked ? unitCode($('fUnit').value) : '';
+      let list = ((data.scouts && data.scouts[code]) || []).slice();
+      if (resUnit) list = list.filter(x => x.unitCode === resUnit).concat(list.filter(x => x.unitCode !== resUnit));
+      $('fScout').replaceChildren(el('option', { value: '', textContent: $('fReserved').checked ? '— No Scout yet (keep it reserved) —' : '— Leave open (a Scout books it online) —' }),
+        ...list.map(x => el('option', { value: x.recordId,
+          textContent: (resUnit && x.unitCode === resUnit ? '★ ' : '') + x.name + (x.unit ? ' (' + x.unit + ')' : '') + ' · ' + x.stage + (x.booked ? ' · booked ' + x.booked : '') })));
+      if (list.some(x => x.recordId === keep)) $('fScout').value = keep;
+      scoutChanged();
+    }
+    const unitCode = (label) => ((data.units || []).find(u => u.label === label) || {}).code || '';
+
+    function reservedChanged() {
+      $('resUnitBox').hidden = !$('fReserved').checked || $('resBox').hidden;
+    }
+    $('fReserved').addEventListener('change', () => { reservedChanged(); resetConfirm(); fillScouts(currentType()); });
+    $('fUnit').addEventListener('change', () => { resetConfirm(); fillScouts(currentType()); });
+    const currentType = () => (document.querySelector('input[name=type]:checked') || {}).value;
+    function fillUnits(sel) {
+      const units = data.units || [];
+      const extra = sel && !units.some(u => u.label === sel) ? [{ label: sel, code: '' }] : [];
+      $('fUnit').replaceChildren(el('option', { value: '', textContent: '— Any / not decided —' }),
+        ...extra.concat(units).map(u => el('option', { value: u.label, textContent: u.label + (u.underReview ? ' (under review)' : '') })));
+      $('fUnit').value = sel || '';
+    }
+
+    function wholeDayChanged() {
+      const on = $('fWholeDay').checked && !$('wholeDayBox').hidden;
+      $('fTime').disabled = $('fMin').disabled = on;
+    }
+    $('fWholeDay').addEventListener('change', () => { wholeDayChanged(); resetConfirm(); });
+
+    function chosenScout() {
+      const t = (document.querySelector('input[name=type]:checked') || {}).value;
+      return ((data.scouts && data.scouts[t]) || []).find(x => x.recordId === $('fScout').value) || null;
+    }
+
+    function scoutChanged() {
+      const x = chosenScout();
+      const tt = typeOf((document.querySelector('input[name=type]:checked') || {}).value) || {};
+      $('scoutNote').textContent = !x ? ($('fReserved').checked ? 'Reserved: only the committee sees it. Pick a Scout when the unit confirms.' : '') : tt.shadow
+        ? 'Shadow booking: records ' + x.name + ' here (row moves, Date/Who filled) with NO invitation and NO email: mirror of the old schedule.'
+        : x.booked
+        ? 'Saving moves ' + x.name + ' here: the current time (' + x.booked + ') is released and opens up again; the family gets the new invitation and one email.'
+        : 'Saving books ' + x.name + ' into this slot: invitation and confirmation email to the Scout and parent. No 48-hour rule.';
+      $('saveBtn').textContent = confirmNext ? 'Save anyway' : x ? 'Save and book' : 'Save';
+    }
+    $('fScout').addEventListener('change', () => { resetConfirm(); scoutChanged(); });
+
+    function openForm(slot) {
+      editing = slot && slot.key ? slot : null;
+      moving = !!(editing && slot.booked);   // a booked session: only date, time, place and members change (one email)
+      confirmNext = false;
+      $('slotTitle').textContent = moving ? 'Move ' + slot.scoutName + "'s " + typeOf(slot.type).label
+        : editing ? (slot.reserved ? 'Reserved ' : 'Change ') + typeOf(slot.type).label : 'New session';
+      $('delBtn').hidden = !editing || moving;
+      $('warnBox').hidden = true; $('formMsg').textContent = ''; $('saveBtn').textContent = 'Save';
+      const code = (slot && slot.type) || (data.types.find(t => t.code === 'Intake') || data.types[0]).code;
+      $('fWholeDay').checked = !!(slot && slot.allDay);
+      $('fReserved').checked = !!(slot && slot.reserved);
+      fillUnits(slot && slot.reserved ? slot.unit : '');
+      $('fScout').value = '';
+      $('moreTimes').replaceChildren();
+      $('fLead').value = editing && slot.leadHours !== null && slot.leadHours !== undefined ? slot.leadHours : '';
+      $('typeChoices').replaceChildren(...data.types.map(t => {
+        const r = el('input', { type: 'radio', name: 'type', value: t.code, checked: t.code === code });
+        r.onchange = () => { setType(t.code, false); resetConfirm(); };
+        return el('label', { className: 'choice' }, r, t.label + (t.virtual ? ' (online)' : t.block ? ' (meeting, holiday: not bookable)' : '') +
+          (t.shadow ? ' · shadow (Scouts book it on the old system)' : ''));
+      }));
+      setType(code, false);
+      $('fDate').value = slot.date; $('fTime').value = slot.allDay ? data.defaultStart : slot.time;
+      if (editing) { $('fMin').value = slot.minutes || typeOf(code).minutes; $('fLoc').value = slot.location || ''; $('fAddr').value = slot.address || '';
+        $('fOnline').checked = !typeOf(code).virtual && /^\s*online\b/i.test(slot.location || ''); onlineChanged(); }
+      repBoxes($('repChoices'), editing ? slot.reps : [data.me.initials], resetConfirm);
+      // Booked: type, Scout, reservation and length stay as they are.
+      document.querySelectorAll('#typeChoices input').forEach(r => { r.disabled = moving; });
+      if (moving) { $('scoutBox').hidden = $('resBox').hidden = $('repNote').hidden = true; $('fScout').value = ''; }
+      $('fMin').disabled = moving || ($('fWholeDay').checked && !$('wholeDayBox').hidden);
+      $('moveNote').hidden = !moving;
+      $('moveNote').textContent = !moving ? '' : slot.shadow
+        ? 'Shadow booking (mirror of the old schedule): only the tracking Date/Who change; no invitation, no email.'
+        : 'Saving updates the calendar invitation and sends ONE email (was ' + nice(slot.start) + ', now the new time) to the Scout and parent' +
+          (slot.type === 'EBoR' ? ' and the unit' : '') + '. Length can\'t change here.';
+      resetConfirm();
+      $('slotDlg').showModal();
+    }
+
+    // Members as checkboxes: you first, then everyone else by name; initials not on the Committee tab kept visible.
+    function repBoxes(box, reps, onchange) {
+      const lc = (v) => String(v).toLowerCase();
+      const chosen = reps.map(lc);
+      const me = data.members.filter(m => lc(m.initials) === lc(data.me.initials));
+      const rest = data.members.filter(m => lc(m.initials) !== lc(data.me.initials)).sort((a, b) => a.name.localeCompare(b.name));
+      // Occasional helpers (Committee tab "Active" unticked) are tucked away unless already on this slot.
+      const main = rest.filter(m => m.active !== false || chosen.includes(lc(m.initials)));
+      const occasional = rest.filter(m => !main.includes(m));
+      const extra = reps.filter(r => !data.members.some(m => lc(m.initials) === lc(r))).map(i => ({ name: i + ' (not on Committee tab)', initials: i }));
+      const box1 = (m, tucked) => {
+        const cb = el('input', { type: 'checkbox', value: m.initials, checked: chosen.includes(lc(m.initials)) });
+        if (onchange) cb.onchange = onchange;
+        return el('label', { className: 'choice' }, cb, m.name + ' (' + m.initials + ')' + (m === me[0] ? ' · you' : '') +
+          (m.active === false && !tucked ? ' · occasional' : ''));
+      };
+      const kids = [...me, ...main, ...extra].map(m => box1(m, false));
+      if (occasional.length) {
+        const more = el('details', { className: 'occasional' }, el('summary', { textContent: 'Occasional helpers (' + occasional.length + ')' }),
+          el('div', { className: 'reps' }, ...occasional.map(m => box1(m, true))));
+        kids.push(more);
+      }
+      box.replaceChildren(...kids);
+    }
+
+    const batchTimes = () => [...$('moreTimes').querySelectorAll('.trow')].map(r => ({ date: r.querySelector('input[type=date]').value, time: r.querySelector('input[type=time]').value }));
+    const batching = () => !editing && !$('moreBox').hidden && $('moreTimes').children.length > 0;
+    function saveLabel() { return moving ? 'Save and notify' : batching() ? 'Save ' + (batchTimes().length + 1) + ' sessions' : chosenScout() ? 'Save and book' : 'Save'; }
+    function resetConfirm() { confirmNext = false; $('warnBox').hidden = true; $('saveBtn').textContent = saveLabel(); }
+    ['fDate', 'fTime', 'fMin', 'fLead'].forEach(id => $(id).addEventListener('input', resetConfirm));
+
+    // ---------- several times at once (2026-10-31) ----------
+    function moreChanged() {
+      const on = batching();
+      $('moreNote').hidden = !on;
+      const t = typeOf(currentType()) || {};
+      if (on) $('fScout').value = '';
+      $('scoutBox').hidden = !!t.block || moving || on;
+      resetConfirm();
+    }
+    function addTimeRow(date, time) {
+      const d = el('input', { type: 'date', value: date, required: true, ariaLabel: 'Date' });
+      const tm = el('input', { type: 'time', step: 300, value: time, required: true, ariaLabel: 'Start' });
+      d.oninput = tm.oninput = resetConfirm;
+      const x = el('button', { type: 'button', className: 'linkbtn', textContent: '✕ Remove', title: 'Remove this time' });
+      const row = el('div', { className: 'grid3 trow' }, el('div', {}, d), el('div', {}, tm), el('div', {}, x));
+      x.onclick = () => { row.remove(); moreChanged(); };
+      $('moreTimes').append(row);
+      moreChanged();
+    }
+    function lastTime() {
+      const rows = batchTimes();
+      return rows.length ? rows[rows.length - 1] : { date: $('fDate').value, time: $('fTime').value };
+    }
+    function shift(t, minutes, days) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t.date || ''), h = /^(\d{2}):(\d{2})$/.exec(t.time || '');
+      if (!m || !h) return null;
+      const d = new Date(+m[1], +m[2] - 1, +m[3] + (days || 0), +h[1], +h[2] + (minutes || 0));
+      return { date: ymd(d), time: hm(d) };
+    }
+    $('addNext').onclick = () => {
+      const n = shift(lastTime(), Number($('fMin').value) || 20, 0);
+      if (!n) { $('formMsg').textContent = 'Pick the first date and start time.'; $('formMsg').className = 'err'; return; }
+      addTimeRow(n.date, n.time);
+    };
+    $('addNextDay').onclick = () => {
+      const n = shift(lastTime(), 0, 1);
+      if (!n) { $('formMsg').textContent = 'Pick the first date and start time.'; $('formMsg').className = 'err'; return; }
+      addTimeRow(n.date, n.time);
+    };
+
+    function formSlot() {
+      return {
+        key: editing ? editing.key : '',
+        type: (document.querySelector('input[name=type]:checked') || {}).value,
+        date: $('fDate').value, time: $('fTime').disabled ? '' : $('fTime').value, minutes: $('fMin').disabled ? 0 : Number($('fMin').value),
+        location: $('fLoc').value, address: $('fAddr').value,
+        reps: [...$('repChoices').querySelectorAll('input:checked')].map(c => c.value),
+        recordId: moving ? '' : $('fScout').value,
+        reserved: !moving && !$('resBox').hidden && $('fReserved').checked, unit: !moving && $('fReserved').checked ? $('fUnit').value : '',
+        leadHours: $('leadBox').hidden ? '' : $('fLead').value,
+        booked: moving
+      };
+    }
+
+    $('saveBtn').onclick = async () => {
+      const slot = formSlot();
+      const sc = moving ? null : chosenScout();
+      if (moving && !slot.reps.length) { $('formMsg').textContent = 'A booked session needs at least one committee member.'; $('formMsg').className = 'err'; return; }
+      if (!slot.reps.length && sc) { $('formMsg').textContent = 'Add a committee member before booking a Scout into this slot.'; $('formMsg').className = 'err'; return; }
+      if (editing && editing.reserved && !slot.reserved && !sc && slot.reps.length && !confirmNext &&
+        !confirm('Release this reservation?\n\nThe slot becomes open: Scouts who can book online will be offered it.')) return;
+      if (sc && !confirmNext && !confirm('Book ' + sc.name + ' into this ' + typeOf(slot.type).label + ' now?\n\n' +
+        'The Scout and parent get the calendar invitation and a confirmation email.' +
+        (sc.booked ? '\n\nTheir current time (' + sc.booked + ') is released.' : ''))) return;
+      $('saveBtn').disabled = true; $('formMsg').textContent = 'Saving…'; $('formMsg').className = 'muted';
+      if (batching()) {
+        try {
+          const times = [{ date: slot.date, time: slot.time }].concat(batchTimes());
+          const r = await api('saveSlots', { session, slot, times, confirm: confirmNext });
+          if (r.needsConfirm) {
+            $('warnList').replaceChildren(...r.warnings.map(w => el('li', { textContent: w })));
+            $('warnBox').hidden = false; confirmNext = true; $('saveBtn').textContent = 'Save anyway';
+            $('formMsg').textContent = '';
+          } else {
+            $('slotDlg').close(); await load();
+            if (!slot.reserved && slot.reps.length) openTimesDlg(r.type, r.keys, r.message);
+            else alert(r.message + (slot.reserved ? ' They are Reserved, so Scouts are not offered them and there is no email to send. To open them, click each one and untick Reserved; then use ✉ Open times.'
+              : ' No committee member is on them yet, so Scouts can\'t book them and there is no email to send.'));
+          }
+        } catch (e) { $('formMsg').textContent = e.message; $('formMsg').className = 'err'; }
+        $('saveBtn').disabled = false;
+        return;
+      }
+      try {
+        const r = await api('saveSlot', { session, slot, confirm: confirmNext });
+        if (r.needsConfirm) {
+          $('warnList').replaceChildren(...r.warnings.map(w => el('li', { textContent: w })));
+          $('warnBox').hidden = false; confirmNext = true; $('saveBtn').textContent = 'Save anyway';
+          $('formMsg').textContent = '';
+        } else {
+          pendingRevert = null; $('slotDlg').close(); await load();
+          if (r.outboxId) { alert(r.message); openOutbox(r.outboxId); } else if (slot.recordId || slot.booked) alert(r.message);
+        }
+      } catch (e) { $('formMsg').textContent = e.message; $('formMsg').className = 'err'; if (slot.recordId) load().catch(() => {}); }
+      $('saveBtn').disabled = false;
+    };
+
+    $('delBtn').onclick = async () => {
+      const others = editing.reps.filter(r => r.toLowerCase() !== data.me.initials.toLowerCase());
+      const q = 'Delete this ' + typeOf(editing.type).label + ' on ' + nice(editing.start) + '?' +
+        (others.length ? '\n\n' + others.map(nameOf).join(', ') + (others.length > 1 ? ' are' : ' is') + ' on this slot.' : '');
+      if (!confirm(q)) return;
+      $('delBtn').disabled = true;
+      try { await api('deleteSlot', { session, key: editing.key }); $('slotDlg').close(); await load(); }
+      catch (e) { $('formMsg').textContent = e.message; $('formMsg').className = 'err'; }
+      $('delBtn').disabled = false;
+    };
+    $('closeBtn').onclick = () => $('slotDlg').close();
+    // Closed without saving (Close, Esc) after a drag: the session goes back where it was.
+    $('slotDlg').addEventListener('close', () => { if (pendingRevert) { pendingRevert(); pendingRevert = null; } });
+
+    // ---------- booked / other entries ----------
+    function showInfo(x) {
+      $('infoTitle').textContent = x.label + ' · ' + nice(x.start);
+      const rows = [['Scout', x.booked ? (x.scoutName + (x.unit ? ' (' + x.unit + ')' : '')) : ''],
+        ['Committee', x.booked && x.editable && x.end > Date.now() ? '' : x.reps.map(nameOf).join(', ')], ['Where', [x.location, x.address].filter(Boolean).join(', ')],
+        ['Length', x.minutes + ' min'], ['If awarded, announce', x.eagleNumber || '']].filter(r => r[1]);
+      $('infoList').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', { textContent: k }), el('dd', { textContent: v })]));
+      const manage = x.booked && x.editable && x.end > Date.now();
+      shown = { ...x, board: (x.board || []).slice() };   // a copy: calendar event data is read-only
+      $('bkReps').hidden = $('bkSave').hidden = $('bkCancel').hidden = $('bkMove').hidden = !manage;
+      $('infoMsg').textContent = '';
+      if (manage) repBoxes($('bkRepChoices'), x.reps);
+      showUnitBoard(shown, manage);
+      $('infoHint').textContent = manage && x.shadow
+        ? 'Shadow booking (mirror of the old schedule): no invitation exists and nobody is emailed when you change members or clear it.'
+        : manage
+        ? 'Add or remove committee members: the calendar invitation follows (removed members get a cancellation). To move it, use "Change date, time or place" or drag it on the calendar: one email, no cancel and rebook.'
+        : x.booked ? 'This session is in the past.' : 'This entry is managed on the schedule sheet.';
+      $('infoDlg').showModal();
+    }
+    let shown = null;
+
+    // ---------- Unit Board Members (EBoR): read-only, ✎ Edit to change ----------
+    function ubRow(m = {}) {
+      const row = el('div', { className: 'filerow' });
+      row.style.gridTemplateColumns = '1.2fr 1.4fr 1fr';
+      row.append(el('input', { placeholder: 'Name', value: m.name || '', title: 'Name' }),
+        el('input', { placeholder: 'Email', type: 'email', value: m.email || '', title: 'Email' }),
+        el('input', { placeholder: 'Phone', type: 'tel', value: m.phone || '', title: 'Phone' }));
+      return row;
+    }
+    function ubCount(x) {
+      const n = x.reps.length + (x.board || []).length;
+      $('ubCount').textContent = 'Board: ' + n + ' (' + x.reps.length + ' district/council + ' + (x.board || []).length + ' unit)' +
+        (n < 3 ? ': an Eagle Board of Review needs at least 3.' : n > 6 ? ': more than 6, check who sits on the board.' : '; 3 to 6 needed.');
+      $('ubCount').className = n < 3 ? 'err' : 'hint';
+    }
+    function showUnitBoard(x, manage) {
+      const on = x.type === 'EBoR' && x.booked;
+      $('ubBox').hidden = !on;
+      if (!on) return;
+      const b = x.board || [];
+      $('ubList').replaceChildren(...(b.length ? b.map(m => el('div', { className: 'ubm' }, el('b', { textContent: m.name }),
+        ...(m.email ? [' · ', el('a', { href: 'mailto:' + m.email, textContent: m.email })] : []), ...(m.phone ? [' · ' + m.phone] : [])))
+        : [el('p', { className: 'muted', textContent: x.unitUnderReview ? 'Unit under review: the committee fills the board.' : 'None entered by the unit yet.' })]));
+      $('ubList').hidden = false; $('ubForm').hidden = true;
+      $('ubEdit').hidden = !manage;
+      ubCount(x);
+    }
+    $('ubEdit').onclick = () => {
+      const b = shown.board || [];
+      $('ubRows').replaceChildren(...(b.length ? b : [{}, {}]).map(ubRow));
+      $('ubList').hidden = true; $('ubForm').hidden = false; $('ubEdit').hidden = true;
+    };
+    $('ubAdd').onclick = () => $('ubRows').append(ubRow());
+    $('ubCancel').onclick = () => showUnitBoard(shown, true);
+    $('ubSave').onclick = async () => {
+      const members = [...$('ubRows').children].map(r => ({ name: r.children[0].value, email: r.children[1].value, phone: r.children[2].value }))
+        .filter(m => m.name.trim() || m.email.trim() || m.phone.trim());
+      $('ubSave').disabled = true; infoMsg('Saving…', 'muted');
+      try {
+        const r = await api('saveUnitBoard', { session, key: shown.key, members });
+        shown.board = r.board; showUnitBoard(shown, true); infoMsg(r.message, 'ok'); load();
+      } catch (e) { infoMsg(e.message, 'err'); }
+      $('ubSave').disabled = false;
+    };
+    const infoMsg = (t, cls) => { $('infoMsg').textContent = t; $('infoMsg').className = cls; };
+
+    $('bkSave').onclick = async () => {
+      const reps = [...$('bkRepChoices').querySelectorAll('input:checked')].map(c => c.value);
+      if (!reps.length) { infoMsg('A booked session needs at least one committee member. To free the slot, use Cancel booking.', 'err'); return; }
+      $('bkSave').disabled = true; infoMsg('Saving and updating the invitation…', 'muted');
+      try { const r = await api('saveReps', { session, key: shown.key, reps }); infoMsg(r.message, 'ok'); await load(); }
+      catch (e) { infoMsg(e.message, 'err'); }
+      $('bkSave').disabled = false;
+    };
+
+    $('bkCancel').onclick = async () => {
+      const who = shown.scoutName + (shown.unit ? ' (' + shown.unit + ')' : '');
+      if (!confirm(shown.shadow
+        ? 'Clear the shadow booking for ' + who + ' on ' + nice(shown.start) + '?\n\nNo email is sent (it is only a mirror of the old schedule). The slot becomes open again.'
+        : 'Cancel ' + who + "'s " + shown.label + ' on ' + nice(shown.start) + '?\n\n' +
+        'This removes the calendar invitation and emails the Scout and parent that it was cancelled. The slot becomes open again.')) return;
+      $('bkCancel').disabled = true; infoMsg('Cancelling…', 'muted');
+      try { const r = await api('cancelSlotBooking', { session, key: shown.key }); infoMsg(r.message, 'ok');
+        $('bkReps').hidden = $('bkSave').hidden = $('bkCancel').hidden = $('bkMove').hidden = true; await load();
+        if (r.outboxId) { $('infoDlg').close(); openOutbox(r.outboxId); } }
+      catch (e) { infoMsg(e.message, 'err'); }
+      $('bkCancel').disabled = false;
+    };
+    $('infoClose').onclick = () => $('infoDlg').close();
+    $('bkMove').onclick = () => {
+      $('infoDlg').close();
+      const d = new Date(shown.start);
+      openForm({ ...shown, date: ymd(d), time: hm(d) });
+    };
+
+    // ---------- calendar ----------
+    function newOn(date, withTime) {
+      if (date.getTime() + 24 * 3600 * 1000 < Date.now()) { alert('That day is in the past.'); return; }
+      openForm({ date: ymd(date), time: withTime ? hm(date) : data.defaultStart });
+    }
+
+    function build() {
+      cal = new FullCalendar.Calendar($('cal'), {
+        initialView: 'dayGridMonth', firstDay: 0, height: 'auto', nowIndicator: true,
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listMonth' },
+        buttonText: { today: 'Today', month: 'Month', week: 'Week', list: 'List' },
+        slotMinTime: '08:00:00', slotMaxTime: '22:00:00', scrollTime: '17:00:00', allDaySlot: true, allDayText: 'All day',
+        views: { timeGridWeek: { height: 760 } },
+        eventDisplay: 'block', dayMaxEvents: 4, displayEventEnd: false,
+        eventDidMount: (info) => { info.el.title = info.event.title + (info.event.extendedProps.location ? ' · ' + info.event.extendedProps.location : ''); },
+        eventTimeFormat: { hour: 'numeric', minute: '2-digit', meridiem: 'short' },
+        events: data.slots.map(toEvent),
+        dateClick: (info) => newOn(info.date, info.view.type === 'timeGridWeek'),
+        editable: true, eventDurationEditable: false,
+        eventDrop: (info) => {
+          const x = info.event.extendedProps;
+          const d = info.event.start;
+          if (info.event.allDay !== info.oldEvent.allDay) { info.revert(); alert('Drag it to another day or time, not between the all-day row and the times.'); return; }
+          if (!x.allDay && d.getTime() <= Date.now()) { info.revert(); alert('That time is in the past.'); return; }
+          pendingRevert = info.revert;   // Save keeps it; Close puts it back
+          openForm({ ...x, date: ymd(d), time: x.allDay ? data.defaultStart : hm(d) });
+        },
+        eventClick: (info) => {
+          info.jsEvent.preventDefault();
+          const x = info.event.extendedProps;
+          if (x.editable && !x.booked) {
+            const d = new Date(x.start);
+            openForm({ ...x, date: ymd(d), time: hm(d) });
+          } else showInfo(x);
+        }
+      });
+      cal.render();
+    }
+
+    // ---------- open-times email (2026-10-31): one email To the Scouts ready to book, Cc parents + committee ----------
+    let ot = null;   // { type, keys, toolbar }
+    async function openTimesDlg(type, keys, savedMsg) {
+      ot = { type, keys: keys || [], toolbar: !keys };
+      $('otTypeBox').hidden = !ot.toolbar;
+      if (ot.toolbar) {
+        $('otType').replaceChildren(...data.types.filter(t => !t.block).map(t => el('option', { value: t.code, textContent: t.label })));
+        $('otType').value = type;
+      }
+      $('otOthers').checked = false;
+      $('otIntro').textContent = (savedMsg ? savedMsg + ' ' : '') + 'Draft one email to the Scouts who are ready to book: it waits in the Outbox so you can check it before it goes.';
+      if (!$('otDlg').open) $('otDlg').showModal();
+      await otLoad();
+    }
+    async function otLoad() {
+      $('otMsg').textContent = 'Loading…'; $('otMsg').className = 'muted'; $('otDraft').disabled = true;
+      $('otTimes').replaceChildren(); $('otScouts').replaceChildren(); $('otHeld').hidden = true;
+      try {
+        const r = await api('openTimesChoices', { session, type: ot.type, keys: ot.keys, includeOthers: ot.toolbar || $('otOthers').checked });
+        $('otTitle').textContent = 'Email the Scouts ready to book a ' + r.label;
+        $('otTimes').replaceChildren(...(r.times.length ? r.times.map(t => el('li', { textContent: t })) : [el('li', { textContent: 'No open times Scouts can book online right now.' })]));
+        $('otOthersBox').hidden = ot.toolbar || !r.othersOpen;
+        $('otOthersN').textContent = r.othersOpen;
+        $('otHeld').hidden = !r.held;
+        $('otHeld').textContent = r.held ? r.held + ' of the new times ' + (r.held === 1 ? 'is' : 'are') + ' left out: Scouts can\'t book ' + (r.held === 1 ? 'it' : 'them') +
+          ' online yet (inside the lead time). Shorten the lead time on ' + (r.held === 1 ? 'it' : 'them') + ' to include ' + (r.held === 1 ? 'it' : 'them') + '.' : '';
+        $('otScouts').replaceChildren(...(r.scouts.length ? r.scouts.map(x => el('label', { className: 'choice' },
+          el('input', { type: 'checkbox', value: x.recordId, checked: !x.noEmail, disabled: x.noEmail }),
+          x.name + (x.unit ? ' (' + x.unit + ')' : '') + (x.noEmail ? ' · no email on file' : !x.scoutEmail ? ' · parent only (no Scout email)' : !x.parent ? ' · no parent email' : '')))
+          : [el('p', { className: 'hint', textContent: 'No Scouts are waiting to book a ' + r.label + '.' })]));
+        $('otDraft').disabled = !r.times.length || !r.scouts.some(x => !x.noEmail);
+        $('otMsg').textContent = r.testMode ? 'Test mode: when sent, it goes only to the test inbox.' : '';
+        $('otMsg').className = 'muted';
+      } catch (e) { $('otMsg').textContent = e.message; $('otMsg').className = 'err'; }
+    }
+    $('otOthers').onchange = () => otLoad();
+    $('otType').onchange = () => { ot.type = $('otType').value; otLoad(); };
+    $('otClose').onclick = () => $('otDlg').close();
+    $('otDraft').onclick = async () => {
+      const recordIds = [...$('otScouts').querySelectorAll('input:checked')].map(c => c.value);
+      if (!recordIds.length) { $('otMsg').textContent = 'Tick at least one Scout.'; $('otMsg').className = 'err'; return; }
+      $('otDraft').disabled = true; $('otMsg').textContent = 'Drafting…'; $('otMsg').className = 'muted';
+      try {
+        const r = await api('openTimesDraft', { session, type: ot.type, keys: ot.keys, recordIds, includeOthers: ot.toolbar || $('otOthers').checked });
+        $('otDlg').close();
+        if (r.outboxId) openOutbox(r.outboxId); else alert(r.message);
+      } catch (e) { $('otMsg').textContent = e.message; $('otMsg').className = 'err'; $('otDraft').disabled = false; }
+    };
+    otBtn.onclick = () => openTimesDlg((data.types.find(t => t.code === 'Intake') || data.types[0]).code, null, '');
+
+    // ---------- Outbox (popup; the same list as /committee/outbox) ----------
+    function setBadge(n) { setOutboxCount(n); }
+    const outbox = mountOutbox($('obRoot'), { session, onCount: setBadge });
+    function openOutbox(focusId) {
+      if (!$('obDlg').open) $('obDlg').showModal();
+      outbox.open(focusId).catch(() => {});
+    }
+    $('obClose').onclick = () => { $('obDlg').close(); load().catch(() => {}); };
+
+    // Show the last schedule this browser saw at once, then refresh it (the server takes a few seconds).
+    const CACHE_KEY = 'ccacSched';
+    function show(d, stale) {
+      data = d;
+      $('meLine').textContent = data.me.name + (data.me.initials ? ' (' + data.me.initials + ')' : '') +
+        (data.testMode ? ' · test mode' : '') + (stale ? ' · refreshing…' : '');
+      setBadge(data.outboxPending || 0);
+      if (!cal) { legend(); $('app').hidden = false; $('msg').hidden = true; build(); }
+      else { cal.removeAllEvents(); data.slots.forEach(x => cal.addEvent(toEvent(x))); }
+    }
+    // ?s=<slot key> (dashboard Session column / Board tag, 2026-11-03): open that session's details once the fresh
+    // schedule is in (not from the cached copy, so members and board are current).
+    const wantSlot = new URLSearchParams(location.search).get('s');
+    let wantDone = !wantSlot, otDone = false;
+    function openWanted() {
+      if (wantDone) return;
+      wantDone = true;
+      try { history.replaceState(null, '', location.pathname); } catch {}
+      const x = data.slots.find(s => s.key === wantSlot);
+      if (!x) { $('meLine').textContent += ' · That session is no longer on the schedule (moved, cancelled or long past).'; return; }
+      cal.gotoDate(new Date(x.start));
+      if (x.editable && !x.booked && x.start > Date.now()) { const d = new Date(x.start); openForm({ ...x, date: ymd(d), time: hm(d) }); }
+      else showInfo(x);
+    }
+    async function load() {
+      const d = await api('committeeSchedule', { session });
+      show(d, false);
+      openWanted();
+      // ?ot=1 (the dashboard's "Email open times"): open that dialog once the schedule is in.
+      if (!otDone && new URLSearchParams(location.search).get('ot')) { otDone = true; try { history.replaceState(null, '', location.pathname); } catch {} otBtn.click(); }
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ session, at: Date.now(), d })); } catch {}
+    }
+    function showCached() {
+      try {
+        const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+        if (c && c.session === session && Date.now() - c.at < 7 * 24 * 3600 * 1000) { show(c.d, true); return true; }
+      } catch {}
+      return false;
+    }
+
+    if (!session) {
+      needSignIn($('msg'));
+    } else {
+      showCached();
+      try { await load(); }
+      catch (e) {
+        try { localStorage.removeItem(CACHE_KEY); } catch {}
+        $('app').hidden = true; $('msg').hidden = false;
+        if (isSignedOut(e)) needSignIn($('msg'), e.message);
+        else { $('msg').textContent = e.message; $('msg').className = 'err'; }
+      }
+    }
+  </script>
+</body>
+</html>

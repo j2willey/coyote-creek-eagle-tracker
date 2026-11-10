@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Stats · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Eagle statistics</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+    <div id="app" hidden>
+      <p class="hint" id="lead"></p>
+      <div class="statgrid">
+        <section class="statcard statwide"><h2>Eagles by month</h2><div class="boardwrap" id="monthly"></div></section>
+        <section class="statcard statwide"><h2>Annual summary</h2><div class="boardwrap" id="annual"></div></section>
+        <section class="statcard"><h2>Right now</h2><div id="pipeline"></div></section>
+        <section class="statcard"><h2>Coming up</h2><div id="future"></div></section>
+        <section class="statcard"><h2>How long things take</h2><div id="speed"></div></section>
+        <section class="statcard"><h2 id="unitsTitle">Eagles by unit</h2><div id="units"></div></section>
+        <section class="statcard statwide"><h2 id="workTitle">Committee sessions held</h2><div class="boardwrap" id="work"></div></section>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    const meLine = renderNav($('cnav'), 'stats');
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const f1 = (n) => n == null ? '' : (Math.round(n * 10) / 10).toFixed(1);
+    const fi = (n) => n == null ? '' : String(n);
+    const td = (t, cls = '') => el('td', { textContent: t, className: cls });
+    const avg = (xs) => { const v = xs.filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const table = (head, rows, curIdx) => el('table', { className: 'stattable' },
+      el('thead', {}, el('tr', {}, ...head.map((h, i) => el('th', { textContent: h, className: i === curIdx ? 'cur' : '' })))),
+      el('tbody', {}, ...rows));
+
+    function show(d) {
+      const c = d.current, hist = d.history, years = hist.map(h => h.year).concat([c.year]), ci = years.length;   // column index of this year
+      const thisMonth = +d.today.slice(5, 7);
+      $('lead').textContent = c.year + ' is live from the tracking tab (as of ' + new Date(d.today + 'T12:00').toLocaleDateString() +
+        '); earlier years come from the Stats History tab. Averages use the years with monthly numbers, ' + c.year + ' included.';
+      // Monthly: years with monthly data
+      const withMonths = hist.filter(h => h.monthly.some(m => m != null));
+      let run = 0;
+      const mrows = MONTHS.map((m, i) => {
+        const vals = withMonths.map(h => h.monthly[i]).concat([i + 1 <= thisMonth ? c.monthly[i] : null]);
+        const a = avg(vals); run += a || 0;
+        return el('tr', {}, td(m), ...hist.map(h => td(fi(h.monthly[i]))), td(i + 1 <= thisMonth ? fi(c.monthly[i]) : '', 'cur'), td(f1(a), 'avg'), td(f1(run), 'avg'));
+      });
+      const tot = hist.map(h => h.total);
+      mrows.push(el('tr', { className: 'sum' }, td('Total'), ...tot.map(t => td(fi(t))), td(fi(c.annual.total), 'cur'), td(''), td('')));
+      $('monthly').replaceChildren(table(['Month', ...years, 'Avg', 'Running'], mrows, ci));
+      // Annual summary
+      const A = c.annual, complete = withMonths;
+      const line = (label, get, curVal, fmt) => {
+        const vals = complete.map(get).concat([curVal]);
+        return el('tr', {}, td(label), ...hist.map(h => td(fmt(get(h)))), td(fmt(curVal), 'cur'), td(f1(avg(vals)), 'avg'));
+      };
+      const pct = (h) => h.female != null && h.total ? 100 * h.female / h.total : null;
+      $('annual').replaceChildren(table(['', ...years, 'Avg'], [
+        line('Total Eagles', h => h.total, A.total, fi),
+        line('Female Eagles', h => h.female, d.femaleColumn ? A.female : null, fi),
+        line('Female % of total', pct, d.femaleColumn ? A.femalePct : null, (v) => v == null ? '' : f1(v) + '%'),
+        line('Average age', h => h.avgAge, A.avgAge, f1),
+        line('Youngest', h => h.minAge, A.minAge, f1),
+        line('Oldest', h => h.maxAge, A.maxAge, f1),
+        line('Projects approved', h => h.approved, A.approved, fi)
+      ], ci), ...(A.missingAge ? [el('p', { className: 'hint', textContent: A.missingAge + ' of this year\'s Eagles have no birth date or EBoR date, so they are not in the ages.' })] : []),
+        ...(!d.femaleColumn ? [el('p', { className: 'hint', textContent: 'No Female column found on the tracking tab (Settings → femaleColumn).' })] : []));
+      // Right now
+      $('pipeline').replaceChildren(el('div', { className: 'kv' }, ...c.pipeline.flatMap(p => [el('span', { textContent: p.label }), el('b', { textContent: p.count })])),
+        ...(c.openByYear.length ? [el('p', { className: 'hint', textContent: 'Approved, still open, by approval year: ' + c.openByYear.map(y => y.year + ': ' + y.count).join(' · ') })] : []));
+      // Coming up
+      $('future').replaceChildren(el('div', { className: 'kv' },
+        ...(c.future.length ? c.future.flatMap(f => [el('span', { textContent: 'EBoRs in ' + f.month }), el('b', { textContent: f.count })]) : [el('span', { textContent: 'No EBoRs booked' }), el('b', { textContent: '0' })]),
+        ...(c.futureUndated ? [el('span', { textContent: 'Booked, no EBoR date' }), el('b', { textContent: c.futureUndated })] : []),
+        el('span', { textContent: 'Scouts 17½ or older, not yet Eagle' }), el('b', { textContent: c.ageWatch.count })));
+      // Speed
+      const t = c.throughput;
+      $('speed').replaceChildren(el('div', { className: 'kv' },
+        el('span', { textContent: 'Proposal approved → Eagle (this year, median)' }), el('b', { textContent: t.approvalToEagle.median == null ? '–' : t.approvalToEagle.median + ' days' }),
+        el('span', { className: 'muted', textContent: 'range, Eagles counted' }), el('span', { className: 'muted', textContent: t.approvalToEagle.n ? t.approvalToEagle.min + '–' + t.approvalToEagle.max + ' days, ' + t.approvalToEagle.n : '' }),
+        el('span', { textContent: 'Application submitted → verified by Council (median)' }), el('b', { textContent: t.councilVerify.median == null ? '–' : t.councilVerify.median + ' days' }),
+        el('span', { className: 'muted', textContent: 'applications counted' }), el('span', { className: 'muted', textContent: t.councilVerify.n || '' })));
+      // Units
+      $('unitsTitle').textContent = 'Eagles by unit, ' + c.year;
+      $('units').replaceChildren(c.byUnit.length ? table(['Unit', 'Eagles'], c.byUnit.map(u => el('tr', {}, td(u.unit), td(fi(u.count))))) : el('p', { className: 'muted', textContent: 'None yet.' }));
+      // Workload
+      const w = d.workload;
+      $('workTitle').textContent = 'Committee sessions held, ' + c.year + ' (from the schedule)';
+      const wrows = MONTHS.slice(0, thisMonth).map((m, i) => { const x = w.byMonth[i]; return el('tr', {}, td(m), td(fi(x.Intake)), td(fi(x.ESSPPR)), td(fi(x.EBoR))); });
+      const sum = (k) => w.byMonth.reduce((s, x) => s + x[k], 0);
+      wrows.push(el('tr', { className: 'sum' }, td('Total'), td(fi(sum('Intake'))), td(fi(sum('ESSPPR'))), td(fi(sum('EBoR')))));
+      const mem = w.byMember.length ? table(['Member', 'Pre-Review Calls', 'Proposal Reviews', 'EBoRs', 'Total'],
+        w.byMember.map(x => el('tr', {}, td(x.who), td(fi(x.Intake)), td(fi(x.ESSPPR)), td(fi(x.EBoR)), td(fi(x.total))))) : el('p', { className: 'muted', textContent: 'No members on past slots.' });
+      $('work').replaceChildren(el('div', { className: 'statgrid', style: 'margin-top:0' },
+        el('div', {}, table(['Month', 'Pre-Review Calls', 'Proposal Reviews', 'EBoRs'], wrows)), el('div', {}, mem)),
+        el('p', { className: 'hint', textContent: 'Counts booked slots on the schedule sheet whose time has passed; members by the initials on each slot.' }));
+    }
+
+    if (!session) needSignIn($('msg'));
+    else {
+      try { const c = JSON.parse(localStorage.getItem('ccacHome') || 'null'); if (c && c.session === session) meLine.textContent = meText(c.d.me, c.d.testMode); } catch {}
+      api('stats', { session }).then(d => { $('msg').hidden = true; $('app').hidden = false; show(d); })
+        .catch(e => { if (isSignedOut(e)) needSignIn($('msg'), e.message); else { $('msg').textContent = e.message; $('msg').className = 'err'; } });
+    }
+  </script>
+</body>
+</html>

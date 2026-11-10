@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Unit EBoRs · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <main>
+    <header class="brand" data-site-header></header><script src="js/header.js"></script>
+    <h1>Your unit: Eagle candidates and boards</h1>
+    <p class="muted env-note" hidden></p>
+    <p><a href="/signin">← Back</a></p>
+    <p id="msg" class="muted">Loading…</p>
+    <section class="card" id="meetCard" hidden>
+      <h2 id="meetTitle">Your unit's info</h2>
+      <p class="hint">Please keep it current: the committee uses it to plan EBoRs on unit meeting night and to tell each new Eagle Scout
+        their number in your unit.</p>
+      <div id="ucPick"></div>
+      <div id="meetPanel"></div>
+    </section>
+    <section class="card" id="calCard" hidden>
+      <h2>Calendar</h2>
+      <div class="viewtoggle" role="group" aria-label="What to show"><button type="button" id="cMine" class="on">Your Scouts</button><button type="button" id="cOpen">Open times</button></div>
+      <p class="hint" id="calHint"></p>
+      <div id="unitCal" class="calbox"></div>
+    </section>
+    <div id="list"></div>
+    <section class="card" id="pipeline" hidden>
+      <h2>Your unit's Eagle candidates</h2>
+      <p class="hint">Scouts from your unit working toward Eagle, and where each one is. Ages from 17 are highlighted: a Scout must
+        finish every requirement, the project included, before turning 18. Please check in with those who have gone quiet.</p>
+      <div class="boardwrap"><table class="board"><thead><tr><th>Scout</th><th>Stage</th><th class="num">Age</th><th class="num">Approved</th></tr></thead>
+        <tbody id="pipeRows"></tbody></table></div>
+    </section>
+    <section class="card" id="hostCard" hidden>
+      <h2>Hold a board at your unit</h2>
+      <p class="hint">Would you like a Scout's Eagle Board of Review on your meeting or Court of Honor night? Propose it here; the committee
+        checks that district members are free, puts it on the schedule and confirms by email.</p>
+      <form id="hostForm">
+        <label>Scout <select id="hScout" required></select></label>
+        <div class="filerow" style="grid-template-columns:1fr 1fr">
+          <label>Date <input type="date" id="hDate" required></label>
+          <label>Time <input type="time" id="hTime" required></label>
+        </div>
+        <label>Place <input id="hPlace" placeholder="Meeting place and address"></label>
+        <label>Note <textarea id="hNote" rows="2" placeholder="Anything the committee should know (optional)"></textarea></label>
+        <p><button type="submit" class="primary" id="hSend">Send the request</button></p>
+        <p id="hOut" role="status"></p>
+      </form>
+    </section>
+    <section class="card" id="ucCard" hidden>
+      <h2 id="ucTitle">Your unit's contacts</h2>
+      <p class="hint">Who the committee emails about your Scouts' boards, and who can sign in here. Add your Advancement Chair or EBoR
+        Coordinator, fix an address, or remove someone who has moved on. The Unit Leader and Committee Chair come from Council's
+        records: ask the committee to change them.</p>
+      <div id="ucPanel"></div>
+    </section>
+    <p class="hint" id="contact"></p>
+  </main>
+
+  <script type="module">
+    import { api } from './js/api.js';
+    import { mountCalendar } from './js/calendarView.js';
+    import { mountUnitContacts } from './js/unitContacts.js';
+    const $ = (id) => document.getElementById(id);
+    let session = null;
+    try { session = localStorage.getItem('ccacSession'); } catch {}
+    const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
+
+    function memberRow(m = {}) {
+      const row = el('div', { className: 'filerow' });
+      row.style.gridTemplateColumns = '1.2fr 1.4fr 1fr';
+      row.append(
+        el('input', { placeholder: 'Name', value: m.name || '', ariaLabel: 'Name' }),
+        el('input', { placeholder: 'Email', type: 'email', value: m.email || '', ariaLabel: 'Email' }),
+        el('input', { placeholder: 'Phone', type: 'tel', value: m.phone || '', ariaLabel: 'Phone' }));
+      return row;
+    }
+
+    function card(x) {
+      const c = el('section', { className: 'card' });
+      c.append(el('h2', { textContent: x.scoutName + ' (' + x.unit + ')' }),
+               el('p', { textContent: x.when + (x.where ? ' · ' + x.where : '') }));
+      if (x.notPrimary) {   // a Scout in several units: the primary (first) unit sets the board (2026-11-01)
+        c.append(el('p', { className: 'muted', textContent: 'Unit Board Members are set by ' + x.notPrimary + ', ' + x.scoutName + '\'s primary unit.' }));
+        if (x.board.length) c.append(el('ul', {}, ...x.board.map(m => el('li', { textContent: m.name + (m.email ? ' · ' + m.email : '') }))));
+        return c;
+      }
+      if (!x.canEdit) {
+        c.append(el('p', { className: 'muted', textContent:
+          'Your unit is under review, so Unit Board Members are arranged by the committee. Please email the committee with any questions.' }));
+        return c;
+      }
+      c.append(el('h3', { textContent: 'Unit Board Members' }),
+               el('p', { className: 'hint', textContent: 'Usually 2 to 4 adults from your unit committee. Members with an email address get the calendar invitation.' }));
+      const rows = el('div');
+      (x.board.length ? x.board : [{}, {}]).forEach(m => rows.append(memberRow(m)));
+      const add = el('button', { type: 'button', textContent: '+ Add a member' });
+      add.onclick = () => rows.append(memberRow());
+      const save = el('button', { type: 'button', className: 'primary', textContent: 'Save board' });
+      const out = el('p', { role: 'status' });
+      save.onclick = async () => {
+        const members = [...rows.children].map(r => ({ name: r.children[0].value, email: r.children[1].value, phone: r.children[2].value }))
+          .filter(m => m.name.trim() || m.email.trim() || m.phone.trim());
+        save.disabled = true; out.textContent = 'Saving…'; out.className = 'muted';
+        try { const r = await api('saveBoard', { session, slotKey: x.key, members }); out.textContent = r.message; out.className = 'ok'; }
+        catch (e) { out.textContent = e.message; out.className = 'err'; }
+        save.disabled = false;
+      };
+      c.append(rows, el('p', {}, add), el('p', {}, save), out);
+      return c;
+    }
+
+    // Calendar: the unit's Scouts' sessions (default) or the open times Scouts can book online (read-only).
+    const COLORS = { Intake: '#2a6db0', ESSPPR: '#1f8a4c', EBoR: '#7b3fa0' };
+    async function showCalendar() {
+      let cal = null, data = null, mode = 'mine';
+      try { data = await api('unitCalendar', { session }); } catch (e) { return; }
+      const evs = () => (mode === 'mine' ? data.booked : data.open).map((x, i) => ({ id: mode + i,
+        title: mode === 'mine' ? x.title + ' · ' + x.type : x.title, start: x.start, end: x.end, color: COLORS[x.code] || '#6b6b66' }));
+      const hint = () => { $('calHint').textContent = mode === 'mine'
+        ? 'Sessions booked for your unit\'s Scouts (Pre-Review Calls, Proposal Reviews, Eagle Boards of Review). Click one for details.'
+        : 'Open times Scouts can book online now, to help you advise them. Scouts book on their own page; this calendar is read-only.'; };
+      $('calCard').hidden = false; hint();
+      try {
+        cal = await mountCalendar($('unitCal'), evs(), { onPick: (id) => {
+          const list = mode === 'mine' ? data.booked : data.open;
+          const x = list[Number(id.replace(/^\D+/, ''))];
+          if (x) $('calHint').textContent = (mode === 'mine' ? x.title + ' · ' : '') + x.type + ' · ' +
+            new Date(x.start).toLocaleString([], { weekday: 'short', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + (x.where ? ' · ' + x.where : '');
+        } });
+      } catch (e) { $('calHint').textContent = e.message; return; }
+      const set = (m) => { mode = m; $('cMine').classList.toggle('on', m === 'mine'); $('cOpen').classList.toggle('on', m === 'open'); hint(); cal.setEvents(evs()); };
+      $('cMine').onclick = () => set('mine');
+      $('cOpen').onclick = () => set('open');
+    }
+
+    if (!session) { $('msg').innerHTML = 'Please <a href="/signin">sign in</a> with the email address your unit gave the committee.'; }
+    else {
+      try {
+        const r = await api('unitEbors', { session });
+        $('msg').textContent = r.ebors.length ? '' : 'No upcoming Eagle Boards of Review for ' + r.units.map(u => u.unit).join(', ') + '.';
+        $('list').replaceChildren(...r.ebors.map(card));
+        showCalendar();
+        if (r.scouts) {
+          const short = (ymd) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || ''); return m ? +m[2] + '/' + +m[3] + '/' + m[1].slice(2) : ''; };
+          const multi = r.units.length > 1;
+          $('pipeRows').replaceChildren(...(r.scouts.length ? r.scouts.map(x => el('tr', {},
+            el('td', { textContent: x.name + (multi ? ' (' + x.unit + ')' : '') }), el('td', { textContent: x.stage }),
+            el('td', { className: 'num age' + (x.age >= 17.5 ? ' a2' : x.age >= 17 ? ' a1' : ''), textContent: x.age == null ? '' : x.age.toFixed(1) }),
+            el('td', { className: 'num', textContent: short(x.approved) })))
+            : [el('tr', {}, el('td', { colSpan: 4, className: 'muted', textContent: 'No Scouts from your unit are in the Eagle process right now.' }))]));
+          $('pipeline').hidden = false;
+          if (r.scouts.length) {
+            $('hScout').replaceChildren(el('option', { value: '', textContent: 'Pick the Scout…' }),
+              ...r.scouts.map(x => el('option', { value: x.name, textContent: x.name + (multi ? ' (' + x.unit + ')' : '') + ' · ' + x.stage })));
+            $('hDate').min = new Date().toISOString().slice(0, 10);
+            $('hostCard').hidden = false;
+            $('hostForm').onsubmit = async (ev) => {
+              ev.preventDefault();
+              $('hSend').disabled = true; $('hOut').textContent = 'Sending…'; $('hOut').className = 'muted';
+              try {
+                const res = await api('hostRequest', { session, scout: $('hScout').value, date: $('hDate').value, time: $('hTime').value,
+                  place: $('hPlace').value, note: $('hNote').value });
+                $('hOut').textContent = res.message; $('hOut').className = 'ok'; $('hostForm').reset();
+              } catch (e) { $('hOut').textContent = e.message; $('hOut').className = 'err'; }
+              $('hSend').disabled = false;
+            };
+          }
+        }
+        // Your unit's contacts (several units: pick one)
+        if (r.units && r.units.length) {
+          $('ucCard').hidden = false; $('meetCard').hidden = false;
+          const show = (code) => mountUnitContacts($('ucPanel'), { session, unit: code, meetingRoot: $('meetPanel'),
+            titles: { meeting: $('meetTitle'), contacts: $('ucTitle') } });
+          if (r.units.length > 1) {
+            const pick = el('select', { title: 'Unit' }, ...r.units.map(u => el('option', { value: u.code || u.unit, textContent: u.unit })));
+            pick.onchange = () => show(pick.value);
+            $('ucPick').replaceChildren(pick);
+          }
+          show(r.units[0].code || r.units[0].unit);
+        }
+        $('contact').textContent = 'Questions? Email the committee' +
+          (r.committeeEmail ? ' at ' + r.committeeEmail : '') + '.';
+      } catch (e) {
+        $('msg').textContent = e.message; $('msg').className = 'err';
+      }
+    }
+  </script>
+</body>
+</html>

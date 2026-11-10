@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Outbox · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Outbox</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="ok" hidden></p>
+    <div id="obRoot"></div>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, session, renderNav, meText, needSignIn, isSignedOut, setOutboxCount } from '/js/committee.js';
+    import { mountOutbox } from '/js/outbox.js';
+    const meLine = renderNav($('cnav'), 'outbox');
+    const params = new URLSearchParams(location.search);
+    // Coming from the Review page: show what was done above the email.
+    let done = '';
+    try { done = sessionStorage.getItem('ccacReviewDone') || ''; sessionStorage.removeItem('ccacReviewDone'); } catch {}
+    if (done) { $('msg').textContent = done; $('msg').hidden = false; }
+    if (!session) needSignIn($('msg'));
+    else {
+      try {
+        const c = JSON.parse(localStorage.getItem('ccacHome') || 'null');
+        if (c && c.session === session) meLine.textContent = meText(c.d.me, c.d.testMode);
+      } catch {}
+      const ob = mountOutbox($('obRoot'), { session, onCount: setOutboxCount });
+      ob.open(params.get('id') || undefined).catch((e) => { if (isSignedOut(e)) { $('obRoot').replaceChildren(); needSignIn($('msg'), e.message); } });
+    }
+  </script>
+</body>
+</html>

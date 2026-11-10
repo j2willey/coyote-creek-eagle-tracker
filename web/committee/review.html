@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Review Outcome · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Review outcome</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+    <form id="form" class="card" style="max-width:40rem" hidden>
+      <p class="hint">After a Proposal Review: record the outcome. Approved = upload the Proposal you signed (PDF). The tool renames it
+        to the standard name, files it in the Scout's folder (older Proposal versions go to Archive), fills the dates, moves the row and
+        drafts the email to the Scout and parent in the Outbox.</p>
+
+      <label for="fScout">Scout</label>
+      <select id="fScout" required></select>
+      <p class="hint">Listed: In-Person Review: Booked, Proposal Revisions Requested, and approved Proposals still collecting signatures. Reviews already held come first. "New files" = files nobody has checked yet.</p>
+      <p class="scoutinfo" id="scoutInfo"></p>
+
+      <div id="folderBox" class="folderbox" hidden>
+        <div class="folderhead">
+          <strong>Files in the Scout's folder</strong>
+          <a id="folderLink" href="#" target="_blank" rel="noopener" hidden>Open folder in Drive ↗</a>
+        </div>
+        <p class="hint" id="folderMsg"></p>
+        <ul id="folderList" class="folderlist"></ul>
+      </div>
+
+      <div id="signInfo" class="warnbox" hidden></div>
+
+      <fieldset class="outcomes" id="outcomeBox"><legend>Outcome</legend><div id="outcomes"></div></fieldset>
+
+      <div id="fileBox">
+        <label for="fFile">Signed Proposal (PDF)</label>
+        <div class="file-row">
+          <input id="fFile" type="file" accept=".pdf,application/pdf">
+          <button type="button" id="signLocalBtn" hidden>Sign in browser…</button>
+        </div>
+        <p class="hint" id="fileNote"></p>
+      </div>
+
+      <div id="moreBox">
+        <label class="choice"><input type="checkbox" id="fMore"> More signatures to come (don't email the Scout yet)</label>
+        <div id="nextBox" hidden>
+          <p class="hint">Who signs next? They get the copy signed so far, with a link back to this page. The Scout's page says
+            "Proposal approved; committee signatures in progress" until the last signature; then the approval email is drafted.</p>
+          <div id="nextList"></div>
+          <label class="choice"><input type="checkbox" id="fSendNow" checked> Send it to them now (untick: draft it in the Outbox)</label>
+        </div>
+      </div>
+
+      <label for="fInitials" id="iniLabel">Signed by (initials)</label>
+      <input id="fInitials" autocomplete="off" placeholder="e.g. AB CD">
+      <p class="hint" id="nameHint"></p>
+
+      <div id="dateBox">
+        <label for="fDate" id="dateLabel">Date approved</label>
+        <input id="fDate" type="date">
+      </div>
+
+      <label for="fNote">Note <span class="opt">(optional)</span></label>
+      <textarea id="fNote" maxlength="2000"></textarea>
+      <p class="hint" id="noteHint">Goes into the Notes cell and the Scout's Life to Eagle Log.</p>
+
+      <div id="warnBox" class="warnbox" hidden><strong>Please check:</strong><ul id="warnList"></ul></div>
+      <p id="formMsg" role="status"></p>
+      <div class="actions"><button type="submit" class="primary" id="saveBtn">Save</button>
+        <button type="button" id="finishBtn" hidden title="Only one committee signature is required. Drafts the approval email to the Scout with the copy on file.">Finish with the signatures we have</button></div>
+    </form>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    import { readBase64, sizeText, uploadText } from '/js/files.js';
+    import { planFolderFiles, roleLabel, fetchProblem } from '/js/pdfPlan.js';
+    import { openSignWorkshop } from '/js/pdfWorkshop.js';
+    const meLine = renderNav($('cnav'), 'review');
+    const MAX_MB = 20;
+    let data = null, confirmNext = false, folderSeq = 0, rawFolderFiles = null, folderUrl = '', workshopFile = null;
+    const currentFile = () => workshopFile || $('fFile').files[0] || null;
+
+    // Same rule as the server (lib/proposalOutcome.js): "AB, CD" / "AB CD" / "ab&cd" -> "AB&CD".
+    const normIni = (t) => [...new Set(String(t || '').replace(/\./g, '').split(/(?:[\s,;&\/+]+|\band\b)+/i).filter(Boolean).map(x => x.toUpperCase()))].join('&');
+    const namePart = (s) => String(s || '').replace(/[^A-Za-z0-9 _'-]+/g, ' ').replace(/'/g, '').trim().replace(/\s+/g, '_');
+    const unitPart = (s) => String(s || '').replace(/[^A-Za-z0-9]+/g, '');
+    const nice = (ymd) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || ''); return m ? +m[2] + '/' + +m[3] + '/' + m[1] : '—'; };
+    const outcome = () => (document.querySelector('input[name=outcome]:checked') || {}).value || 'approved';
+    const scout = () => data.scouts.find(x => x.recordId === $('fScout').value) || null;
+    const signMode = () => { const s = scout(); return !!(s && s.signing); };
+    const iniList = () => normIni($('fInitials').value).split('&').filter(Boolean);
+    const picked = () => [...document.querySelectorAll('input[name=next]:checked')].map(x => x.value);
+    // Signed so far (+ me, when adding a signature) -> the signers not yet on the copy.
+    function signedNow() {
+      const s = scout(), mine = iniList();
+      return signMode() ? [...new Set([...s.signing.signed, ...mine])] : mine;
+    }
+    function buildNext() {
+      const keep = new Set(picked()), done = new Set(signedNow());
+      $('nextList').replaceChildren(...data.members.filter(m => !done.has(m.initials.toUpperCase())).map(m => {
+        const c = el('input', { type: 'checkbox', name: 'next', value: m.initials.toUpperCase(), checked: keep.has(m.initials.toUpperCase()) });
+        c.onchange = () => { resetConfirm(); };
+        return el('label', { className: 'choice' }, c, m.name + ' (' + m.initials + ')');
+      }));
+    }
+
+    function resetConfirm() { confirmNext = false; $('warnBox').hidden = true; $('saveBtn').textContent = 'Save'; }
+
+    function refresh() {
+      const s = scout(), sm = signMode(), o = sm ? 'approved' : outcome(), approved = o === 'approved';
+      $('outcomeBox').hidden = sm; $('dateBox').hidden = sm; $('finishBtn').hidden = !sm;
+      $('signInfo').hidden = !sm;
+      if (sm) $('signInfo').textContent = 'Signatures in progress: signed by ' + s.signing.signed.join('&') + ', waiting on ' +
+        s.signing.waiting.join(', ') + ' since ' + nice(s.signing.since) + '. Add your signature: upload your signed copy. ' +
+        'If you are the last to sign, leave "More signatures to come" unticked and the approval email to the Scout is drafted.';
+      $('moreBox').hidden = !approved;
+      $('nextBox').hidden = !$('fMore').checked;
+      if (approved) buildNext();
+      $('fileBox').querySelector('label').textContent = sm ? 'Your signed copy (PDF)' : 'Signed Proposal (PDF)';
+      $('fileBox').hidden = !approved;
+      $('iniLabel').textContent = sm ? 'Your initials' : approved ? 'Signed by (initials)' : 'Reviewers (initials)';
+      $('dateLabel').textContent = approved ? 'Date approved' : 'Date of the decision';
+      $('noteHint').textContent = approved ? 'Goes into the Notes cell and the Scout\'s Life to Eagle Log.'
+        : 'Goes into the Notes cell and the Scout\'s Life to Eagle Log, and into the email draft (what to change), which you can edit in the Outbox.';
+      $('scoutInfo').textContent = !s ? '' : 'Proposal Review: ' + nice(s.reviewDate) + (s.who ? ' (' + s.who + ')' : '') +
+        ' · Approved Date: ' + nice(s.approvedDate) + (s.upcoming ? ' · the review date is still ahead' : '');
+      const ini = normIni($('fInitials').value);
+      $('nameHint').textContent = approved && s && ini
+        ? 'File name: ' + namePart(s.name) + '-' + unitPart(s.unit) + '_ESSPP-ApprovedAndSignedBy-' + signedNow().join('&') + '.pdf' : '';
+      $('saveBtn').textContent = confirmNext ? 'Save anyway' : 'Save';
+    }
+
+    async function openScoutFile(recordId, f, btn) {
+      const prob = fetchProblem(f, MAX_MB);
+      if (prob) { $('folderMsg').textContent = prob; $('folderMsg').className = 'hint err'; return; }
+      btn.disabled = true;
+      $('folderMsg').textContent = 'Opening ' + f.name + ' (' + sizeText(f.bytes) + ')…';
+      $('folderMsg').className = 'hint';
+      try {
+        const r = await api('fetchScoutFile', { session, recordId, fileId: f.id });
+        const bytes = Uint8Array.from(atob(r.data), c => c.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: r.mime || 'application/pdf' }));
+        const w = window.open(url, '_blank', 'noopener');
+        if (!w) {
+          const a = el('a', { href: url, download: r.name || f.name });
+          document.body.append(a); a.click(); a.remove();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 120000);
+        $('folderMsg').textContent = 'Opened ' + f.name + '.';
+        $('folderMsg').className = 'hint ok';
+      } catch (e) {
+        if (isSignedOut(e)) { $('form').hidden = true; needSignIn($('msg'), e.message); return; }
+        $('folderMsg').textContent = e.message;
+        $('folderMsg').className = 'hint err';
+      } finally { btn.disabled = false; }
+    }
+
+    function applyWorkshopResult(res) {
+      if (!res || !res.file) return;
+      workshopFile = res.file;
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(res.file);
+        $('fFile').files = dt.files;
+      } catch {}
+      $('signLocalBtn').hidden = false;
+      $('fileNote').textContent = 'Signed in browser: ' + res.file.name + ' (' + sizeText(res.file.size) + ', Proposal fields flattened). Ready to Save.';
+      $('fileNote').className = 'hint ok';
+      resetConfirm(); refresh();
+    }
+
+    async function signScoutFile(recordId, f, btn) {
+      const prob = fetchProblem(f, MAX_MB);
+      if (prob) { $('folderMsg').textContent = prob; $('folderMsg').className = 'hint err'; return; }
+      const s = scout();
+      if (!s) return;
+      btn.disabled = true;
+      $('folderMsg').textContent = 'Loading ' + f.name + ' (' + sizeText(f.bytes) + ') into Sign Workshop…';
+      $('folderMsg').className = 'hint';
+      try {
+        const r = await api('fetchScoutFile', { session, recordId, fileId: f.id });
+        const bytes = Uint8Array.from(atob(r.data), c => c.charCodeAt(0));
+        $('folderMsg').textContent = '';
+        const res = await openSignWorkshop({
+          pdfBytes: bytes,
+          fileName: r.name || f.name,
+          scoutName: s.name,
+          unit: s.unit,
+          signerName: (data.me && data.me.name) || '',
+          signerInitials: (data.me && data.me.initials) || '',
+          dateYmd: $('fDate').value || data.today || '',
+          signerIndex: signMode() ? s.signing.signed.length : 0,
+          existingSignedBy: signMode() ? s.signing.signed : []
+        });
+        if (res) {
+          applyWorkshopResult(res);
+          $('folderMsg').textContent = 'Signed ' + f.name + ' in browser and attached below.';
+          $('folderMsg').className = 'hint ok';
+        }
+      } catch (e) {
+        if (isSignedOut(e)) { $('form').hidden = true; needSignIn($('msg'), e.message); return; }
+        $('folderMsg').textContent = e.message;
+        $('folderMsg').className = 'hint err';
+      } finally { btn.disabled = false; }
+    }
+
+    function drawFolderFiles() {
+      const s = scout();
+      if (!s || rawFolderFiles === null) return;
+      const planned = planFolderFiles(rawFolderFiles, { signing: signMode() });
+      $('folderLink').hidden = !folderUrl;
+      if (folderUrl) $('folderLink').href = folderUrl;
+      if (!planned.length) {
+        $('folderMsg').textContent = folderUrl ? 'No files at the top level of this folder.' : 'No linked folder found yet.';
+        $('folderMsg').className = 'hint';
+        $('folderList').replaceChildren();
+        return;
+      }
+      $('folderMsg').textContent = '';
+      $('folderList').replaceChildren(...planned.map(f => {
+        const badge = el('span', { className: 'tag ' + (f.primary ? 'signing' : 'reps'), textContent: roleLabel(f) });
+        const meta = el('span', { className: 'muted', textContent: ' · ' + sizeText(f.bytes) + (f.date ? ' · ' + f.date : '') });
+        const openBtn = el('button', { type: 'button', textContent: f.isPdf ? 'Open PDF' : 'Open' });
+        openBtn.onclick = () => openScoutFile(s.recordId, f, openBtn);
+        const btnWrap = el('span', { className: 'folderbtns' }, openBtn);
+        if (f.isPdf) {
+          const signBtn = el('button', { type: 'button', className: f.primary ? 'primary' : '', textContent: 'Sign in browser…' });
+          signBtn.onclick = () => signScoutFile(s.recordId, f, signBtn);
+          btnWrap.prepend(signBtn);
+        }
+        return el('li', { className: 'folderitem' + (f.primary ? ' primary' : '') },
+          el('span', { className: 'foldername' }, badge, ' ', el('span', { textContent: f.name }), meta),
+          btnWrap);
+      }));
+    }
+
+    async function loadFolderFiles() {
+      const s = scout(), seq = ++folderSeq;
+      rawFolderFiles = null; folderUrl = '';
+      $('folderList').replaceChildren();
+      $('folderLink').hidden = true;
+      if (!s) { $('folderBox').hidden = true; return; }
+      $('folderBox').hidden = false;
+      $('folderMsg').textContent = 'Loading files…';
+      $('folderMsg').className = 'hint';
+      try {
+        const r = await api('scoutReviewFiles', { session, recordId: s.recordId });
+        if (seq !== folderSeq) return;
+        rawFolderFiles = r.files || [];
+        folderUrl = r.folderUrl || '';
+        drawFolderFiles();
+      } catch (e) {
+        if (seq !== folderSeq) return;
+        if (isSignedOut(e)) { $('form').hidden = true; needSignIn($('msg'), e.message); return; }
+        $('folderMsg').textContent = e.message;
+        $('folderMsg').className = 'hint err';
+      }
+    }
+
+    function scoutChanged() {
+      const s = scout();
+      workshopFile = null;
+      $('fFile').value = '';
+      $('fileNote').textContent = '';
+      $('signLocalBtn').hidden = true;
+      $('fInitials').value = s && s.signing ? (data.me.initials || '') : s && s.who ? normIni(s.who) : (data.me.initials || '');
+      $('fMore').checked = false;
+      document.querySelectorAll('input[name=next]').forEach(x => { x.checked = false; });
+      $('fDate').value = (s && s.approvedDate) || data.today;
+      resetConfirm(); refresh();
+      loadFolderFiles();
+    }
+
+    function fileProblem() {
+      const f = currentFile();
+      if (!f) return 'Choose the signed Proposal (PDF) or click "Sign in browser…" above.';
+      if (!/\.pdf$/i.test(f.name)) return f.name + ' is not a PDF.';
+      if (f.size > MAX_MB * 1024 * 1024) return f.name + ' is ' + sizeText(f.size) + '; the limit is ' + MAX_MB + ' MB.';
+      return '';
+    }
+    $('fFile').addEventListener('change', () => {
+      workshopFile = null;
+      const f = $('fFile').files[0], p = f ? fileProblem() : '';
+      $('signLocalBtn').hidden = !(f && /\.pdf$/i.test(f.name));
+      $('fileNote').textContent = p || (f ? sizeText(f.size) : '');
+      $('fileNote').className = p ? 'hint err' : 'hint';
+    });
+    $('signLocalBtn').addEventListener('click', async () => {
+      const f = currentFile(), s = scout();
+      if (!f || !s) return;
+      $('signLocalBtn').disabled = true;
+      try {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const res = await openSignWorkshop({
+          pdfBytes: bytes,
+          fileName: f.name,
+          scoutName: s.name,
+          unit: s.unit,
+          signerName: (data.me && data.me.name) || '',
+          signerInitials: (data.me && data.me.initials) || '',
+          dateYmd: $('fDate').value || data.today || '',
+          signerIndex: signMode() ? s.signing.signed.length : 0,
+          existingSignedBy: signMode() ? s.signing.signed : []
+        });
+        if (res) applyWorkshopResult(res);
+      } catch (e) {
+        $('fileNote').textContent = e.message;
+        $('fileNote').className = 'hint err';
+      } finally { $('signLocalBtn').disabled = false; }
+    });
+
+    function build() {
+      $('fScout').replaceChildren(el('option', { value: '', textContent: data.scouts.length ? '— Pick a Scout —' : '— No Scouts waiting for an outcome —' }),
+        ...data.scouts.map(x => el('option', { value: x.recordId,
+          textContent: x.name + (x.unit ? ' (' + x.unit + ')' : '') + ' · ' + x.stage +
+            (x.signing ? ' · signatures: waiting on ' + x.signing.waiting.join(', ') : (x.reviewDate ? ' · review ' + nice(x.reviewDate) : '') + (x.who ? ' · ' + x.who : '')) +
+            (x.pending ? ' · new files' : '') })));
+      $('outcomes').replaceChildren(...data.outcomes.map((o, i) => {
+        const r = el('input', { type: 'radio', name: 'outcome', value: o.key, checked: i === 0 });
+        r.onchange = () => { resetConfirm(); refresh(); };
+        return el('label', { className: 'choice' }, r, o.label);
+      }));
+      $('fDate').max = data.today;
+      ['fInitials', 'fDate', 'fNote'].forEach(id => $(id).addEventListener('input', () => { resetConfirm(); refresh(); }));
+      ['fMore', 'fSendNow'].forEach(id => $(id).addEventListener('change', () => { resetConfirm(); refresh(); }));
+      $('fScout').addEventListener('change', scoutChanged);
+      const want = new URLSearchParams(location.search).get('r');       // from the dashboard row Action
+      if (want && data.scouts.some(x => x.recordId === want)) $('fScout').value = want;
+      scoutChanged();
+      $('form').hidden = false; $('msg').hidden = true;
+    }
+
+    const say = (t, c) => { $('formMsg').textContent = t; $('formMsg').className = c || 'muted'; };
+
+    $('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const s = scout();
+      if (!s) { say('Pick a Scout.', 'err'); return; }
+      await save(s, false);
+    });
+    $('finishBtn').addEventListener('click', async () => {
+      const s = scout();
+      if (!s || !s.signing) return;
+      if (!confirm('Finish with the signatures on file (' + s.signing.signed.join('&') + ')? The approval email to ' + s.name +
+        ' is drafted in the Outbox with that copy; ' + s.signing.waiting.join(', ') + ' won\'t sign.')) return;
+      await save(s, true);
+    });
+
+    async function save(s, finish) {
+      const sm = !!s.signing, o = sm ? 'approved' : outcome(), more = o === 'approved' && !finish && $('fMore').checked;
+      if (o === 'approved' && !finish) { const p = fileProblem(); if (p) { say(p, 'err'); return; } }
+      if (more && !picked().length) { say('Pick who signs next.', 'err'); return; }
+      if (!sm && $('dateBox').hidden === false && !$('fDate').value) { say('Pick the date.', 'err'); return; }
+      $('saveBtn').disabled = true; $('finishBtn').disabled = true;
+      try {
+        say('Checking…');
+        const extra = { more, next: picked(), sendNow: $('fSendNow').checked };
+        const st = sm
+          ? await api('signStart', { session, recordId: s.recordId, initials: $('fInitials').value, note: $('fNote').value, finish, ...extra })
+          : await api('reviewStart', { session, recordId: s.recordId, outcome: o, initials: $('fInitials').value,
+            date: $('fDate').value, note: $('fNote').value, confirm: confirmNext, ...extra });
+        if (st.needsConfirm) {
+          $('warnList').replaceChildren(...st.warnings.map(w => el('li', { textContent: w })));
+          $('warnBox').hidden = false; confirmNext = true; refresh(); say('');
+          return;
+        }
+        if (st.needsFile) {
+          const f = currentFile();
+          say(uploadText(0, 1, f));
+          await api('uploadReviewFile', { uploadToken: st.uploadToken, name: f.name, data: await readBase64(f) });
+        }
+        say(sm ? 'Saving: filing, updating the signatures…' : 'Saving: filing, moving the row, drafting the email…');
+        const r = await api('reviewFinish', { session, uploadToken: st.uploadToken });
+        try { localStorage.removeItem('ccacHome'); } catch {}
+        if (r.outboxId) {
+          try { sessionStorage.setItem('ccacReviewDone', r.message); } catch {}
+          location.href = '/committee/outbox?id=' + encodeURIComponent(r.outboxId);
+          return;
+        }
+        say(r.message, 'ok');
+        workshopFile = null; $('fFile').value = ''; $('fNote').value = ''; $('fileNote').textContent = ''; $('signLocalBtn').hidden = true;
+        await load();
+        say(r.message, 'ok');
+      } catch (e) {
+        if (isSignedOut(e)) { $('form').hidden = true; needSignIn($('msg'), e.message); }
+        else say(e.message, 'err');
+      } finally { $('saveBtn').disabled = false; $('finishBtn').disabled = false; }
+    }
+
+    async function load() {
+      data = await api('reviewChoices', { session });
+      meLine.textContent = meText(data.me, data.testMode);
+      build();
+    }
+
+    if (!session) needSignIn($('msg'));
+    else {
+      try { await load(); }
+      catch (e) {
+        if (isSignedOut(e)) needSignIn($('msg'), e.message);
+        else { $('msg').textContent = e.message; $('msg').className = 'err'; }
+      }
+    }
+  </script>
+</body>
+</html>

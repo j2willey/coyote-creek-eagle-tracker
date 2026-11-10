@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Admin · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Admin</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+    <p id="flash" class="ok" hidden></p>
+    <div id="app" hidden>
+      <section class="admsec" id="intake">
+        <h2>Web submissions that need a person</h2>
+        <p class="hint">From the Intake Queue: never confirmed, possible duplicates, errors, or stuck. Everything you do here goes in the Activity tab.</p>
+        <div id="intake"></div>
+      </section>
+      <section class="admsec">
+        <h2>Unit requests</h2>
+        <p class="hint">Units asking to hold an Eagle Board of Review on their meeting night. Add the slot on the <a href="/committee/schedule">schedule</a>, then mark it done.</p>
+        <div id="ureq"></div>
+      </section>
+      <section class="admsec">
+        <h2>Old-way bookings: send calendar invitations</h2>
+        <p class="hint">Sessions booked on the old sign-up sheet are on the schedule as "shadow" (no invitation). From tomorrow on,
+          this sends each ticked one a Google Calendar invitation, as if it had been booked here: the Scout, the parent and the
+          committee members on the slot (EBoR: also the Unit Board Members and others to invite). After that the invitation
+          follows member changes and moves like any other booking. No other email is sent.</p>
+        <div id="shList"><p class="muted">Loading…</p></div>
+      </section>
+      <section class="admsec">
+        <h2>Email the units</h2>
+        <p class="hint">From the Advancement Committee to unit leaders. Sent To the committee group with the units in Bcc (no one
+          sees the other addresses), in emails of up to 48 (Google's limit is 50 per email). Chartered Org Reps are never included.</p>
+        <div class="bcbox">
+          <fieldset><legend>Units</legend>
+            <label class="choice"><input type="checkbox" name="bcType" value="p"> Packs</label>
+            <label class="choice"><input type="checkbox" name="bcType" value="t" checked> Troops</label>
+            <label class="choice"><input type="checkbox" name="bcType" value="c" checked> Crews</label>
+            <label class="choice"><input type="checkbox" name="bcType" value="s" checked> Ships</label>
+          </fieldset>
+          <fieldset><legend>People</legend>
+            <label class="choice"><input type="checkbox" id="bcChairs" checked> Committee Chairs</label>
+            <label class="choice"><input type="checkbox" id="bcLeaders" checked> Unit Leaders <span class="muted">(Scoutmaster, Cubmaster, Crew Advisor, Skipper)</span></label>
+            <label class="choice"><input type="checkbox" id="bcContacts" checked> Unit Contacts <span class="muted">(Advancement Chair, EBoR Coordinator, …)</span></label>
+          </fieldset>
+        </div>
+        <p id="bcCount" class="ok"></p>
+        <details id="bcWho"><summary>See / untick recipients</summary><div id="bcList" class="bclist"></div></details>
+        <label for="bcReply">Reply-To</label><input id="bcReply" type="email">
+        <label for="bcSubj">Subject</label><input id="bcSubj">
+        <label>Message</label>
+        <div class="rte-bar" id="bcBar"></div>
+        <div id="bcBody" contenteditable="true" class="bcbody"></div>
+        <div class="actions"><button type="button" id="bcTest">Send me a preview</button><button type="button" class="primary" id="bcSend">Send…</button></div>
+        <p id="bcMsg" role="status"></p>
+      </section>
+      <section class="admsec">
+        <h2>Draft an email for several Scouts</h2>
+        <p class="hint">For the switch-over: pick a stage and an email; every ticked Scout gets their own draft in the Outbox
+          (filled in for them, as the stage change would have). Nothing is sent until someone clicks Send. Scouts who already
+          have it waiting, or got it in the last 14 days, start unticked.</p>
+        <div class="actions" style="margin-top:.4rem">
+          <select id="bkStage" title="Stage"></select>
+          <select id="bkEmail" title="Email" disabled><option value="">Pick a stage first</option></select>
+        </div>
+        <div id="bkList"></div>
+      </section>
+      <section class="admsec">
+        <h2>Email templates: preview and test</h2>
+        <p class="hint">Every email in the catalog, as the template Doc has it now (edits show at once), filled in with sample data.
+          "Send me a test" emails it only to you, with TEST banners at the top and bottom; nobody else is copied.</p>
+        <div id="tpl"><p class="muted">Loading…</p></div>
+      </section>
+      <section class="admsec">
+        <h2>January: archive last year's Eagles</h2>
+        <p class="hint">Moves the Eagle Earned rows of a past year to the spreadsheet "CC Eagles &lt;year&gt;" next to the tracking sheet (same columns and links), then removes them from the tracking tab. Their folders stay where they are.</p>
+        <div id="arch"></div>
+      </section>
+    </div>
+    <dialog id="pvDlg" class="detail">
+      <div class="dethead"><div><h2 id="pvTitle"></h2><p class="muted" id="pvMeta"></p></div><button type="button" id="pvClose">Close</button></div>
+      <p id="pvProb" class="err" hidden></p>
+      <p><b>Subject:</b> <span id="pvSubj"></span></p>
+      <iframe id="pvFrame" title="Email preview" sandbox="" style="width:100%;height:55vh;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>
+      <div class="actions"><button type="button" class="primary" id="pvSend">Send me a test</button><span id="pvMsg" role="status"></span></div>
+    </dialog>
+    <dialog id="cfDlg">
+      <h2 id="cfTitle"></h2>
+      <div id="cfBody"></div>
+      <p id="cfMsg" class="err" hidden></p>
+      <div class="actions"><button type="button" class="primary" id="cfOk">OK</button><button type="button" id="cfCancel">Cancel</button></div>
+    </dialog>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    const meLine = renderNav($('cnav'), 'admin');
+    const ACT = { attach: 'Attach to this Scout', promote: 'Add as a new Scout', resend: 'Resend confirmation link', spam: 'Remove (spam / test)' };
+    const fmt = (ms) => ms ? new Date(ms).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    let data = null;
+
+    function flash(t) { $('flash').textContent = t; $('flash').hidden = !t; if (t) window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+    /** Confirm in a dialog; run(): returns the message or throws (shown in the dialog). */
+    function confirmDo(title, body, okLabel, run) {
+      $('cfDlg').classList.remove('wide');                         // only the field comparison is wide
+      $('cfTitle').textContent = title;
+      $('cfBody').replaceChildren(...(Array.isArray(body) ? body : [body]));
+      $('cfMsg').hidden = true; $('cfOk').textContent = okLabel; $('cfOk').disabled = false;
+      $('cfOk').onclick = async () => {
+        $('cfOk').disabled = true; $('cfOk').textContent = 'Working…';
+        try { const m = await run(); $('cfDlg').close(); flash(m); await load(); }
+        catch (e) { $('cfMsg').textContent = e.message; $('cfMsg').hidden = false; $('cfOk').disabled = false; $('cfOk').textContent = okLabel; }
+      };
+      $('cfDlg').showModal();
+    }
+    $('cfCancel').onclick = () => $('cfDlg').close();
+
+    // Web submission vs the tracking row, field by field (2026-11-04): a switch per differing field, All / None.
+    // ok(n): button label for n ticked fields; act(keys): the API call (returns {message}).
+    async function compareDo({ title, intro, queueId, recordId, ok, act }) {
+      let cmp;
+      try { cmp = await api('adminIntakeCompare', { session, queueId, recordId }); } catch (e) { flash(e.message); return; }
+      const boxes = [];
+      const label = () => { $('cfOk').textContent = ok(boxes.filter(b => b.checked).length); };
+      const tb = el('tbody');
+      cmp.rows.forEach(r => {
+        let cell;
+        if (r.differs && r.editable) {
+          const cb = el('input', { type: 'checkbox', title: 'Use the form\'s value' });
+          cb.dataset.key = r.key; cb.setAttribute('aria-label', 'Use the form\'s ' + r.label);
+          cb.onchange = label; boxes.push(cb); cell = cb;
+        } else cell = el('span', { className: 'muted', textContent: r.differs ? 'not editable' : 'same' });
+        tb.append(el('tr', { className: r.differs ? 'diff' : 'same' }, el('td', { textContent: r.label }),
+          el('td', { textContent: r.sheet || '(blank)' }), el('td', { textContent: r.form || '(blank)' }), el('td', { className: 'use' }, cell)));
+      });
+      const tbl = el('table', { className: 'cmp' }, el('thead', {}, el('tr', {}, ...['Field', 'On the sheet', 'On the form', 'Use form'].map(h => el('th', { textContent: h })))), tb);
+      const setAll = (v) => () => { boxes.forEach(b => { b.checked = v; }); label(); };
+      const bar = boxes.length ? el('div', { className: 'actions' }, el('span', { className: 'muted', textContent: 'Use the form for: ' }),
+        Object.assign(el('button', { type: 'button', textContent: 'All' }), { onclick: setAll(true) }),
+        Object.assign(el('button', { type: 'button', textContent: 'None' }), { onclick: setAll(false) })) : el('p', { className: 'muted', textContent: 'The form matches the sheet.' });
+      confirmDo(title, [el('p', { textContent: intro + ' ' + cmp.scout + '.' }), bar, tbl,
+        el('p', { className: 'hint', textContent: 'Ticked fields replace the sheet\'s value (logged in the Life to Eagle Log). A new name or unit also renames the Scout\'s folder.' })],
+        ok(0), async () => (await act(boxes.filter(b => b.checked).map(b => b.dataset.key))).message);
+      $('cfDlg').classList.add('wide');
+      label();
+    }
+
+    function reviewCard(x) {
+      const b = el('button', { type: 'button', className: 'primary', textContent: 'Compare with the sheet…' });
+      b.onclick = () => compareDo({ title: 'Form vs tracking sheet', intro: 'Submission ' + x.queueId + ', attached to', queueId: x.queueId,
+        ok: n => n ? 'Update ' + n + ' field' + (n > 1 ? 's' : '') : 'Keep the sheet as it is',
+        act: keys => api('adminIntakeApply', { session, queueId: x.queueId, accept: keys }) });
+      return el('div', { className: 'admcard' },
+        el('div', { className: 'hd' }, el('b', { textContent: x.label }), el('span', { className: 'st', textContent: 'Attached; form differs' }),
+          el('span', { className: 'muted', textContent: 'submitted ' + fmt(x.submitted) + ' · ' + x.queueId })),
+        el('p', { className: 'why', textContent: 'The files were added, but the sheet was not changed. Pick which of the form\'s details to keep.' }),
+        el('div', { className: 'actions' }, b));
+    }
+
+    function intakeCard(x) {
+      const card = el('div', { className: 'admcard' },
+        el('div', { className: 'hd' }, el('b', { textContent: (x.scout || '(no name)') + (x.unit ? ' (' + x.unit + ')' : '') }),
+          el('span', { className: 'st', textContent: x.status }), el('span', { className: 'muted', textContent: 'submitted ' + fmt(x.submitted) + ' · ' + x.queueId })),
+        el('p', { className: 'why', textContent: x.why }));
+      if (x.emails.length) card.append(el('p', { className: 'meta', textContent: 'Emails: ' + x.emails.join(', ') }));
+      if (x.note) card.append(el('p', { className: 'meta', textContent: 'Note: ' + x.note }));
+      if (x.files) card.append(el('p', { className: 'meta', textContent: 'Files: ' + x.files }));
+      const bar = el('div', { className: 'actions' });
+      let pick = null;
+      if (x.actions.includes('attach')) {
+        pick = el('select', { title: 'Scout to attach to' });
+        pick.append(el('option', { value: '', textContent: (x.matches || []).length ? 'Pick the Scout…' : 'Pick the Scout (no match found)…' }));
+        if ((x.matches || []).length) {
+          const g = el('optgroup', { label: 'Likely matches' });
+          x.matches.forEach(m => g.append(el('option', { value: m.recordId, textContent: m.label })));
+          pick.append(g);
+        }
+        const all = el('optgroup', { label: 'All Scouts' });
+        (data.scouts || []).forEach(m => all.append(el('option', { value: m.recordId, textContent: m.label })));
+        pick.append(all);
+        if ((x.matches || []).length === 1) pick.value = x.matches[0].recordId;
+        bar.append(pick);
+      }
+      x.actions.forEach(a => {
+        const b = el('button', { type: 'button', className: a === 'spam' ? 'danger' : (a === x.actions[0] ? 'primary' : ''), textContent: ACT[a] });
+        b.onclick = () => {
+          if (a === 'attach' && !pick.value) { pick.focus(); flash(''); return; }
+          if (a === 'attach') {
+            const name = pick.selectedOptions[0].textContent;
+            return compareDo({ title: 'Attach to ' + name.split(' · ')[0] + '?', intro: 'The files go to', queueId: x.queueId, recordId: pick.value,
+              ok: n => n ? 'Attach files + update ' + n + ' field' + (n > 1 ? 's' : '') : 'Attach files (keep the sheet)',
+              act: keys => api('adminIntake', { session, queueId: x.queueId, act: 'attach', recordId: pick.value, accept: keys }) });
+          }
+          const who = (x.scout || x.queueId);
+          const text = a === 'attach' ? 'Add the files from this submission to ' + pick.selectedOptions[0].textContent + '. The family gets the "files received" email.'
+            : a === 'promote' ? 'Add ' + who + ' to the tracking tab as a new Scout (Proposal Received). The family gets the receipt.'
+            : a === 'resend' ? 'Send a new confirmation link to ' + x.emails.join(', ') + '. The old link stops working.'
+            : 'Remove this submission and move its files to the trash. Nothing is emailed.';
+          confirmDo(ACT[a] + '?', el('p', { textContent: text }), ACT[a],
+            async () => (await api('adminIntake', { session, queueId: x.queueId, act: a, recordId: pick ? pick.value : '' })).message);
+        };
+        bar.append(b);
+      });
+      card.append(bar);
+      return card;
+    }
+
+    function show(d) {
+      data = d;
+      const ik = d.intake.map(intakeCard).concat((d.review || []).map(reviewCard));
+      $('intake').replaceChildren(...(ik.length ? ik : [el('p', { className: 'muted admempty', textContent: 'Nothing waiting.' })]));
+      $('ureq').replaceChildren(...(d.unitRequests.length ? d.unitRequests.map(r => {
+        const b = el('button', { type: 'button', className: 'primary', textContent: 'Done' });
+        b.onclick = () => confirmDo('Mark done?', el('p', { textContent: 'The slot for ' + r.scout + ' is on the schedule (or the request was answered).' }), 'Mark done',
+          async () => (await api('adminRequestDone', { session, id: r.id })).message);
+        return el('div', { className: 'admcard' },
+          el('div', { className: 'hd' }, el('b', { textContent: r.scout + ' (' + r.unit + ')' }), el('span', { className: 'muted', textContent: 'asked ' + fmt(r.submitted) + ' by ' + r.from })),
+          el('p', { className: 'why', textContent: 'Board on ' + r.date + ' ' + r.time + (r.place ? ' at ' + r.place : '') }),
+          ...(r.note ? [el('p', { className: 'meta', textContent: 'Note: ' + r.note })] : []),
+          el('div', { className: 'actions' }, b));
+      }) : [el('p', { className: 'muted admempty', textContent: 'No open requests.' })]));
+      const rows = d.archive.map(y => {
+        const past = /^\d{4}$/.test(y.year) && Number(y.year) < d.thisYear;
+        const td = el('td');
+        if (past) {
+          const b = el('button', { type: 'button', className: 'obbtn', textContent: 'Archive ' + y.year + '…' });
+          b.onclick = async () => {
+            b.disabled = true;
+            try {
+              const p = await api('adminArchive', { session, year: y.year });
+              confirmDo('Archive ' + p.names.length + ' Eagles of ' + y.year + '?', [
+                el('p', { textContent: 'These rows move to "CC Eagles ' + y.year + '" and leave the tracking tab:' }),
+                el('ul', { className: 'waitlist' }, ...p.names.map(n => el('li', { textContent: n })))], 'Archive', async () => {
+                  const r = await api('adminArchive', { session, year: y.year, confirm: true });
+                  return r.message;
+                });
+            } catch (e) { flash(''); $('msg').textContent = e.message; $('msg').className = 'err'; $('msg').hidden = false; }
+            finally { b.disabled = false; }
+          };
+          td.append(b);
+        } else td.append(el('span', { className: 'muted', textContent: y.year === String(d.thisYear) ? 'this year: in January' : 'needs an EBoR date' }));
+        return el('tr', {}, el('td', { textContent: y.year }), el('td', { textContent: y.count + ' Eagle' + (y.count === 1 ? '' : 's') }), td);
+      });
+      $('arch').replaceChildren(rows.length ? el('table', { className: 'admtable' }, el('tbody', {}, ...rows))
+        : el('p', { className: 'muted admempty', textContent: 'No Eagle Earned rows on the tracking tab.' }));
+    }
+
+    // ---------- email template preview ----------
+    let pvKey = '';
+    async function preview(key, send) {
+      pvKey = key;
+      $('pvMsg').textContent = send ? 'Sending…' : ''; $('pvMsg').className = 'muted';
+      if (!send) { $('pvTitle').textContent = 'Loading…'; $('pvSubj').textContent = ''; $('pvFrame').srcdoc = ''; $('pvProb').hidden = true; if (!$('pvDlg').open) $('pvDlg').showModal(); }
+      try {
+        const p = await api('templatePreview', { session, key, send: !!send });
+        $('pvTitle').textContent = p.id + ' ' + p.key;
+        $('pvMeta').textContent = p.source + ' · Mode: ' + p.mode + ' · Cc: ' + (p.cc || 'group') + ' · To: ' + p.recipients;
+        $('pvSubj').textContent = p.subject;
+        $('pvFrame').srcdoc = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.45;padding:12px">' + p.html + '</div>';
+        $('pvProb').textContent = (p.problems || []).join(' '); $('pvProb').hidden = !(p.problems || []).length;
+        if (send) { $('pvMsg').textContent = p.message; $('pvMsg').className = /^Not sent/.test(p.message) ? 'err' : 'ok'; }
+      } catch (e) { $('pvMsg').textContent = e.message; $('pvMsg').className = 'err'; }
+    }
+    $('pvClose').onclick = () => $('pvDlg').close();
+    $('pvSend').onclick = () => preview(pvKey, true);
+    async function loadTemplates() {
+      try {
+        const r = await api('templateList', { session });
+        const rows = r.templates.map(t => {
+          const pv = el('button', { type: 'button', className: 'obbtn', textContent: 'Preview' });
+          pv.onclick = () => preview(t.key, false);
+          const sd = el('button', { type: 'button', className: 'obbtn', textContent: 'Send me a test' });
+          sd.onclick = async () => { sd.disabled = true; sd.textContent = 'Sending…';
+            try { const p = await api('templatePreview', { session, key: t.key, send: true }); sd.textContent = /^Not sent/.test(p.message) ? 'Not sent' : 'Sent ✓'; sd.title = p.message; }
+            catch (e) { sd.textContent = 'Failed'; sd.title = e.message; } };
+          return el('tr', {}, el('td', { textContent: t.id }), el('td', { textContent: t.key }),
+            el('td', { className: 'muted', textContent: (/^built-in/.test(t.source) ? 'built-in' : 'Doc') + ' · ' + t.mode + (t.problems ? ' · ⚠' : ''),
+              title: t.source + (t.problems ? ' (has problems: open Preview)' : '') }),
+            el('td', {}, pv, ' ', sd));
+        });
+        $('tpl').replaceChildren(el('div', { className: 'boardwrap' }, el('table', { className: 'admtable' }, el('tbody', {}, ...rows))));
+      } catch (e) { $('tpl').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
+    }
+
+    // ---------- old-way (shadow) bookings → invitations ----------
+    async function loadShadow() {
+      try {
+        const r = await api('shadowList', { session });
+        if (!r.sessions.length) { $('shList').replaceChildren(el('p', { className: 'muted', textContent: 'No old-way bookings from tomorrow on.' })); return; }
+        const rows = r.sessions.map(x => el('label', { className: 'choice shrow' },
+          el('input', { type: 'checkbox', value: x.key, checked: !x.problem, disabled: !!x.problem }),
+          el('span', {}, el('b', { textContent: x.when + ' · ' + x.label }), ' ', x.scout + (x.unit ? ' (' + x.unit + ')' : ''),
+            el('span', { className: 'muted', textContent: ' · ' + (x.who || 'no members') + (x.board ? ' + ' + x.board + ' unit' : '') + (x.place ? ' · ' + x.place : '') +
+              (x.unknown && x.unknown.length ? ' · unknown initials ' + x.unknown.join(', ') + ' (not invited)' : '') }),
+            ...(x.problem ? [el('span', { className: 'err', textContent: ' · ' + x.problem })] : []))));
+        const go = el('button', { type: 'button', className: 'primary', textContent: 'Send invitations for the ticked sessions' });
+        go.onclick = () => {
+          const keys = rows.map(l => l.querySelector('input')).filter(c => c.checked).map(c => c.value);
+          if (!keys.length) return;
+          confirmDo('Send ' + keys.length + ' calendar invitation' + (keys.length > 1 ? 's' : '') + '?',
+            el('p', { textContent: 'Google emails each invitation to the Scout, the parent and the members (EBoR: and the Unit Board Members). This can\'t be undone, but a booking can still be changed or cancelled as usual.' }),
+            'Send invitations', async () => {
+              const res = await api('shadowInvite', { session, keys });
+              const ok = res.results.filter(x => x.ok).length, bad = res.results.filter(x => !x.ok);
+              loadShadow();
+              return ok + ' invitation' + (ok === 1 ? '' : 's') + ' sent.' + (bad.length ? ' Not sent: ' + bad.map(x => x.message).join('; ') : '');
+            });
+        };
+        $('shList').replaceChildren(el('div', { className: 'admcard' }, ...rows, el('div', { className: 'actions' }, go)));
+      } catch (e) { $('shList').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
+    }
+
+    // ---------- email the units ----------
+    let bc = null;
+    const bcReq = () => ({ session, types: [...document.querySelectorAll('input[name=bcType]:checked')].map(c => c.value),
+      chairs: $('bcChairs').checked, leaders: $('bcLeaders').checked, contacts: $('bcContacts').checked });
+    const bcSkip = () => [...$('bcList').querySelectorAll('input:not(:checked)')].map(c => c.value);
+    function bcCountText() {
+      const n = bc ? bc.recipients.length - bcSkip().length : 0, per = bc ? bc.perMessage : 48;
+      $('bcCount').textContent = bc ? n + ' unique address' + (n === 1 ? '' : 'es') + ' in ' + bc.units + ' unit' + (bc.units === 1 ? '' : 's') +
+        ' → ' + Math.ceil(n / per) + ' email' + (Math.ceil(n / per) === 1 ? '' : 's') + (bc.quota != null ? ' · today\'s allowance left: ' + bc.quota : '') +
+        (bc.testMode ? ' · TEST MODE (only the test inbox gets it)' : '') : '';
+    }
+    async function bcPreview() {
+      $('bcCount').textContent = 'Counting…';
+      try {
+        bc = await api('broadcastPreview', bcReq());
+        if (!$('bcReply').value) $('bcReply').value = bc.group;
+        $('bcList').replaceChildren(...bc.recipients.map(x => el('label', { className: 'choice' },
+          Object.assign(el('input', { type: 'checkbox', value: x.email, checked: true }), { onchange: bcCountText }),
+          x.email, el('span', { className: 'muted', textContent: ' · ' + x.units.join(', ') + ' · ' + x.roles.join(', ') }))));
+        bcCountText();
+      } catch (e) { $('bcCount').textContent = e.message; $('bcCount').className = 'err'; }
+    }
+    document.querySelectorAll('input[name=bcType], #bcChairs, #bcLeaders, #bcContacts').forEach(c => c.onchange = bcPreview);
+    const bcCmd = (c, v) => () => { $('bcBody').focus(); document.execCommand(c, false, v); };
+    const bcTb = (html, title, fn) => Object.assign(el('button', { type: 'button', innerHTML: html, title }), { onclick: fn });
+    $('bcBar').replaceChildren(bcTb('<b>B</b>', 'Bold', bcCmd('bold')), bcTb('<i>I</i>', 'Italic', bcCmd('italic')), bcTb('<u>U</u>', 'Underline', bcCmd('underline')),
+      bcTb('• List', 'Bulleted list', bcCmd('insertUnorderedList')), bcTb('Link', 'Link', () => { const u = prompt('Link address (https://…)'); if (u) bcCmd('createLink', u)(); }));
+    async function bcGo(test) {
+      const body = { ...bcReq(), skip: bcSkip(), subject: $('bcSubj').value, html: $('bcBody').innerHTML, replyTo: $('bcReply').value, test };
+      const btn = test ? $('bcTest') : $('bcSend');
+      btn.disabled = true; $('bcMsg').textContent = test ? 'Sending the test…' : 'Sending…'; $('bcMsg').className = 'muted';
+      try { const r = await api('broadcastSend', body); $('bcMsg').textContent = r.message; $('bcMsg').className = 'ok'; if (!test) bcPreview(); }
+      catch (e) { $('bcMsg').textContent = e.message; $('bcMsg').className = 'err'; }
+      btn.disabled = false;
+    }
+    $('bcTest').onclick = () => bcGo(true);
+    $('bcSend').onclick = () => {
+      const n = bc ? bc.recipients.length - bcSkip().length : 0;
+      if (!n) { $('bcMsg').textContent = 'No recipients.'; $('bcMsg').className = 'err'; return; }
+      confirmDo('Send to ' + n + ' unit addresses?', el('p', { textContent: '"' + $('bcSubj').value + '" goes To ' + (bc.group || 'the committee group') +
+        ', Bcc ' + n + ' addresses in ' + Math.ceil(n / bc.perMessage) + ' email(s), Reply-To ' + $('bcReply').value + '. This can\'t be undone.' }), 'Send',
+        async () => { const r = await api('broadcastSend', { ...bcReq(), skip: bcSkip(), subject: $('bcSubj').value, html: $('bcBody').innerHTML, replyTo: $('bcReply').value });
+          $('bcMsg').textContent = r.message; $('bcMsg').className = 'ok'; return r.message; });
+    };
+
+    // ---------- bulk drafts ----------
+    let bkStageSet = false;
+    function bulkSetup(d) {
+      if (bkStageSet) return; bkStageSet = true;
+      $('bkStage').replaceChildren(el('option', { value: '', textContent: 'Pick a stage…' }), ...(d.sections || []).map(x => el('option', { value: x.key, textContent: x.label })));
+      $('bkStage').onchange = async () => {
+        $('bkList').replaceChildren(); $('bkEmail').disabled = true;
+        if (!$('bkStage').value) return;
+        const r = await api('emailBulkList', { session, section: $('bkStage').value });
+        $('bkEmail').replaceChildren(el('option', { value: '', textContent: 'Pick an email…' }), ...r.emails.map(e => el('option', { value: e.key, textContent: e.label })));
+        $('bkEmail').disabled = false;
+      };
+      $('bkEmail').onchange = async () => {
+        $('bkList').replaceChildren(el('p', { className: 'muted', textContent: $('bkEmail').value ? 'Loading…' : '' }));
+        if (!$('bkEmail').value) return;
+        try {
+          const r = await api('emailBulkList', { session, section: $('bkStage').value, key: $('bkEmail').value });
+          if (!r.scouts.length) { $('bkList').replaceChildren(el('p', { className: 'muted', textContent: 'No Scouts in ' + r.stage + '.' })); return; }
+          const rows = r.scouts.map(x => {
+            const cb = el('input', { type: 'checkbox', value: x.recordId, checked: x.ready && !x.recent, disabled: !x.ready });
+            return el('label', { className: 'choice' }, cb, x.name + (x.unit ? ' (' + x.unit + ')' : ''),
+              el('span', { className: x.ready ? 'muted' : 'err', textContent: x.ready ? (x.recent ? ' · ' + x.recent : '') : ' · ' + x.why }));
+          });
+          const go = el('button', { type: 'button', className: 'primary', textContent: 'Draft for the ticked Scouts' });
+          const out = el('div', { className: 'meta' });
+          go.onclick = () => {
+            const ids = rows.map(l => l.querySelector('input')).filter(c => c.checked).map(c => c.value);
+            if (!ids.length) { out.textContent = 'Tick at least one Scout.'; return; }
+            confirmDo('Draft ' + $('bkEmail').selectedOptions[0].textContent + ' for ' + ids.length + ' Scout' + (ids.length > 1 ? 's' : '') + '?',
+              el('p', { textContent: 'Each Scout gets their own draft in the Outbox. Nothing is sent until someone clicks Send there.' }), 'Draft', async () => {
+                const res = await api('emailBulkDraft', { session, key: $('bkEmail').value, recordIds: ids });
+                const ok = res.results.filter(x => x.ok).length, bad = res.results.filter(x => !x.ok);
+                return ok + ' draft' + (ok === 1 ? '' : 's') + ' waiting in the Outbox.' + (bad.length ? ' Not drafted: ' + bad.map(x => x.name + ' (' + x.message + ')').join('; ') : '');
+              });
+          };
+          $('bkList').replaceChildren(el('div', { className: 'admcard' }, ...rows, el('div', { className: 'actions' }, go, el('a', { href: '/committee/outbox', textContent: 'Open the Outbox' })), out));
+        } catch (e) { $('bkList').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
+      };
+    }
+
+    async function load() {
+      const d = await api('adminData', { session });
+      bulkSetup(d);
+      if (!bc) { bcPreview(); loadShadow(); }
+      $('msg').hidden = true; $('app').hidden = false;
+      show(d);
+    }
+
+    if (!session) needSignIn($('msg'));
+    else {
+      try {
+        const c = JSON.parse(localStorage.getItem('ccacHome') || 'null');
+        if (c && c.session === session) meLine.textContent = meText(c.d.me, c.d.testMode);
+      } catch {}
+      loadTemplates();
+      load().catch((e) => { if (isSignedOut(e)) needSignIn($('msg'), e.message); else { $('msg').textContent = e.message; $('msg').className = 'err'; } });
+    }
+  </script>
+</body>
+</html>

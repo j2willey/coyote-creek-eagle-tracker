@@ -1,0 +1,105 @@
+:root {
+  --bg: #f7f5f0; --fg: #1d1d1b; --muted: #6b6b66; --card: #fff; --line: #ddd8cc;
+  --ok: #1f6f3a; --err: #a12b2b; --link: #1a5fb4; --link-visited: #6a3d9a;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161614; --fg: #ecebe6; --muted: #a3a29b; --card: #22221f; --line: #3a3934; --ok: #6fcf8f; --err: #f08b8b; --link: #8ab4f8; --link-visited: #c58af9; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 36rem; margin: 0 auto; padding: 2rem 16px; }
+h1 { font-size: 1.6rem; line-height: 1.2; }
+.muted { color: var(--muted); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+a { color: var(--link); text-underline-offset: 2px; }
+a:visited { color: var(--link-visited); }
+.ok { color: var(--ok); } .err { color: var(--err); }
+/* Forms (M3) */
+label { display: block; margin: .9rem 0 .25rem; font-weight: 600; }
+label .opt { font-weight: 400; color: var(--muted); }
+input, select { width: 100%; font: inherit; padding: .55rem; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+textarea { display: block; width: 100%; font: inherit; padding: .55rem; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+input[type=file] { padding: .4rem; }
+button { font: inherit; padding: .6rem 1.2rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
+button.primary { border: 0; background: var(--fg); color: var(--bg); }
+button:disabled { opacity: .5; cursor: default; }
+.hint { font-size: .9rem; color: var(--muted); margin: .2rem 0 0; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; }
+@media (max-width: 30rem) { .row2 { grid-template-columns: 1fr; } }
+.filerow { display: grid; grid-template-columns: 1fr 9rem; gap: .5rem; margin: .5rem 0 .15rem; }
+.filenote { font-size: .9rem; margin: 0 0 .6rem; }
+.filenote:empty { margin: 0; }
+.filenote .help { margin-top: .4rem; color: var(--fg); }
+.filenote .help summary { cursor: pointer; color: var(--link); }
+.filenote .help ul { padding-left: 1.2rem; margin: .3rem 0; }
+/* Proposal guide */
+.guide .card h2 { margin-top: .2rem; }
+.guide li { margin: .3rem 0; }
+.warn { border-left: 4px solid var(--err); padding: .4rem .8rem; background: color-mix(in srgb, var(--err) 8%, transparent); border-radius: 4px; }
+.tip { border-left: 4px solid var(--ok); padding: .5rem .8rem; background: color-mix(in srgb, var(--ok) 8%, transparent); border-radius: 4px; }
+a.button { display: inline-block; padding: .6rem 1.2rem; border-radius: 8px; background: var(--fg); color: var(--bg); text-decoration: none; }
+a.path .figrow img { width: 72px; }
+.hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+a.path { display: block; text-decoration: none; color: inherit; }
+/* District brand header and the workbook figure */
+.brand { display: flex; align-items: center; gap: .9rem; margin-bottom: .5rem; }
+.brand img { width: 72px; height: auto; flex: none; }
+.brand .name { font-weight: 700; line-height: 1.2; }
+.brand .name small { display: block; margin-top: .15rem; font-weight: 400; color: var(--muted); font-size: .85rem; }
+.brand-link, .brand-link:visited { display: flex; align-items: center; gap: .9rem; color: inherit; text-decoration: none; }
+.brand-link .name { font-size: 1.1rem; }
+.brand + h1 { margin-top: .5rem; }
+.figrow { display: flex; gap: 1rem; align-items: flex-start; margin: .75rem 0; }
+.figrow img { width: 100px; height: auto; flex: none; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+.figrow p { margin: 0; }
+@media (max-width: 24rem) { .figrow img { width: 72px; } }
+a.path:hover h2 { text-decoration: underline; }
+
+/* "For the Life Scout to complete" box on the submission page */
+.card.notice { border-left: 4px solid #2a6db0; }
+.card.notice h2 { margin-top: 0; }
+/* Scout page: the committee's latest request (2026-10-24) */
+.request { border-left: 4px solid #c7891a; background: color-mix(in srgb, #c7891a 10%, transparent); padding: .5rem .8rem; border-radius: 4px; margin: .6rem 0; }
+.request p { margin: .2rem 0; white-space: pre-wrap; }
+.request .reqhead { font-weight: 600; }
+/* Unit page: the unit's Eagle candidates (same look as the committee dashboard) */
+.boardwrap { overflow-x: auto; }
+table.board { width: 100%; border-collapse: collapse; font-size: .92rem; }
+table.board th { text-align: left; font-weight: 600; color: var(--muted); padding: .4rem .5rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.board td { padding: .3rem .5rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+table.board .num { text-align: right; font-variant-numeric: tabular-nums; }
+table.board td.age.a1 { background: #fdf0c4; color: #1d1d1b; }
+table.board td.age.a2 { background: #f6cdc8; color: #1d1d1b; }
+/* Calendars on the Scout and unit pages (FullCalendar) */
+.viewtoggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: .3rem 0 .6rem; }
+.viewtoggle button { border: 0; border-radius: 0; padding: .35rem .9rem; background: var(--card); }
+.viewtoggle button.on { background: var(--fg); color: var(--bg); }
+.calbox { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: .5rem; margin: .5rem 0; font-size: .85rem; }
+.calbox .fc .fc-toolbar-title { font-size: 1.05rem; }
+.calbox .fc .fc-button { padding: .2rem .5rem; font-size: .8rem; }
+.calbox .fc-event { cursor: pointer; }
+.calbox .fc-event.picked { outline: 3px solid #c7891a; outline-offset: 1px; }
+:root { --fc-border-color: var(--line); --fc-page-bg-color: var(--card); --fc-neutral-bg-color: var(--bg);
+  --fc-button-bg-color: var(--fg); --fc-button-border-color: var(--fg); --fc-button-text-color: var(--bg);
+  --fc-button-active-bg-color: var(--muted); --fc-button-active-border-color: var(--muted); --fc-today-bg-color: color-mix(in srgb, var(--link) 10%, transparent); }
+/* Unit contacts panel (js/unitContacts.js) */
+.ucrow { display: flex; justify-content: space-between; align-items: flex-start; gap: .6rem; padding: .5rem .6rem; border: 1px solid var(--line); border-radius: 8px; margin: .35rem 0; overflow-wrap: anywhere; }
+.ucrow.key3 { border-left: 4px solid #4a90d9; background: color-mix(in srgb, #4a90d9 7%, transparent); }
+.ucrow.excl { opacity: .7; }
+.ucmain { min-width: 0; }
+.ucbtns { display: flex; gap: .4rem; flex-shrink: 0; }
+.ucform { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .4rem; padding: .5rem; border: 1px dashed var(--line); border-radius: 8px; margin: .35rem 0; }
+.ucform .actions { grid-column: 1 / -1; margin-top: .2rem; }
+.ucrow .obbtn, .ucbtns button { padding: .25rem .7rem; font-size: .9rem; }
+.ucbtns button.danger { border-color: var(--err); color: var(--err); }
+
+/* Unit meetings block at the top of the unit contacts panel (2026-11-01). */
+.ucrow.meeting { border-left: 4px solid #1f8a4c; background: color-mix(in srgb, #1f8a4c 7%, transparent); }
+.mtfield { display: flex; flex-direction: column; gap: .15rem; font-size: .9rem; }
+.mtfield.mtwide { grid-column: 1 / -1; }
+.mtnotes { white-space: pre-line; }
+.mtlist { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; margin: 0; min-width: 0; }
+.mtlist dt { color: var(--muted, #777); font-size: .9rem; }
+.mtlist dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.uchead { margin: 1rem 0 .2rem; }

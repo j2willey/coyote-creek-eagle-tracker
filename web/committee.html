@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Committee · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Dashboard</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+    <p id="flash" class="ok" hidden></p>
+    <div id="app" hidden>
+      <div class="strip">
+        <span><b id="nPending">–</b> with new files<span id="pendAge"></span></span>
+        <span id="councilStrip" hidden><b id="nCouncil">–</b> waiting on Council<span id="councilAge"></span></span>
+        <a href="/committee/admin#intake" id="heldStrip" hidden><b id="nHeldDup" class="hot">–</b> possible duplicate submission<span id="heldS">s</span> to resolve</a>
+        <a href="/committee/admin" id="adminStrip" hidden><b id="nAdmin">–</b> on the Admin page</a>
+        <a href="/committee/schedule"><b id="nUpcoming">–</b> booked in the next 14 days</a>
+      </div>
+      <div class="obtabs boardtabs" role="tablist" id="tabs"></div>
+      <div id="board"></div>
+      <dialog id="emDlg" class="detail">
+        <div class="dethead"><div><h2 id="emTitle">Email…</h2><p class="muted" id="emWho"></p></div><button type="button" id="emClose">Close</button></div>
+        <p class="hint">Drafts the email into the Outbox, filled in for this Scout, the same way the stage change, booking or
+          reminder would have. Check it there, then Send, Send later, or discard it. Nothing is sent from here.</p>
+        <div id="emList"></div>
+        <p id="emMsg" role="status"></p>
+      </dialog>
+      <dialog id="detDlg" class="detail">
+        <div class="dethead">
+          <div><h2 id="detName"></h2><p class="muted" id="detStage"></p></div>
+          <button type="button" id="detClose">Close</button>
+        </div>
+        <p class="detlinks" id="detLinks"></p>
+        <div class="detbar">
+          <div class="obtabs" role="tablist" id="detTabs"></div>
+          <span><button type="button" id="detFiles" title="Add files for this Scout (e.g. a Proposal they emailed): filed like a Scout upload">📎 Add files…</button>
+          <button type="button" id="detEmail" title="Draft an email for this Scout (Outbox)">✉ Email…</button>
+          <button type="button" id="detEdit" title="Turn on editing (every change is logged)">✎ Edit</button></span>
+        </div>
+        <div id="detPanel"></div>
+        <div id="detEditBar" class="actions" hidden>
+          <button type="button" class="primary" id="detSave">Save changes</button><button type="button" id="detCancel">Cancel</button>
+          <span class="hint">Every change goes into the Scout's log (old → new).</span>
+        </div>
+        <p id="detMsg" role="status"></p>
+      </dialog>
+      <dialog id="logDlg" class="detail">
+        <div class="dethead"><div><h2 id="logName"></h2><p class="muted" id="logStage"></p></div><button type="button" id="logClose">Close</button></div>
+        <form id="logForm" class="logadd">
+          <label for="logNote" class="sr">New note</label>
+          <input id="logNote" type="text" maxlength="1000" autocomplete="off" placeholder="Add a note…">
+          <button type="submit" class="primary" id="logAdd">Add</button>
+        </form>
+        <p class="hint" id="logHint"></p>
+        <div class="logbar"><span><b>History</b> <span class="muted">newest first</span></span>
+          <span><a id="logDoc" target="_blank" rel="noopener" hidden>Google Doc ↗</a>
+          <button type="button" id="logEdit" title="Correct the history (the Doc's version history keeps the old text)">✎ Edit</button></span></div>
+        <textarea id="logText" class="logtext" readonly rows="16" spellcheck="false"></textarea>
+        <div id="logEditBar" class="actions" hidden>
+          <button type="button" class="primary" id="logSave">Save correction</button><button type="button" id="logCancel">Cancel</button>
+          <span class="hint">Replaces the log's text. Keep one note per line, newest at the top.</span>
+        </div>
+        <p id="logMsg" role="status"></p>
+      </dialog>
+      <dialog id="actDlg">
+        <form id="actForm" method="dialog">
+          <h2 id="actTitle"></h2>
+          <p class="muted" id="actWho"></p>
+          <div id="actDateBox"><label for="actDate" id="actDateLabel">Date</label>
+          <input id="actDate" type="date"></div>
+          <div id="actFiles"></div>
+          <label for="actNote" id="actNoteLabel">Note</label>
+          <textarea id="actNote" maxlength="2000"></textarea>
+          <p class="hint" id="actEmail"></p>
+          <div id="actWarn" class="warnbox" hidden><strong>Please check:</strong><ul id="actWarnList"></ul></div>
+          <p id="actMsg" role="status"></p>
+          <div class="actions"><button type="submit" class="primary" id="actSave">Save</button><button type="button" id="actClose">Cancel</button></div>
+        </form>
+      </dialog>
+      <p class="hint">The sheet's order is the order of arrival in each stage (newest first); sorting here never changes the sheet. <span class="pend">New files</span> = files from the Scout nobody
+        has acted on yet (amber Action cell in the sheet). Click a name for the Scout's details (folder, history, edit). Age: today; Eagles: at their EBoR.</p>
+    </div>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut, actionButton, setOutboxCount, setReviewCount } from '/js/committee.js';
+    import { sortRows, stageRows } from '/js/boardSort.js';
+    import { readBase64, sizeText, addFileRow, chosenFiles as chosenRows, uploadText } from '/js/files.js';
+    import { preparePhoto } from '/js/photos.js';
+    const meLine = renderNav($('cnav'), 'home', [
+      actionButton({ label: 'Record outcomes', href: '/committee/review', icon: 'check', primary: true, count: 'review', id: 'recBtn',
+        title: 'Record the outcome of a review that was held' }),
+      actionButton({ label: 'Email open times', href: '/committee/schedule?ot=1', icon: 'mail',
+        title: 'Email the Scouts who are ready to book about the open times (on the Schedule page)' })]);
+    // Sort per tab, in this page only (each load starts in sheet order = order of arrival in the stage).
+    const sorts = {};
+    const SORT_OF = { Candidate: 'arrival', Unit: 'unit', Age: 'age', Approved: 'approved', EBoR: 'ebor', Session: 'session' };
+    const FIRST_DIR = { arrival: 1, unit: 1, age: -1, approved: 1, ebor: 1, session: 1 };
+    // A booked session on the schedule page (opens its details: time, place, members, Unit Board Members).
+    const sessionHref = (key) => '/committee/schedule?s=' + encodeURIComponent(key);
+    const whenShort = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    function sessionCell(r) {
+      const s = r.session;
+      if (!s) return el('td', {});
+      const who = s.reps.length
+        ? el('span', { className: 'tag reps', textContent: s.reps.join(' · '), title: s.names.join(', ') || s.reps.join(', ') })
+        : el('span', { className: 'tag board-short', textContent: 'No member', title: 'No committee member on this session yet' });
+      return el('td', { className: 'session' + (s.start < Date.now() ? ' past' : '') },
+        el('a', { href: sessionHref(s.key), textContent: whenShort(s.start), title: 'Open this session on the schedule' }), ' ', who);
+    }   // age: oldest (least time left) first
+    function sortLabel(st) {
+      const word = { arrival: 'arrival in the stage', unit: 'unit', age: 'age', approved: 'approval date', ebor: 'EBoR date', session: 'session date' }[st.key];
+      const how = st.key === 'arrival' ? (st.dir === 1 ? 'newest first (sheet order)' : 'oldest first')
+        : st.key === 'age' ? (st.dir === -1 ? 'oldest first' : 'youngest first')
+        : st.key === 'unit' ? (st.dir === 1 ? 'A→Z, low numbers first' : 'Z→A') : (st.dir === 1 ? 'earliest first' : 'latest first');
+      return 'Within each stage: by ' + word + ', ' + how + '.' +
+        (st.key === 'arrival' && st.dir === 1 ? ' Booked stages: soonest session first.' : '');
+    }
+    const CACHE_KEY = 'ccacHome', TAB_KEY = 'ccacHomeTab';
+    let data = null, tab = 'proposals';
+    try { tab = localStorage.getItem(TAB_KEY) || 'proposals'; } catch {}
+
+    const short = (ymd) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || ''); return m ? +m[2] + '/' + +m[3] + '/' + m[1].slice(2) : ''; };
+    const ageCell = (a, locked) => el('td', { className: 'num age' + (!locked && a >= 17.5 ? ' a2' : !locked && a >= 17 ? ' a1' : ''),
+      textContent: a == null ? '' : a.toFixed(1) });
+
+    function renderTabs() {
+      $('tabs').replaceChildren(...data.tabs.map(t => {
+        const b = el('button', { type: 'button', role: 'tab', className: 'obtab' + (t.key === tab ? ' on' : ''),
+          textContent: t.label + ' (' + t.count + (t.pending ? ' · ' + t.pending + ' new' : '') + (t.council ? ' · ' + t.council + ' Council?' : '') + ')' });
+        b.onclick = () => { tab = t.key; try { localStorage.setItem(TAB_KEY, tab); } catch {} renderTabs(); renderBoard(); };
+        return b;
+      }));
+    }
+
+    function renderBoard() {
+      const t = data.tabs.find(x => x.key === tab) || data.tabs[0];
+      const acts = data.actions || {};
+      const hasActs = t.groups.some(g => (acts[g.key] || []).length || EMAIL_OK(g.key));
+      const head = [...(hasActs ? ['Action'] : []), 'Candidate', 'Unit', 'Age', ...(t.cols.includes('approved') ? ['Approved'] : []), ...(t.cols.includes('ebor') ? ['EBoR'] : []), ...(t.cols.includes('session') ? ['Session'] : []), 'Last note'];
+      const st = sorts[t.key] || { key: 'arrival', dir: 1 };
+      const th = (h) => {
+        const cls = ['Age', 'Approved', 'EBoR'].includes(h) ? 'num' : '';
+        const key = SORT_OF[h];
+        if (!key) return el('th', { textContent: h, className: cls });
+        const on = st.key === key;
+        const b = el('button', { type: 'button', className: 'sortbtn' + (on ? ' on' : ''),
+          title: 'Sort by ' + (key === 'arrival' ? 'arrival in the stage' : h.toLowerCase()) + (on ? ' (click again to reverse)' : '') },
+          h, el('span', { className: 'arrow', textContent: on ? (st.dir === 1 ? ' ▲' : ' ▼') : '' }));
+        b.onclick = () => { sorts[t.key] = on ? { key, dir: -st.dir } : { key, dir: FIRST_DIR[key] }; renderBoard(); };
+        return el('th', { className: cls, ariaSort: on ? (st.dir === 1 ? 'ascending' : 'descending') : 'none' }, b);
+      };
+      const table = el('table', { className: 'board' }, el('thead', {}, el('tr', {}, ...head.map(th))));
+      t.groups.forEach(g => {
+        const body = el('tbody');
+        const mc = g.months;     // EBoR Booked: what's left this month, lined up next month, later
+        const mtxt = mc ? [mc.thisMonth + ' left in ' + mc.thisLabel, mc.next + ' in ' + mc.nextLabel, mc.later + ' later']
+          .concat(mc.past ? [mc.past + ' past (outcome?)'] : []).concat(mc.none ? [mc.none + ' no date'] : []).join(' · ') : '';
+        body.append(el('tr', { className: 'stage' }, el('td', { colSpan: head.length }, g.label + ' · ' + g.rows.length,
+          ...(mtxt ? [el('span', { className: 'months', textContent: mtxt })] : []))));
+        stageRows(g.rows, g.key, st.key, st.dir).forEach(r => {
+          const name = el('button', { type: 'button', className: 'linkbtn', textContent: r.name, title: 'Open ' + r.name });
+          name.onclick = () => openDetail(r.recordId);
+          body.append(el('tr', {},
+            ...(hasActs ? [el('td', { className: 'act' }, ...actionControl(r, g, acts[g.key] || []))] : []),
+            el('td', { className: 'who' }, name, ' ', ...(r.pending ? [el('span', { className: 'pend', textContent: 'New files' }), ' '] : []),
+              // A Council (Formsite) application that needs a look; cleared by ticking Checked on the Council Applications tab.
+              // Proposal approved, committee signatures still out: link to add a signature (Record outcomes page).
+              ...(r.signing ? [el('a', { className: 'tag signing', href: '/committee/review?r=' + encodeURIComponent(r.recordId),
+                textContent: 'Signing: ' + r.signing.waiting.join(', '),
+                title: 'Signed by ' + r.signing.signed.join('&') + '; waiting on ' + r.signing.waiting.join(', ') + ' since ' + r.signing.since +
+                  '. The Scout has not been emailed yet.\n\nClick: add a signature, or finish with the signatures there are.' }), ' '] : []),
+              ...(r.formsite ? [el(r.formsite.folder ? 'a' : 'span', { className: 'tag formsite', textContent: 'Formsite',
+                ...(r.formsite.folder ? { href: r.formsite.folder, target: '_blank', rel: 'noopener' } : {}),
+                title: r.formsite.why + '\n\nClick: open the Scout\'s folder. When sorted out, tick Checked on the Council Applications tab.' }), ' '] : []),
+              ...(r.boardState ? [el(r.session ? 'a' : 'span', { className: 'tag board-' + r.boardState, ...(r.session ? { href: sessionHref(r.session.key) } : {}),
+                textContent: 'Board ' + r.boardSize + (r.boardState === 'short' ? '/3' : r.boardState === 'ok' ? '/6' : ''),
+                title: (r.boardState === 'short' ? 'Only ' + r.boardSize + ' on the board (district/council members on the slot + Unit Board Members). An Eagle Board of Review needs at least 3.'
+                  : r.boardState === 'ok' ? r.boardSize + ' on the board (3 to 6 needed).'
+                  : r.boardSize + ' on the board; the most is 6. Some may only be on the invitation to have it on their calendar: check who sits on the board.')
+                  + (r.session ? '\n\nClick: open the board on the schedule (' + whenShort(r.session.start) + ').' : '') }), ' '] : []),
+              ...(r.eagleNumber ? [el('span', { className: 'tag eaglenum', textContent: '🦅 ' + r.eagleNumber.split(' ')[0],
+                title: 'If Eagle is awarded, announce: ' + r.eagleNumber }), ' '] : []),
+              ...(r.councilWait !== null ? [el('span', { className: 'council' + (r.councilOverdue ? ' late' : ''), textContent: 'Council?',
+                title: 'EBoR paperwork sent ' + short(r.councilSent) + '; no acknowledgement yet (' + r.councilWait + ' day' + (r.councilWait === 1 ? '' : 's') + ')' }), ' '] : [])),
+            el('td', { textContent: r.unit, className: r.unitReview ? 'unit-ur' : '', title: r.unitReview ? 'Unit under review (Unit Info tab)' : '' }),
+            ageCell(r.age, t.ageLocked),
+            ...(t.cols.includes('approved') ? [el('td', { className: 'num', textContent: short(r.approved) })] : []),
+            // EBoR date (from the sheet): a link to the Scout's booked board on the schedule, when there is one (2026-11-03).
+            ...(t.cols.includes('ebor') ? [(() => {
+              const tip = r.band === 'this' ? 'This month' : r.band === 'next' ? 'Next month' : r.band === 'past' ? 'Date has passed: record the outcome' : '';
+              const td = el('td', { className: 'num' + (r.band ? ' band-' + r.band : '') });
+              if (r.session && r.ebor) td.append(el('a', { className: 'eborlink', href: sessionHref(r.session.key), textContent: short(r.ebor),
+                title: (tip ? tip + '\n' : '') + 'Click: open the board on the schedule (' + whenShort(r.session.start) + ').' }));
+              else { td.textContent = short(r.ebor); td.title = tip; }
+              return td;
+            })()] : []),
+            ...(t.cols.includes('session') ? [sessionCell(r)] : []),
+            el('td', { className: 'note' }, noteLink(r))));
+        });
+        table.append(body);
+      });
+      const reset = el('button', { type: 'button', className: 'linkbtn', textContent: 'Back to sheet order' });
+      reset.onclick = () => { delete sorts[t.key]; renderBoard(); };
+      $('board').replaceChildren(
+        el('p', { className: 'hint sortline' }, sortLabel(st) + ' Click a column heading to sort, again to reverse. ',
+          ...(st.key !== 'arrival' || st.dir !== 1 ? [reset] : [])),
+        el('div', { className: 'boardwrap' }, table));
+    }
+
+    // ---------- Life to Eagle Log panel (lib/scoutLog.js): add a note, read / correct the history ----------
+    function noteLink(r) {
+      const b = el('button', { type: 'button', className: 'linkbtn notelink' + (r.note ? '' : ' empty'), textContent: r.note || '+ note',
+        title: r.note ? r.note + '\n\nClick: add a note, read the full log' : 'Add a note' });
+      b.onclick = () => openLog(r.recordId);
+      return b;
+    }
+    let lg = null, lgEditing = false, lgChanged = false;
+    const lgSay = (t, cls) => { $('logMsg').textContent = t || ''; $('logMsg').className = cls || ''; };
+    function lgShow() {
+      $('logText').value = lg.text; $('logText').readOnly = !lgEditing; $('logText').classList.toggle('editing', lgEditing);
+      $('logEdit').hidden = lgEditing; $('logEditBar').hidden = !lgEditing;
+      $('logNote').disabled = $('logAdd').disabled = lgEditing;
+      $('logDoc').hidden = !lg.logUrl; if (lg.logUrl) $('logDoc').href = lg.logUrl;
+    }
+    async function openLog(id) {
+      lg = null; lgEditing = false; lgChanged = false;
+      $('logName').textContent = 'Loading…'; $('logStage').textContent = ''; $('logText').value = ''; $('logNote').value = ''; lgSay('');
+      $('logHint').textContent = ''; $('logEditBar').hidden = true; $('logDoc').hidden = true;
+      if (!$('logDlg').open) $('logDlg').showModal();
+      try {
+        lg = await api('scoutLog', { session, recordId: id });
+        $('logName').textContent = lg.name + (lg.unit ? ' (' + lg.unit + ')' : '');
+        $('logStage').textContent = lg.stage + ' · Life to Eagle Log';
+        const d = new Date();
+        $('logHint').textContent = '"' + (d.getMonth() + 1) + '/' + d.getDate() + ' [' + (lg.initials || 'you') + ']" goes in front unless you type a date or [initials] yourself.';
+        lgShow(); $('logNote').focus();
+      } catch (e) { $('logName').textContent = ''; lgSay(e.message, 'err'); }
+    }
+    function lgNoteChanged(recordId, line) {          // dashboard row + open detail window show the newest line
+      lgChanged = true;
+      (data?.tabs || []).forEach(t => t.groups.forEach(g => g.rows.forEach(r => { if (r.recordId === recordId) r.note = line; })));
+      if (det && det.recordId === recordId) det.lastNote = line;
+    }
+    $('logForm').onsubmit = async (ev) => {
+      ev.preventDefault();
+      if (!lg || !$('logNote').value.trim()) return;
+      $('logAdd').disabled = true; lgSay('Adding…');
+      try {
+        const r = await api('scoutLogAdd', { session, recordId: lg.recordId, note: $('logNote').value });
+        lg.text = r.text; if (r.logUrl) lg.logUrl = r.logUrl;
+        $('logNote').value = ''; lgShow(); lgSay('Added: ' + r.line, 'ok'); lgNoteChanged(lg.recordId, r.line);
+      } catch (e) { lgSay(e.message, 'err'); }
+      finally { $('logAdd').disabled = lgEditing; }
+    };
+    $('logEdit').onclick = () => { lgEditing = true; lgSay(''); lgShow(); $('logText').focus(); };
+    $('logCancel').onclick = () => {
+      if ($('logText').value !== lg.text && !confirm('Discard your corrections?')) return;
+      lgEditing = false; lgSay(''); lgShow();
+    };
+    $('logSave').onclick = async () => {
+      const text = $('logText').value;
+      if (text === lg.text) { lgEditing = false; lgSay('Nothing changed.'); lgShow(); return; }
+      if (!confirm('Replace the log for ' + lg.name + ' with your corrected text?')) return;
+      $('logSave').disabled = true; lgSay('Saving…');
+      try {
+        const r = await api('scoutLogEdit', { session, recordId: lg.recordId, text, base: lg.text });
+        lg.text = r.text; lgEditing = false; lgShow(); lgSay(r.message || 'Saved.', 'ok'); lgNoteChanged(lg.recordId, r.lastNote);
+      } catch (e) { lgSay(e.message, 'err'); }
+      finally { $('logSave').disabled = false; }
+    };
+    $('logClose').onclick = () => {
+      if (lgEditing && lg && $('logText').value !== lg.text && !confirm('Close without saving your corrections?')) return;
+      $('logDlg').close();
+    };
+    $('logDlg').addEventListener('close', () => {
+      if (!lgChanged) return;
+      lgChanged = false; renderBoard();
+      if (det && $('detDlg').open) renderDetail();
+    });
+
+    // ---------- Scout detail window (lib/scoutDetail.js) ----------
+    let det = null, detTab = 'info', editing = false, draft = {};
+    const fmtDate = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/.exec(v || ''); if (!m) return v;
+      let t = +m[2] + '/' + +m[3] + '/' + m[1];
+      if (m[4]) { const h = +m[4]; t += ' ' + ((h + 11) % 12 + 1) + ':' + m[5] + ' ' + (h < 12 ? 'AM' : 'PM'); }
+      return t; };
+    const showVal = (f) => !f.value ? el('span', { className: 'muted', textContent: '—' })
+      : f.type === 'bool' ? (f.value === 'true' ? '✓ yes' : 'no') : (f.type === 'date' || f.type === 'datetime') ? fmtDate(f.value)
+      : f.type === 'number' && /^age\b/i.test(f.label) ? Number(f.value).toFixed(1) : f.value;   // ages: one decimal, like the dashboard
+    // ---------- "Email…": (re)draft any email that fits the Scout's stage into the Outbox (lib/emailMenu.js) ----------
+    const EMAIL_OK = (k) => !['eagle_earned', 'eagle_not_awarded', 'proposal_not_approved', 'beyond_age'].includes(k);
+    async function openEmail(recordId, who) {
+      $('emWho').textContent = who || ''; $('emMsg').textContent = ''; $('emList').replaceChildren(el('p', { className: 'muted', textContent: 'Loading…' }));
+      if (!$('emDlg').open) $('emDlg').showModal();
+      try {
+        const d = await api('emailChoices', { session, recordId });
+        if (!who) $('emWho').textContent = d.scout + ' · ' + d.stage;
+        $('emList').replaceChildren(...(d.choices.length ? d.choices.map(x => {
+          const b = el('button', { type: 'button', className: 'obbtn', textContent: 'Draft', disabled: !x.ready });
+          const note = el('span', { className: x.ready ? 'muted' : 'err', textContent: x.ready ? (x.recent ? ' ' + x.recent : '') : ' ' + x.why });
+          const ta = x.note ? el('textarea', { rows: 3, value: x.noteDefault || '', placeholder: 'What should the Scout do? (goes into the email)' }) : null;
+          b.onclick = async () => {
+            b.disabled = true; $('emMsg').textContent = 'Drafting…'; $('emMsg').className = 'muted';
+            try {
+              const nt = ta ? ta.value : '';
+              let r = await api('emailDraft', { session, recordId, key: x.key, note: nt });
+              if (r.needsConfirm) {
+                if (!window.confirm(r.warning)) { $('emMsg').textContent = ''; b.disabled = false; return; }
+                r = await api('emailDraft', { session, recordId, key: x.key, confirm: true, note: nt });
+              }
+              $('emMsg').replaceChildren(r.message + ' ', el('a', { href: '/committee/outbox?id=' + encodeURIComponent(r.outboxId || ''), textContent: 'Open it in the Outbox' }));
+              $('emMsg').className = 'ok'; note.textContent = ' drafted just now'; note.className = 'ok';
+            } catch (e) { $('emMsg').textContent = e.message; $('emMsg').className = 'err'; b.disabled = false; }
+          };
+          return el('div', {}, el('div', { className: 'emrow' }, b, ' ', el('b', { textContent: x.label }), note), ...(ta ? [ta] : []));
+        }) : [el('p', { className: 'muted', textContent: 'No emails for this stage.' })]));
+      } catch (e) { $('emList').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
+    }
+    $('emClose').onclick = () => $('emDlg').close();
+    let detId = '';
+    $('detEmail').onclick = () => openEmail(detId, $('detName').textContent + ' · ' + $('detStage').textContent);
+
+    async function openDetail(id) {
+      detId = id;
+      editing = false; draft = {}; detTab = 'info';
+      $('detName').textContent = 'Loading…'; $('detStage').textContent = ''; $('detLinks').replaceChildren(); $('detTabs').replaceChildren();
+      $('detPanel').replaceChildren(); $('detMsg').textContent = ''; $('detEditBar').hidden = true;
+      if (!$('detDlg').open) $('detDlg').showModal();
+      try { det = await api('scoutDetail', { session, recordId: id }); renderDetail(); }
+      catch (e) { $('detName').textContent = ''; $('detMsg').textContent = e.message; $('detMsg').className = 'err'; }
+    }
+    function renderDetail() {
+      $('detName').textContent = det.name + (det.unit ? ' (' + det.unit + ')' : '');
+      $('detStage').replaceChildren(det.stage, ...(det.pending ? [' ', el('span', { className: 'pend', textContent: 'New files' })] : []));
+      $('detLinks').replaceChildren(
+        ...(det.folderUrl ? [el('a', { href: det.folderUrl, target: '_blank', rel: 'noopener', textContent: '📁 Folder' })] : [el('span', { className: 'muted', textContent: 'No folder linked' })]),
+        ' · ', (() => { const b = el('button', { type: 'button', className: 'linkbtn lastnote', textContent: det.lastNote || 'Life to Eagle Log',
+          title: 'Open the log: add a note, read the full history' }); b.onclick = () => openLog(det.recordId); return b; })());
+      $('detTabs').replaceChildren(...det.tabs.map(t => {
+        const b = el('button', { type: 'button', role: 'tab', className: 'obtab' + (t.key === detTab ? ' on' : ''), textContent: t.label });
+        b.onclick = () => { detTab = t.key; renderDetail(); };
+        return b;
+      }));
+      $('detEdit').hidden = editing; $('detEditBar').hidden = !editing;
+      const t = det.tabs.find(x => x.key === detTab);
+      const dl = el('dl', { className: 'info detfields' });
+      t.fields.forEach(f => {
+        let dd;
+        if (!editing || !f.editable) dd = el('dd', {}, showVal(f), ...(editing ? [el('span', { className: 'hint', textContent: '  (calculated by the sheet)' })] : []));
+        else {
+          const cur = f.name in draft ? draft[f.name] : f.value;
+          const inp = f.type === 'bool' ? el('input', { type: 'checkbox', checked: cur === 'true' })
+            : el('input', { type: f.type === 'date' ? 'date' : f.type === 'datetime' ? 'datetime-local' : 'text', value: cur });
+          inp.oninput = inp.onchange = () => { draft[f.name] = f.type === 'bool' ? String(inp.checked) : inp.value; };
+          dd = el('dd', {}, inp);
+        }
+        dl.append(el('dt', { textContent: f.label }), dd);
+      });
+      const kids = [dl];
+      if (detTab === 'info') {
+        const sel = el('select', {}, el('option', { value: '', textContent: '— stage —' }),
+          ...det.sections.filter(x => x.key !== det.section).map(x => el('option', { value: x.key, textContent: x.label })));
+        const why = el('input', { type: 'text', placeholder: 'Reason (goes into the log)' });
+        const go = el('button', { type: 'button', className: 'danger', textContent: 'Move (no emails)' });
+        go.onclick = async () => {
+          if (!sel.value) { say('Pick the stage.', 'err'); return; }
+          const label = sel.options[sel.selectedIndex].textContent;
+          if (!confirm('Move ' + det.name + ' from ' + det.stage + ' to ' + label + '?\n\nThis is a correction: no emails, no invitations. It is logged with your reason.')) return;
+          try { const r = await api('scoutMove', { session, recordId: det.recordId, to: sel.value, reason: why.value }); say(r.message, 'ok'); await reloadDetail(); }
+          catch (e) { say(e.message, 'err'); }
+        };
+        kids.push(el('details', { className: 'advanced' }, el('summary', { textContent: 'Advanced: move to another stage…' }),
+          el('p', { className: 'hint', textContent: 'For fixing mistakes only. Normal steps are in the row\'s Action menu (they send the right emails).' }),
+          el('div', { className: 'moverow' }, sel, why, go)));
+      }
+      $('detPanel').replaceChildren(...kids);
+    }
+    const say = (t, c) => { $('detMsg').textContent = t; $('detMsg').className = c || 'muted'; };
+    async function reloadDetail() {
+      det = await api('scoutDetail', { session, recordId: det.recordId });
+      renderDetail();
+      refresh().catch(() => {});
+    }
+    $('detEdit').onclick = () => { editing = true; draft = {}; say(''); renderDetail(); };
+    // Add files for the Scout (committeeUploadActions.js): same naming / versions / Archive as a Scout upload.
+    const FILE_TAGS = ['ESSPP', 'Signatures', 'Slides', 'Photo', 'Other'];
+    $('detFiles').onclick = () => {
+      if (editing) return;
+      say('');
+      const rows = el('div', { className: 'filerows' });
+      addFileRow(rows, FILE_TAGS, 'ESSPP');
+      const more = el('button', { type: 'button', className: 'linkbtn', textContent: '+ another file' });
+      more.onclick = () => addFileRow(rows, FILE_TAGS, 'Photo');
+      const note = el('input', { type: 'text', maxLength: 500, placeholder: 'Note for the log (optional), e.g. "emailed by the Scout 11/9"' });
+      const go = el('button', { type: 'button', className: 'primary', textContent: 'Upload' });
+      const back = el('button', { type: 'button', textContent: 'Cancel' });
+      back.onclick = () => { say(''); renderDetail(); };
+      go.onclick = async () => {
+        const ch = chosenRows(rows);
+        if (!ch.ok) { say('Fix the file problems first.', 'err'); return; }
+        if (!ch.files.length) { say('Choose a file.', 'err'); return; }
+        go.disabled = true; back.disabled = true;
+        try {
+          const st = await api('committeeUploadStart', { session, recordId: det.recordId, note: note.value });
+          for (let i = 0; i < ch.files.length; i++) {
+            const f = ch.files[i];
+            say(uploadText(i, ch.files.length, f.file));
+            await api('committeeUploadFile', { uploadToken: st.uploadToken, name: f.file.name, tag: f.tag, data: await readBase64(f.file) });
+          }
+          say('Filing…');
+          const r = await api('committeeUploadFinish', { session, uploadToken: st.uploadToken });
+          await reloadDetail();
+          say(r.message, 'ok');
+        } catch (e) { say(e.message, 'err'); go.disabled = false; back.disabled = false; }
+      };
+      $('detPanel').replaceChildren(el('div', { className: 'card' },
+        el('p', { className: 'hint', textContent: 'Files you add are filed in ' + det.name + '\'s folder exactly like a Scout upload: standard name, next version (ESSPP-V3…), the older version goes to Archive, and the row shows New files. Logged under your initials. No email to the family.' }),
+        rows, more, el('label', { textContent: 'Note' }), note, el('div', { className: 'actions' }, go, back)));
+    };
+    $('detCancel').onclick = () => { editing = false; draft = {}; say(''); renderDetail(); };
+    $('detClose').onclick = () => {
+      if (editing && Object.keys(draft).length && !confirm('Close without saving your changes?')) return;
+      $('detDlg').close();
+    };
+    $('detSave').onclick = async () => {
+      const all = det.tabs.flatMap(t => t.fields);
+      const changed = all.filter(f => f.name in draft && draft[f.name] !== f.value);
+      if (!changed.length) { editing = false; say('Nothing changed.'); renderDetail(); return; }
+      const list = changed.map(f => '- ' + f.label + ': "' + (f.value || '') + '" → "' + draft[f.name] + '"').join('\n');
+      if (!confirm('Save ' + changed.length + ' change' + (changed.length > 1 ? 's' : '') + ' for ' + det.name + '?\n\n' + list)) return;
+      const edits = {}; changed.forEach(f => { edits[f.name] = draft[f.name]; });
+      $('detSave').disabled = true; say('Saving…');
+      try { const r = await api('scoutSave', { session, recordId: det.recordId, edits }); editing = false; draft = {}; say(r.message, 'ok'); await reloadDetail(); }
+      catch (e) { say(e.message, 'err'); }
+      finally { $('detSave').disabled = false; }
+    };
+
+    // ---------- row actions (lib/stageActions.js) ----------
+    function actionControl(r, g, list) {
+      list = list.filter(a => (!a.ifPending || r.pending) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifNot || !r[a.ifNot]));
+      const email = EMAIL_OK(g.key);
+      if (!list.length && !email) return [];
+      const sel = el('select', { className: 'actsel', title: 'Actions for ' + r.name },
+        el('option', { value: '', textContent: '⋯' }), ...list.map(a => el('option', { value: a.key, textContent: a.label })),
+        ...(email ? [el('option', { value: '__email', textContent: '✉ Email… (draft again)' })] : []));
+      sel.onchange = () => {
+        if (sel.value === '__email') { sel.value = ''; openEmail(r.recordId, r.name + (r.unit ? ' (' + r.unit + ')' : '') + ' · ' + g.label); return; }
+        const a = list.find(x => x.key === sel.value);
+        sel.value = '';
+        if (!a) return;
+        if (a.page) { location.href = a.page + '?r=' + encodeURIComponent(r.recordId); return; }
+        openAction(r, g, a);
+      };
+      return [sel];
+    }
+    let act = null, confirmNext = false;
+    const pad = (n) => String(n).padStart(2, '0');
+    const todayYmd = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+    function resetAct() { confirmNext = false; $('actWarn').hidden = true; $('actSave').textContent = 'Save'; }
+    function openAction(r, g, a) {
+      act = { r, a }; resetAct();
+      $('actTitle').textContent = a.label.replace(/…$/, '');
+      $('actWho').textContent = r.name + (r.unit ? ' (' + r.unit + ')' : '') + ' · ' + g.label +
+        (a.key === 'eagle_earned' && r.eagleNumber ? ' · announce: ' + r.eagleNumber : '');
+      $('actDateBox').hidden = !a.dateLabel; $('actDate').required = !!a.dateLabel;
+      $('actDateLabel').textContent = a.dateLabel || 'Date';
+      $('actDate').value = a.dateDefault === 'ebor' && r.ebor && r.ebor <= todayYmd() ? r.ebor : todayYmd();   // the board's date
+      $('actDate').max = todayYmd();
+      $('actNoteLabel').replaceChildren(a.noteLabel ? a.noteLabel + ' ' : a.noteToEmail ? 'What should the Scout change? ' : 'Note ', el('span', { className: 'opt',
+        textContent: a.noteToEmail ? '(goes into the email draft, the Notes cell and the Scout\'s log)' : '(optional; goes into the Notes cell and the Scout\'s log)' }));
+      $('actNote').value = ''; $('actMsg').textContent = '';
+      $('actEmail').textContent = a.emailHint || '';
+      renderFiles(a);
+      $('actDlg').showModal();
+    }
+    ['actDate', 'actNote'].forEach(id => $(id).addEventListener('input', resetAct));
+    // File pickers for actions that take files (Eagle earned: signed scans + photos).
+    const FILE_UI = {
+      application: { label: 'Signed Eagle Scout Rank Application (PDF scan)', accept: '.pdf,application/pdf' },
+      report: { label: 'Signed Advancement Report (PDF scan)', accept: '.pdf,application/pdf' },
+      photo: { label: 'EBoR photos', accept: 'image/*,.heic,.heif', multiple: true }
+    };
+    function renderFiles(a) {
+      const box = $('actFiles');
+      box.replaceChildren();
+      (a.files || []).forEach(k => {
+        const u = FILE_UI[k];
+        const inp = el('input', { type: 'file', accept: u.accept, multiple: !!u.multiple, id: 'actFile_' + k });
+        const note = el('p', { className: 'hint' });
+        inp.onchange = () => {
+          resetAct();
+          const fs = [...inp.files];
+          note.className = 'hint';
+          if (k !== 'photo' && fs[0] && (!/\.pdf$/i.test(fs[0].name) || fs[0].size > 20 * 1048576)) {
+            note.className = 'hint err'; note.textContent = fs[0].name + ': a PDF up to 20 MB, please.'; return;
+          }
+          note.textContent = fs.length ? (k === 'photo' ? fs.length + ' photo' + (fs.length > 1 ? 's' : '') + ' (resized to 2048 px JPEG, dated with the board\'s date, before upload)' : sizeText(fs[0].size)) : '';
+        };
+        const req = (a.requireFiles || []).includes(k);
+        box.append(el('label', { htmlFor: inp.id }, u.label + ' ', el('span', { className: 'opt', textContent: req ? '' : '(optional)' })), inp, note);
+      });
+    }
+    function chosenFiles() {
+      const out = [];
+      (act.a.files || []).forEach(k => { const inp = $('actFile_' + k); if (inp) [...inp.files].forEach(f => out.push({ kind: k, file: f })); });
+      return out;
+    }
+    async function uploadAll(token, files, ymd) {
+      let i = 0, noExif = 0;
+      for (const x of files) {
+        i++;
+        let name = x.file.name, data;
+        if (x.kind === 'photo') {
+          $('actMsg').textContent = 'Preparing photo ' + i + ' of ' + files.length + '…';
+          const ph = await preparePhoto(x.file, ymd);
+          if (!ph.exif) noExif++;
+          data = ph.base64; name = name.replace(/\.[^.]+$/, '') + '.jpg';
+        } else data = await readBase64(x.file);
+        $('actMsg').textContent = 'Uploading ' + i + ' of ' + files.length + ': ' + name + '…';
+        await api('uploadRowFile', { uploadToken: token, kind: x.kind, name, data });
+      }
+      return noExif;
+    }
+    $('actClose').onclick = () => $('actDlg').close();
+    $('actForm').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!act) return;
+      $('actSave').disabled = true; $('actMsg').textContent = 'Saving…'; $('actMsg').className = 'muted';
+      try {
+        const files = act.a.files ? chosenFiles() : [];
+        const bad = $('actFiles').querySelector('.err');
+        if (bad) throw new Error(bad.textContent);
+        let res = await api('rowAction', { session, recordId: act.r.recordId, kind: act.a.key, date: act.a.dateLabel ? $('actDate').value : '',
+          note: $('actNote').value, confirm: confirmNext, files: [...new Set(files.map(x => x.kind))] });
+        if (res.uploadToken) {
+          const ymd = act.a.dateLabel ? $('actDate').value : todayYmd();
+          const noExif = await uploadAll(res.uploadToken, files, ymd);
+          $('actMsg').textContent = 'Filing and drafting the emails…';
+          res = await api('rowFinish', { session, uploadToken: res.uploadToken });
+          if (noExif) res.message += ' (' + noExif + ' photo(s) without the EXIF date: the helper could not load.)';
+        }
+        if (res.needsConfirm) {
+          $('actWarnList').replaceChildren(...res.warnings.map(w => el('li', { textContent: w })));
+          $('actWarn').hidden = false; confirmNext = true; $('actSave').textContent = 'Save anyway'; $('actMsg').textContent = '';
+          return;
+        }
+        try { localStorage.removeItem(CACHE_KEY); } catch {}
+        if (res.outboxId) {
+          try { sessionStorage.setItem('ccacReviewDone', res.message); } catch {}
+          location.href = '/committee/outbox?id=' + encodeURIComponent(res.outboxId);
+          return;
+        }
+        $('actDlg').close();
+        $('flash').textContent = res.message; $('flash').hidden = false;
+        await refresh();
+      } catch (e) { $('actMsg').textContent = e.message; $('actMsg').className = 'err'; }
+      finally { $('actSave').disabled = false; }
+    });
+
+    function show(d, stale) {
+      data = d;
+      const c = d.counts;
+      meLine.textContent = meText(d.me, d.testMode) + (stale ? ' · refreshing…' : '');
+      setReviewCount(c.toApprove + (c.signing || 0));
+      $('recBtn').title = c.toApprove + ' to record an outcome' + (c.awaitingOutcome ? ' (' + c.awaitingOutcome + ' review' + (c.awaitingOutcome > 1 ? 's' : '') + ' held, no outcome yet)' : '') +
+        (c.signing ? '; ' + c.signing + ' approved Proposal' + (c.signing > 1 ? 's' : '') + ' waiting for signatures' : '');
+      $('nPending').textContent = c.pending || 0;
+      $('pendAge').textContent = c.pending ? ' (oldest ' + (c.oldestPendingDays === 0 ? 'today' : c.oldestPendingDays + ' day' + (c.oldestPendingDays > 1 ? 's' : '')) + ')' : '';
+      setOutboxCount(c.outbox);
+      const cw = (d.tabs || []).flatMap(t => t.groups.flatMap(g => g.rows)).filter(r => r.councilWait !== null);
+      const ad = d.admin || {}, nAd = (ad.intake || 0) + (ad.unitRequests || 0);
+      $('heldStrip').hidden = !ad.held;
+      $('nHeldDup').textContent = ad.held || 0;
+      $('heldS').textContent = ad.held === 1 ? '' : 's';
+      $('adminStrip').hidden = !nAd;
+      $('nAdmin').textContent = nAd;
+      $('nAdmin').classList.add('hot');
+      $('councilStrip').hidden = !cw.length;
+      $('nCouncil').textContent = cw.length;
+      $('nCouncil').classList.toggle('hot', cw.some(r => r.councilOverdue));
+      $('councilAge').textContent = cw.length ? ' (oldest ' + Math.max(...cw.map(r => r.councilWait)) + ' days)' : '';
+      $('nUpcoming').textContent = c.upcoming;
+      ['nPending'].forEach(id => $(id).classList.toggle('hot', Number($(id).textContent) > 0));
+      if (d.tabs) { if (!d.tabs.some(t => t.key === tab)) tab = 'proposals'; renderTabs(); renderBoard(); }
+      $('app').hidden = false; $('msg').hidden = true;
+    }
+    async function refresh() {
+      const d = await api('committeeHome', { session });
+      show(d, false);
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ session, d })); } catch {}
+    }
+    if (!session) needSignIn($('msg'));
+    else {
+      try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && c.session === session && c.d.tabs) show(c.d, true); } catch {}
+      try { await refresh(); } catch (e) {
+        $('app').hidden = true;
+        if (isSignedOut(e)) needSignIn($('msg'), e.message);
+        else { $('msg').hidden = false; $('msg').textContent = e.message; $('msg').className = 'err'; }
+      }
+    }
+  </script>
+</body>
+</html>

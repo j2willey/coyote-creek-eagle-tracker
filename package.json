@@ -1,0 +1,29 @@
+{
+  "name": "ccac-eagle-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Coyote Creek District Advancement Committee: Eagle Proposal Workflow (Apps Script backend + Firebase Hosting front end)",
+  "scripts": {
+    "test": "tsc -p tsconfig.json && vitest run",
+    "test:watch": "vitest",
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "open": "clasp open-script",
+    "deploy:web": "firebase deploy --only hosting -P dev",
+    "deploy:api": "node tools/deploy-api.mjs",
+    "deploy": "npm test && npm run deploy:api && npm run deploy:web",
+    "deploy:api:staging": "node tools/deploy-api.mjs --env staging",
+    "deploy:web:staging": "firebase deploy --only hosting -P staging",
+    "deploy:staging": "npm test && npm run deploy:api:staging && npm run deploy:web:staging",
+    "deploy:api:prod": "node tools/deploy-api.mjs --env prod",
+    "deploy:web:prod": "firebase deploy --only hosting -P prod",
+    "deploy:prod": "npm test && npm run deploy:api:prod && npm run deploy:web:prod"
+  },
+  "devDependencies": {
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "3.11.174",
+    "typescript": "5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
