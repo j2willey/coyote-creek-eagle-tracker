@@ -8,6 +8,7 @@
  *  _Sessions     hidden    hashed session tokens (M2); never shown to committee
  *  Activity      visible   one row per Life to Eagle Log line; feeds the digest (digest.js)
  *  Digest Log    visible   one row per scheduled digest: sent / no changes / error
+ *  Closed Records visible  the January archive of Closed records (adminActions.js / closingActions.js)
  */
 var TAB_HEADERS_ = {
   'Intake Queue': ['Submitted', 'Queue ID', 'Status', 'Path', 'Eagle Candidate', 'Preferred Name', 'Unit', 'Birth Date',
@@ -25,7 +26,10 @@ var TAB_HEADERS_ = {
   'Outbox': ['Id', 'Created', 'Created by', 'Record ID', 'Scout', 'Template', 'Status', 'To', 'Cc', 'Subject', 'Html', 'Text', 'Done', 'Done by', 'Note', 'Attachments', 'On sent', 'Event at', 'Send at', 'Scheduled by'],
   'Digest Log': ['Ran at', 'Slot', 'Covers since', 'Changes', 'To', 'Result'],
   'Stats History': ['Year', 'Total Eagles', 'Female Eagles', 'Avg Age', 'Min Age', 'Max Age', 'Projects Approved',
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Note'],
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Note', 'Closed', 'Closed Reasons'],
+  // January archive of Closed records (lib/closing.js ARCHIVE_HEADERS; test/gas-load.test.js keeps the two in step). No contact details.
+  'Closed Records': ['Record ID', 'Scout', 'Unit', 'Closed', 'Reason', 'Note', 'Closed by', 'Stage before closing',
+    'Proposal approved', 'EBoR date', 'Folder', 'Archived on'],
   'Council Applications': ['Received', 'Ref', 'Name on form', 'Unit on form', 'Match', 'Scout', 'Record ID', 'How', 'Files', 'Not attached', 'Folder', 'Email', 'Checked', 'Stage'],
   'Unit Requests': ['Id', 'Submitted', 'Unit', 'From', 'Scout', 'Record ID', 'Date', 'Time', 'Place', 'Note', 'Status', 'Done', 'Done by'],
   '_Sessions': ['Token hash', 'Email', 'Record IDs', 'Created', 'Expires', 'Last seen']
@@ -48,6 +52,11 @@ function setupTabs_() {
       if (name === 'Unit Info') seedUnitInfo_(sh);
       if (name === 'Unit Contacts') seedUnitContacts_(sh);
       if (name === 'Stats History') seedStatsHistory_(sh);
+      if (name === 'Closed Records') {
+        sh.getRange(1, 1).setNote('Records closed in a past year, archived each January from the tracking tab (Admin page). ' +
+          'No contact details on purpose: these are minors\' records. The Scout\'s folder (Folder column) holds the paperwork.');
+        sh.setColumnWidth(6, 260);
+      }
       if (name === 'Key 3') { sh.getRange(1, 1).setNote(key3Note_('')); protectKey3_(sh); }
       created.push(name);
     } else {

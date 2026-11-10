@@ -159,12 +159,92 @@ var Closing = (function () {
     return out;
   }
 
+  // ---------- January archive ----------
+
+  var ARCHIVE_TAB = 'Closed Records';
+  /** The "Closed Records" tab. No contact details on purpose (no emails, phones, birth date, address, BSA ID): minors'
+   *  records kept long-term; the Scout's folder holds the paperwork. */
+  var ARCHIVE_HEADERS = ['Record ID', 'Scout', 'Unit', 'Closed', 'Reason', 'Note', 'Closed by', 'Stage before closing',
+    'Proposal approved', 'EBoR date', 'Folder', 'Archived on'];
+
+  /** Settings closedFolder ("Archive/Closed") -> ['Archive', 'Closed'] (under the Scouts folder); blank = the default. */
+  function folderPath(setting) {
+    var parts = str(setting).split(/[\/\\]+/).map(str).filter(Boolean);
+    return parts.length ? parts : DEFAULT_FOLDER.split('/');
+  }
+
+  /**
+   * Closed rows closed in a PAST year (those are cleared each January); a row with no closed date (moved to Closed by
+   * hand) is never archived, only counted. records: [{recordId, section, scout_name, unit, closed (parseClosed)}].
+   * -> {ids, rows: [{recordId, name, unit, closed ('YYYY-MM-DD'), reason}] oldest first, noDate, years: [{year, count}]}
+   */
+  function archiveCandidates(records, thisYear) {
+    var rows = [], noDate = 0;
+    (records || []).forEach(function (r) {
+      if (r.section !== SECTION || !str(r.scout_name)) return;
+      var d = r.closed && r.closed.date;
+      if (!d) { noDate++; return; }
+      if (Number(d.slice(0, 4)) < Number(thisYear)) {
+        rows.push({ recordId: r.recordId, name: str(r.scout_name), unit: str(r.unit), closed: d, reason: r.closed.reason });
+      }
+    });
+    rows.sort(function (a, b) { return a.closed < b.closed ? -1 : a.closed > b.closed ? 1 : a.name.localeCompare(b.name); });
+    var by = {};
+    rows.forEach(function (x) { var y = x.closed.slice(0, 4); by[y] = (by[y] || 0) + 1; });
+    return { ids: rows.map(function (x) { return x.recordId; }), rows: rows, noDate: noDate,
+      years: Object.keys(by).sort().map(function (y) { return { year: y, count: by[y] }; }) };
+  }
+
+  /**
+   * One row of the Closed Records tab, keyed by ARCHIVE_HEADERS.
+   * rec: {recordId, scout_name, unit, closed (parseClosed), approved, ebor ('YYYY-MM-DD' or ''), folderId}
+   * ctx: {stageLabel(sectionKey), archivedOn ('YYYY-MM-DD')}. Takes only these fields: nothing else can leak in.
+   */
+  function archiveRow(rec, ctx) {
+    var c = rec.closed || {};
+    var o = {};
+    o['Record ID'] = str(rec.recordId);
+    o['Scout'] = str(rec.scout_name);
+    o['Unit'] = str(rec.unit);
+    o['Closed'] = str(c.date);
+    o['Reason'] = str(c.reason);
+    o['Note'] = str(c.note);
+    o['Closed by'] = str(c.by);
+    o['Stage before closing'] = c.from ? str((ctx && ctx.stageLabel ? ctx.stageLabel(c.from) : '') || c.from) : '';
+    o['Proposal approved'] = str(rec.approved);
+    o['EBoR date'] = str(rec.ebor);
+    o['Folder'] = str(rec.folderId) ? 'https://drive.google.com/drive/folders/' + str(rec.folderId) : '';
+    o['Archived on'] = str(ctx && ctx.archivedOn);
+    return o;
+  }
+
+  // ---------- Stats ----------
+
+  /**
+   * Closures in a year by reason, from the Closed rows still on the tracking tab (a year's rows stay until the next
+   * January). records: [{section, closed}]. -> {year, total, byReason: [{reason, count}] biggest first, reasons: text}
+   */
+  function closuresByReason(records, year) {
+    var by = {}, total = 0;
+    (records || []).forEach(function (r) {
+      if (r.section !== SECTION || !r.closed || str(r.closed.date).slice(0, 4) !== String(year)) return;
+      var k = reasonKey(r.closed.reason);
+      if (!k) return;
+      by[k] = (by[k] || 0) + 1; total++;
+    });
+    var list = Object.keys(by).map(function (k) { return { reason: k, count: by[k] }; })
+      .sort(function (a, b) { return b.count - a.count || REASONS.indexOf(a.reason) - REASONS.indexOf(b.reason); });
+    return { year: String(year), total: total, byReason: list, reasons: list.map(function (x) { return x.reason + ' ' + x.count; }).join('; ') };
+  }
+
   return { SECTION: SECTION, FROM_SECTIONS: FROM_SECTIONS, REVIEW_SECTIONS: REVIEW_SECTIONS, REASONS: REASONS, OTHER: OTHER,
     DEFAULT_REVIEW_DAYS: DEFAULT_REVIEW_DAYS, DEFAULT_SNOOZE_DAYS: DEFAULT_SNOOZE_DAYS, DEFAULT_FOLDER: DEFAULT_FOLDER,
     COLUMN: COLUMN, SNOOZE_COLUMN: SNOOZE_COLUMN,
     closedCell: closedCell, parseClosed: parseClosed, reasonKey: reasonKey, closePlan: closePlan, closeLine: closeLine,
     reopenPlan: reopenPlan, reopenLine: reopenLine, ageYears: ageYears, stageSinceDate: stageSinceDate,
     suggest: suggest, suggestions: suggestions,
+    ARCHIVE_TAB: ARCHIVE_TAB, ARCHIVE_HEADERS: ARCHIVE_HEADERS, folderPath: folderPath, archiveCandidates: archiveCandidates,
+    archiveRow: archiveRow, closuresByReason: closuresByReason,
     _util: { isYmd: isYmd, daysBetween: daysBetween, addDays: addDays, nice: nice, posInt: posInt, str: str }
   };
 })();

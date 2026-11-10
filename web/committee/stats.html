@@ -29,6 +29,7 @@
         <section class="statcard"><h2>Coming up</h2><div id="future"></div></section>
         <section class="statcard"><h2>How long things take</h2><div id="speed"></div></section>
         <section class="statcard"><h2 id="unitsTitle">Eagles by unit</h2><div id="units"></div></section>
+        <section class="statcard"><h2 id="closedTitle">Closed records</h2><div id="closed"></div></section>
         <section class="statcard statwide"><h2 id="workTitle">Committee sessions held</h2><div class="boardwrap" id="work"></div></section>
       </div>
     </div>
@@ -98,6 +99,14 @@
       // Units
       $('unitsTitle').textContent = 'Eagles by unit, ' + c.year;
       $('units').replaceChildren(c.byUnit.length ? table(['Unit', 'Eagles'], c.byUnit.map(u => el('tr', {}, td(u.unit), td(fi(u.count))))) : el('p', { className: 'muted', textContent: 'None yet.' }));
+      // Closed records: this year live (rows still on the tracking tab), past years from Stats History
+      $('closedTitle').textContent = 'Closed records, ' + c.year;
+      const cz = c.closures || { total: 0, byReason: [] }, pastClosed = hist.filter(h => h.closed != null || h.closedReasons);
+      $('closed').replaceChildren(
+        cz.byReason.length ? el('div', { className: 'kv' }, ...cz.byReason.flatMap(x => [el('span', { textContent: x.reason }), el('b', { textContent: x.count })]),
+          el('span', { textContent: 'Total' }), el('b', { textContent: cz.total })) : el('p', { className: 'muted', textContent: 'None closed this year.' }),
+        ...(pastClosed.length ? [table(['Year', 'Closed', 'By reason'], pastClosed.map(h => el('tr', {}, td(h.year), td(fi(h.closed)), td(h.closedReasons || ''))))] : []),
+        el('p', { className: 'hint', textContent: 'Records the committee closed (withdrew, aged out, extension denied, moved away, duplicate). Past years are added by the January archive.' }));
       // Workload
       const w = d.workload;
       $('workTitle').textContent = 'Committee sessions held, ' + c.year + ' (from the schedule)';

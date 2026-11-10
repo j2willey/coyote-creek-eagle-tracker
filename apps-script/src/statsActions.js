@@ -15,12 +15,12 @@ function femaleColumn_() {
 function statsRecords_() {
   var s = getSettings_(), sc = stageColumns_();
   var aCol = approvedDateColumn_(), eCol = s.eborDateColumn || 'ebor_date', fCol = femaleColumn_();
-  var want = ['scout_name', 'unit', 'birth_date', aCol, eCol, sc.submitted, sc.verified, fCol].filter(String);
+  var want = ['scout_name', 'unit', 'birth_date', aCol, eCol, sc.submitted, sc.verified, fCol, Closing.COLUMN].filter(String);
   var d = function (v) { return Intake.dateKey(v) || ''; };
   return Records.all(want).filter(function (r) { return String(r.scout_name || '').trim(); }).map(function (r) {
     return { recordId: r.recordId, section: r.section, unit: String(r.unit || '').trim(), birth: d(r.birth_date),
       ebor: d(r[eCol]), approved: aCol ? d(r[aCol]) : '', submitted: sc.submitted ? d(r[sc.submitted]) : '',
-      verified: sc.verified ? d(r[sc.verified]) : '', female: fCol ? r[fCol] : '' };
+      verified: sc.verified ? d(r[sc.verified]) : '', female: fCol ? r[fCol] : '', closed: Closing.parseClosed(r[Closing.COLUMN]) };
   });
 }
 
@@ -39,11 +39,20 @@ function actionStats_(req) {
     workload: Stats.workload(rows, cur.year, Date.now()), femaleColumn: femaleColumn_(), today: today };
 }
 
-/** January archive: add the finished year to Stats History (once). */
+/**
+ * January archive: add the finished year to Stats History (once). A year already there without closure numbers (a row
+ * added before the Closed Records columns existed) gets them filled in, only when blank.
+ */
 function addStatsYear_(year) {
   try {
-    var have = readTabOrEmpty_(STATS_HISTORY_TAB).some(function (r) { return String(r['Year']) === String(year); });
-    if (have) return false;
+    var existing = readTabOrEmpty_(STATS_HISTORY_TAB).filter(function (r) { return String(r['Year']) === String(year); })[0];
+    if (existing) {
+      if (String(existing['Closed'] === undefined ? 'x' : existing['Closed']).trim() === '' && existing._row) {
+        var cl = Closing.closuresByReason(statsRecords_(), year);
+        if (cl.total) Tabs.update(STATS_HISTORY_TAB, existing._row, { 'Closed': cl.total, 'Closed Reasons': cl.reasons });
+      }
+      return false;
+    }
     var row = Stats.historyRow(Stats.current(statsRecords_(), year + '-12-31'), 'from the tracker, ' + todayYmd_());
     var obj = {};
     Stats.HISTORY_HEADERS.forEach(function (h, i) { obj[h] = row[i]; });

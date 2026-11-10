@@ -103,6 +103,7 @@ var ACTIONS_ = {
   adminIntakeCompare: function (req) { return actionAdminIntakeCompare_(req); },
   adminIntakeApply: function (req) { return actionAdminIntakeApply_(req); },
   adminArchive: function (req) { return actionAdminArchive_(req); },
+  adminClosedArchive: function (req) { return actionAdminClosedArchive_(req); },
   adminRequestDone: function (req) { return actionAdminRequestDone_(req); },
   hostRequest: function (req) { return actionHostRequest_(req); },
   // Scout detail window (scoutDetailActions.js)

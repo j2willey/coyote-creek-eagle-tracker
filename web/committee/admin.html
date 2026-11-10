@@ -89,6 +89,11 @@
         <p class="hint">Moves the Eagle Earned rows of a past year to the spreadsheet "CC Eagles &lt;year&gt;" next to the tracking sheet (same columns and links), then removes them from the tracking tab. Their folders stay where they are.</p>
         <div id="arch"></div>
       </section>
+      <section class="admsec">
+        <h2>January: archive last year's Closed records</h2>
+        <p class="hint">Closed records from a past year are cleared once a year. For each: a row (no contact details) goes to the "Closed Records" tab next to the tracking sheet, the Scout's folder moves to <b id="clFolder">Archive/Closed</b> (Settings → closedFolder), and the row leaves the tracking tab. Nothing happens until you press Archive; the list below is what it would do.</p>
+        <div id="closedArch"></div>
+      </section>
     </div>
     <dialog id="pvDlg" class="detail">
       <div class="dethead"><div><h2 id="pvTitle"></h2><p class="muted" id="pvMeta"></p></div><button type="button" id="pvClose">Close</button></div>
@@ -256,6 +261,29 @@
         } else td.append(el('span', { className: 'muted', textContent: y.year === String(d.thisYear) ? 'this year: in January' : 'needs an EBoR date' }));
         return el('tr', {}, el('td', { textContent: y.year }), el('td', { textContent: y.count + ' Eagle' + (y.count === 1 ? '' : 's') }), td);
       });
+      const ca = d.closedArchive || { rows: [], years: [], noDate: 0, total: 0, folder: 'Archive/Closed' };
+      $('clFolder').textContent = ca.folder;
+      const cbtn = el('button', { type: 'button', className: 'obbtn', textContent: 'Archive ' + ca.rows.length + ' Closed record' + (ca.rows.length === 1 ? '' : 's') + '…' });
+      cbtn.onclick = async () => {
+        cbtn.disabled = true;
+        try {
+          const p = await api('adminClosedArchive', { session });
+          confirmDo('Archive ' + p.rows.length + ' Closed record' + (p.rows.length === 1 ? '' : 's') + '?', [
+            el('p', { textContent: 'Each Scout\'s folder moves to ' + p.folder + '/, a row goes to the Closed Records tab, and the row leaves the tracking tab:' }),
+            el('ul', { className: 'waitlist' }, ...p.rows.map(x => el('li', { textContent: x.name + (x.unit ? ' (' + x.unit + ')' : '') + ' · closed ' + x.closed + ' · ' + x.reason })))], 'Archive', async () => {
+              const r = await api('adminClosedArchive', { session, confirm: true });
+              return r.message;
+            });
+        } catch (e) { flash(''); $('msg').textContent = e.message; $('msg').className = 'err'; $('msg').hidden = false; }
+        finally { cbtn.disabled = false; }
+      };
+      $('closedArch').replaceChildren(...(ca.rows.length ? [
+        el('p', { textContent: ca.rows.length + ' of ' + ca.total + ' Closed record' + (ca.total === 1 ? '' : 's') + ' were closed in a past year (' +
+          ca.years.map(y => y.year + ': ' + y.count).join(', ') + ').' }),
+        el('table', { className: 'admtable' }, el('tbody', {}, ...ca.rows.map(x => el('tr', {}, el('td', { textContent: x.name }), el('td', { textContent: x.unit }),
+          el('td', { textContent: x.closed }), el('td', { textContent: x.reason }))))), cbtn]
+        : [el('p', { className: 'muted admempty', textContent: ca.total ? 'None to archive: all ' + ca.total + ' Closed record' + (ca.total === 1 ? ' was' : 's were') + ' closed this year.' : 'No Closed records.' })]),
+        ...(ca.noDate ? [el('p', { className: 'hint', textContent: ca.noDate + ' Closed row' + (ca.noDate === 1 ? ' has' : 's have') + ' no closed date (moved there by hand) and stay on the tracking tab (Reopen… and then Close record… again gives them a date).' })] : []));
       $('arch').replaceChildren(rows.length ? el('table', { className: 'admtable' }, el('tbody', {}, ...rows))
         : el('p', { className: 'muted admempty', textContent: 'No Eagle Earned rows on the tracking tab.' }));
     }

@@ -2,7 +2,7 @@
  * Stats (Jim W., 2026-10-24): the committee's statistics page, the web version of the "Eagle Comparisons" tab.
  * Past years come from the "Stats History" tab (fixed numbers); the current year is computed live here. Pure.
  *
- * records: [{recordId, section, unit, birth, ebor, approved, submitted, verified, female}] dates 'YYYY-MM-DD'.
+ * records: [{recordId, section, unit, birth, ebor, approved, submitted, verified, female, closed ({reason, date})}] dates 'YYYY-MM-DD'.
  */
 var Stats = (function () {
   function str(v) { return v == null ? '' : String(v).trim(); }
@@ -47,6 +47,12 @@ var Stats = (function () {
     { key: 'paused', label: 'EBoRs paused', sections: ['ebor_paused'] }
   ];
 
+  /** Closed records by reason (lib/closing.js; closing.js is loaded first in Node, called only inside functions). */
+  function closuresByReason(records, year) {
+    var C = typeof Closing !== 'undefined' ? Closing : require('./closing.js');
+    return C.closuresByReason(records, year);
+  }
+
   /** The current year, live. today 'YYYY-MM-DD'. */
   function current(records, today) {
     var year = str(today).slice(0, 4), recs = records || [];
@@ -89,7 +95,7 @@ var Stats = (function () {
     var council = recs.map(function (r) { return days(r.submitted, r.verified); })
       .filter(function (d) { return d !== null && d >= 0 && d < 365; });
     // Age-out watch: 17.5+ and not an Eagle yet (open stages only)
-    var CLOSED = ['eagle_earned', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved'];
+    var CLOSED = ['eagle_earned', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved', 'closed'];
     var watch = recs.filter(function (r) { return CLOSED.indexOf(r.section) < 0; }).map(function (r) { return { r: r, a: age(r.birth, today) }; })
       .filter(function (x) { return x.a !== null && x.a >= 17.5 && x.a < 18; });
     var watchBy = {};
@@ -106,6 +112,7 @@ var Stats = (function () {
         councilVerify: { median: median(council), n: council.length }
       },
       ageWatch: { count: watch.length, bySection: watchBy },
+      closures: closuresByReason(recs, year),               // Closed records (lib/closing.js): this year by reason
       byUnit: Object.keys(byUnit).map(function (u) { return { unit: u, count: byUnit[u] }; })
         .sort(function (a, b) { return b.count - a.count || a.unit.localeCompare(b.unit); })
     };
@@ -135,13 +142,14 @@ var Stats = (function () {
     return (rows || []).filter(function (r) { return /^\d{4}$/.test(str(r['Year'])); }).map(function (r) {
       return { year: str(r['Year']), total: num(r['Total Eagles']), female: num(r['Female Eagles']), avgAge: num(r['Avg Age']),
         minAge: num(r['Min Age']), maxAge: num(r['Max Age']), approved: num(r['Projects Approved']),
-        monthly: MONTHS.map(function (m) { return num(r[m.slice(0, 3)]); }) };
+        monthly: MONTHS.map(function (m) { return num(r[m.slice(0, 3)]); }),
+        closed: num(r['Closed']), closedReasons: str(r['Closed Reasons']) };
     }).sort(function (a, b) { return a.year.localeCompare(b.year); });
   }
 
   // Seed for the Stats History tab: the committee's "Eagle Comparisons" tab as of 2026-10-24 (aggregates only).
   var HISTORY_HEADERS = ['Year', 'Total Eagles', 'Female Eagles', 'Avg Age', 'Min Age', 'Max Age', 'Projects Approved',
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Note'];
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Note', 'Closed', 'Closed Reasons'];
   var HISTORY_SEED = [
     [2020, 36, 'N/A', 'unk.', 'unk.', 'unk.', 27, '', '', '', '', '', '', '', '', '', '', '', '', 'from Eagle Comparisons'],
     [2021, 97, 9, 17.4, 14.4, 21.3, 94, 2, 7, 9, 8, 7, 6, 3, 8, 7, 16, 12, 12, 'from Eagle Comparisons'],
@@ -149,12 +157,13 @@ var Stats = (function () {
     [2023, 65, 9, 17.6, 15.3, 19.2, 77, 1, 3, 5, 5, 7, 3, 5, 8, 6, 6, 10, 6, 'from Eagle Comparisons'],
     [2024, 95, 13, 17.4, 13.0, 18.9, 117, 5, 4, 5, 7, 8, 10, 9, 6, 11, 18, 12, 0, 'from Eagle Comparisons'],
     [2025, 87, 14, 17.5, 14.1, 19.3, 81, 3, 4, 5, 7, 8, 12, 4, 7, 6, 13, 8, 10, 'from Eagle Comparisons']
-  ];
+  ].map(function (r) { return r.concat(['', '']); });         // Closed, Closed Reasons: not tracked before 2026
 
   /** A finished year as a Stats History row (the January archive adds it). */
   function historyRow(cur, note) {
     var a = cur.annual;
-    return [Number(cur.year), a.total, a.female, a.avgAge, a.minAge, a.maxAge, a.approved].concat(cur.monthly).concat([note || '']);
+    var c = cur.closures || { total: '', reasons: '' };
+    return [Number(cur.year), a.total, a.female, a.avgAge, a.minAge, a.maxAge, a.approved].concat(cur.monthly).concat([note || '', c.total, c.reasons]);
   }
 
   return { MONTHS: MONTHS, PIPELINE: PIPELINE, age: age, isFemale: isFemale, median: median, current: current, workload: workload,

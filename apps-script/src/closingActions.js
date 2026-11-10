@@ -97,3 +97,96 @@ function closeSuggestions_() {
   } catch (e) { console.warn('closeSuggestions_: ' + e); }
   return out;
 }
+
+// ---------- January archive of Closed records (Admin page) ----------
+
+/** The tracking rows that are Closed, with what the archive and its report need. */
+function closedRecords_() {
+  var aCol = approvedDateColumn_(), eCol = String(getSettings_().eborDateColumn || 'ebor_date');
+  return Records.all(['scout_name', 'unit', aCol, eCol, '_folder_id', Closing.COLUMN].filter(String))
+    .filter(function (r) { return r.section === Closing.SECTION; })
+    .map(function (r) {
+      return { recordId: r.recordId, section: r.section, scout_name: String(r.scout_name || '').trim(), unit: String(r.unit || '').trim(),
+        closed: Closing.parseClosed(r[Closing.COLUMN]), approved: aCol ? (Intake.dateKey(r[aCol]) || '') : '', ebor: Intake.dateKey(r[eCol]) || '',
+        folderId: String(r._folder_id || '').trim() };
+    });
+}
+
+/** The dry run, shown on the Admin page: Closed rows closed in a past year, and what Apply will do. */
+function closedArchiveReport_() {
+  var recs = closedRecords_();
+  var c = Closing.archiveCandidates(recs, new Date().getFullYear());
+  return { rows: c.rows, years: c.years, noDate: c.noDate, total: recs.filter(function (r) { return r.scout_name; }).length,
+    folder: Closing.folderPath(getSettings_().closedFolder).join('/'), thisYear: new Date().getFullYear() };
+}
+
+/**
+ * Admin: archive the Closed records of past years. Per record: the Scout's folder moves to <Scouts folder>/Archive/Closed
+ * (Settings → closedFolder, created when missing), a row (no contact details) goes to the "Closed Records" tab, the
+ * move is logged, and the row leaves the tracking tab. A record whose folder can't be moved is left on the tracking tab
+ * and reported; nothing is deleted before its row is on the Closed Records tab. Without confirm: the dry-run list.
+ * req: {session, confirm}
+ */
+function actionAdminClosedArchive_(req) {
+  var c = committeeMe_(req.session);
+  var s = getSettings_();
+  var recs = closedRecords_();
+  var cand = Closing.archiveCandidates(recs, new Date().getFullYear());
+  var path = Closing.folderPath(s.closedFolder);
+  if (!cand.rows.length) throw userError_('No Closed records from a past year on the tracking tab.');
+  if (!req.confirm) return { needsConfirm: true, rows: cand.rows, folder: path.join('/'), noDate: cand.noDate };
+  if (!s.scoutsFolderId) throw userError_('Settings → scoutsFolderId is empty: the folders can\'t be moved.');
+  var have = {};
+  try {                                                         // the tab and its columns first: nothing moves before this passes
+    var tab = Tabs.sheet(Closing.ARCHIVE_TAB);
+    var head = tab.getRange(1, 1, 1, Math.max(tab.getLastColumn(), 1)).getValues()[0].map(function (h) { return String(h).replace(/\s+/g, ' ').trim(); });
+    var miss = Closing.ARCHIVE_HEADERS.filter(function (h) { return head.indexOf(h) < 0; });
+    if (miss.length) throw new Error('The ' + Closing.ARCHIVE_TAB + ' tab is missing the column(s) ' + miss.join(', '));
+    Tabs.read(Closing.ARCHIVE_TAB).forEach(function (r) { have[String(r['Record ID'] || '')] = true; });
+  } catch (e) { throw userError_(e.message + '. Run Admin → Setup / repair tabs, then try again.'); }
+  cand.years.forEach(function (y) { addStatsYear_(y.year); });  // the year's numbers (closures included) go to Stats History first
+  var byId = {};
+  recs.forEach(function (r) { byId[r.recordId] = r; });
+  var target = null, today = todayYmd_(), short = Intake.shortDate(new Date());
+  var stageLabel = function (k) { return SettingsModel.sectionLabel(s, k); };
+  var done = [], failed = [];
+  cand.rows.forEach(function (x) {
+    var r = byId[x.recordId];
+    try {
+      var rec = Records.get(x.recordId);
+      if (!rec || rec.section !== Closing.SECTION) return;                     // changed since the list was made
+      var folder = null;
+      if (r.folderId) {
+        folder = linkedFolder_(rec);
+        if (!folder) throw new Error('its Drive folder can\'t be found or opened');
+        if (!target) { target = DriveApp.getFolderById(s.scoutsFolderId); path.forEach(function (seg) { target = childFolder_(target, seg); }); }
+        var up = folder.getParents(), cur = up.hasNext() ? up.next() : null;
+        if (!cur || cur.getId() !== target.getId()) folder.moveTo(target);
+      }
+      addRecordNote_(x.recordId, short + ' [tool] Closed record archived: folder moved to ' + path.join('/') + '/, row moved to the ' + Closing.ARCHIVE_TAB + ' tab');
+      if (!have[x.recordId]) {
+        Tabs.append(Closing.ARCHIVE_TAB, Closing.archiveRow(r, { stageLabel: stageLabel, archivedOn: today }));
+        have[x.recordId] = true;
+      }
+      done.push(x);
+    } catch (e) { failed.push(x.name + ': ' + e.message); }
+  });
+  if (done.length) {
+    var ids = done.map(function (x) { return x.recordId; });
+    var sh = getTrackingSheet_();
+    var top = sh.getRange(1, 1, Math.min(15, sh.getLastRow()), sh.getLastColumn()).getValues();
+    var m = SheetModel.findMachineRow(top);
+    var firstData = m.row + 3;
+    withLock_(function () {                                                      // same safe delete path as the Eagles archive
+      var keys = sh.getRange(1, m.keyCol + 1, sh.getLastRow(), 1).getValues().map(function (rr) { return String(rr[0]); });
+      AdminRules.deleteRuns(sh.getLastRow(), firstData, function (row) { return ids.indexOf(keys[row - 1]) < 0; })
+        .forEach(function (run) { sh.deleteRows(run[0], run[1]); });
+    });
+    Records.invalidate();
+    refreshActionDropdownsQuietly_();
+  }
+  adminLog_('Archived ' + done.length + ' Closed record' + (done.length === 1 ? '' : 's') + ' of ' + cand.years.map(function (y) { return y.year; }).join(', ') +
+    ' to the "' + Closing.ARCHIVE_TAB + '" tab; folders moved to ' + path.join('/') + '/' + (failed.length ? '; NOT archived: ' + failed.join('; ') : ''), c.email);
+  return { message: done.length + ' Closed record' + (done.length === 1 ? '' : 's') + ' archived (folders in ' + path.join('/') + '/, rows on the "' +
+    Closing.ARCHIVE_TAB + '" tab).' + (failed.length ? ' Left on the tracking tab: ' + failed.join('; ') + '.' : '') };
+}

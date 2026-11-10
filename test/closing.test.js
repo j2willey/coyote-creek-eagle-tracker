@@ -197,3 +197,90 @@ describe('Closing.suggest: rows that look terminal (a person decides)', () => {
     expect(Nudges.awaiting({ closeReview: [] })).toEqual([]);
   });
 });
+
+describe('Closing: January archive', () => {
+  const rec = (id, o = {}) => ({ recordId: id, section: 'closed', scout_name: 'Scout ' + id, unit: 'T910',
+    closed: { reason: 'Withdrew', date: '2025-06-01', by: 'JW', from: 'proposal_not_approved', note: '' }, ...o });
+  const recs = [
+    rec('R-1', { closed: { reason: 'Withdrew', date: '2025-06-01', by: 'JW', from: 'ebor_paused', note: 'family moved' } }),
+    rec('R-2', { closed: { reason: 'Aged out (no extension)', date: '2024-12-31', by: 'AB', from: 'proposal_not_approved', note: '' } }),
+    rec('R-3', { closed: { reason: 'Other: x', date: '2026-02-01', by: 'AB', from: 'beyond_age', note: '' } }),      // this year: stays
+    rec('R-4', { closed: null }),                                                                                   // moved by hand: no date
+    rec('R-5', { section: 'proposal_not_approved' }),                                                               // not closed
+    rec('R-6', { scout_name: '' })
+  ];
+  it('picks the Closed rows closed in a past year, oldest first', () => {
+    const c = Closing.archiveCandidates(recs, 2026);
+    expect(c.ids).toEqual(['R-2', 'R-1']);
+    expect(c.rows[0]).toEqual({ recordId: 'R-2', name: 'Scout R-2', unit: 'T910', closed: '2024-12-31', reason: 'Aged out (no extension)' });
+    expect(c.years).toEqual([{ year: '2024', count: 1 }, { year: '2025', count: 1 }]);
+    expect(c.noDate).toBe(1);
+  });
+  it('next January the 2026 ones follow; nothing closed this year is archived', () => {
+    expect(Closing.archiveCandidates(recs, 2027).ids).toEqual(['R-2', 'R-1', 'R-3']);
+    expect(Closing.archiveCandidates(recs, 2024).ids).toEqual([]);
+  });
+  it('Settings closedFolder -> folder path', () => {
+    expect(Closing.folderPath('Archive/Closed')).toEqual(['Archive', 'Closed']);
+    expect(Closing.folderPath(' Old\\Done / 2026 ')).toEqual(['Old', 'Done', '2026']);
+    expect(Closing.folderPath('')).toEqual(['Archive', 'Closed']);
+  });
+  it('the Closed Records row has the agreed columns and NO contact details', () => {
+    const full = { ...recs[0], approved: '2025-01-15', ebor: '2025-05-10', folderId: 'FOLDER1',
+      scout_email: 'scout@example.org', parent_email: 'parent@example.org', scout_phone: '555-0100', birth: '2008-01-01', birth_date: '2008-01-01',
+      bsa_id: '12345678', address: '1 Sample St', notes: 'private log' };
+    const row = Closing.archiveRow(full, { stageLabel: k => ({ ebor_paused: 'EBoR Paused' })[k], archivedOn: '2026-01-05' });
+    expect(Object.keys(row)).toEqual(Closing.ARCHIVE_HEADERS);
+    expect(Closing.ARCHIVE_HEADERS).toEqual(['Record ID', 'Scout', 'Unit', 'Closed', 'Reason', 'Note', 'Closed by', 'Stage before closing',
+      'Proposal approved', 'EBoR date', 'Folder', 'Archived on']);
+    expect(row).toEqual({ 'Record ID': 'R-1', 'Scout': 'Scout R-1', 'Unit': 'T910', 'Closed': '2025-06-01', 'Reason': 'Withdrew', 'Note': 'family moved',
+      'Closed by': 'JW', 'Stage before closing': 'EBoR Paused', 'Proposal approved': '2025-01-15', 'EBoR date': '2025-05-10',
+      'Folder': 'https://drive.google.com/drive/folders/FOLDER1', 'Archived on': '2026-01-05' });
+    const text = JSON.stringify(row);
+    ['example.org', '555-0100', '2008-01-01', '12345678', 'Sample St', 'private log'].forEach(x => expect(text).not.toContain(x));
+    expect(Closing.ARCHIVE_HEADERS.join(' ')).not.toMatch(/mail|phone|birth|address|BSA/i);
+  });
+  it('a row with no dates or folder leaves those cells empty', () => {
+    const row = Closing.archiveRow({ recordId: 'R-9', scout_name: 'Scout_9', unit: 'T999', closed: { reason: 'Withdrew', date: '2025-02-02', by: '', from: '', note: '' } }, { archivedOn: '2026-01-05' });
+    expect(row['Proposal approved']).toBe('');
+    expect(row['EBoR date']).toBe('');
+    expect(row['Folder']).toBe('');
+    expect(row['Stage before closing']).toBe('');
+  });
+});
+
+describe('Closing: Stats', () => {
+  const Stats = require('../apps-script/src/lib/stats.js');
+  const recs = [
+    { section: 'closed', closed: { reason: 'Withdrew', date: '2026-03-01' } },
+    { section: 'closed', closed: { reason: 'Withdrew', date: '2026-04-01' } },
+    { section: 'closed', closed: { reason: 'Other: moved abroad', date: '2026-05-01' } },
+    { section: 'closed', closed: { reason: 'Extension denied', date: '2026-06-01' } },
+    { section: 'closed', closed: { reason: 'Withdrew', date: '2025-06-01' } },      // last year: Stats History has it
+    { section: 'closed', closed: null },
+    { section: 'proposal_not_approved', closed: { reason: 'Withdrew', date: '2026-06-01' } }   // reopened rows don't count
+  ];
+  it('closures by reason this year, biggest first', () => {
+    const z = Closing.closuresByReason(recs, 2026);
+    expect(z.total).toBe(4);
+    expect(z.byReason).toEqual([{ reason: 'Withdrew', count: 2 }, { reason: 'Extension denied', count: 1 }, { reason: 'Other', count: 1 }]);
+    expect(z.reasons).toBe('Withdrew 2; Extension denied 1; Other 1');
+    expect(Closing.closuresByReason([], 2026)).toEqual({ year: '2026', total: 0, byReason: [], reasons: '' });
+  });
+  it('is part of the live Stats and the year\'s Stats History row', () => {
+    const cur = Stats.current(recs.map(r => ({ ...r, recordId: 'x', unit: 'T910' })), '2026-12-31');
+    expect(cur.closures.total).toBe(4);
+    const row = Stats.historyRow(cur, 'note');
+    expect(row).toHaveLength(Stats.HISTORY_HEADERS.length);
+    expect(row.slice(-2)).toEqual([4, 'Withdrew 2; Extension denied 1; Other 1']);
+    Stats.HISTORY_SEED.forEach(r => expect(r).toHaveLength(Stats.HISTORY_HEADERS.length));
+  });
+  it('Stats History rows carry closures for past years', () => {
+    const h = Stats.history([{ Year: '2026', 'Total Eagles': 90, Closed: 5, 'Closed Reasons': 'Withdrew 5' }, { Year: '2025', 'Total Eagles': 87 }]);
+    expect(h.map(x => [x.year, x.closed, x.closedReasons])).toEqual([['2025', null, ''], ['2026', 5, 'Withdrew 5']]);
+  });
+  it('Closed Scouts are not on the age-out watch', () => {
+    const cur = Stats.current([{ recordId: 'a', section: 'closed', birth: '2008-11-01', unit: 'T910' }, { recordId: 'b', section: 'app_verified', birth: '2008-11-01', unit: 'T910' }], '2026-06-01');
+    expect(cur.ageWatch.count).toBe(1);
+  });
+});

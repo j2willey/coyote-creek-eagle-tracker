@@ -5,6 +5,7 @@
  *   adminData    {session}                              -> {intake, archive, unitRequests}
  *   adminIntake  {session, queueId, act, recordId?}     -> {message}   act: attach | promote | resend | spam
  *   adminArchive {session, year, confirm}               -> {needsConfirm, names} | {message, url}
+ *   adminClosedArchive {session, confirm}               -> {needsConfirm, rows, folder} | {message}   (closingActions.js)
  *   adminRequestDone {session, id}                       -> {message}   unit host-a-board request handled
  */
 function adminRecords_() {
@@ -39,6 +40,7 @@ function actionAdminData_(req) {
     return x;
   });
   return { intake: intake, review: review, archive: AdminRules.archiveYears(recs), thisYear: new Date().getFullYear(),
+    closedArchive: closedArchiveReport_(),
     unitRequests: openUnitRequests_(),
     scouts: recs.filter(function (r) { return String(r.scout_name || '').trim() && r.section !== 'eagle_earned'; })
       .map(function (r) { return { recordId: r.recordId, label: r.scout_name + ' (' + r.unit + ') · ' + SettingsModel.sectionLabel(s, r.section) }; })
