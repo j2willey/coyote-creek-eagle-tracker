@@ -82,6 +82,9 @@ _Avoid_: archived (that is the January step), deleted, rejected
 **Closed Archive**:
 The tab of the tracking spreadsheet that the January archive appends to: one row per Closed record from a past year (Record ID, Scout, unit, closed date, reason, note, who closed it, stage before closing, Proposal approved date, EBoR date, folder link, archived on). Deliberately **no contact details** (no emails, phones, birth date, address, BSA ID): these are minors' records, and the Scout's folder (moved to `Archive/Closed`) holds the paperwork.
 
+**Eagle Archive**:
+The tab of the tracking spreadsheet that holds past years' Eagles: one "<year> Eagles" section per year, newest at the top, each followed by that year's Scouts (all columns, with the folder links). The January archive adds the new year at the top, matching columns by machine name. Not to be confused with the Closed Archive (Closed records only).
+
 **Quiet Period**:
 The span between Proposal approval and Eagle Application submission, when the district usually hears nothing.
 

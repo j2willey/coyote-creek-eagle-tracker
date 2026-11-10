@@ -5,7 +5,7 @@ Life Scout from the first Eagle Project Proposal through the Eagle Board of Revi
 book their Pre-Review Call, Proposal Review and Eagle Board of Review online; unit leaders enter their board members;
 committee members schedule sessions on a calendar page and keep working in the tracking spreadsheet they already use.
 
-> **Status (2026-11-10, API 0.62.0):** **production** runs as the Council account (`cc-advancement@…`) on the
+> **Status (2026-11-10, API 0.63.0):** **production** runs as the Council account (`cc-advancement@…`) on the
 > real tracking sheet at **https://ccac.svmbc.org**, **live since 2026-10-22**, all booking online since 2026-10-26
 > (test mode off, `onlineBooking` = `all`): Proposals come in only through the website (email first), and Scouts book
 > their Pre-Review Call, Proposal Review and EBoR online. Committee members work on the web pages (dashboard, schedule,
@@ -199,7 +199,7 @@ inside functions (`test/gas-load.test.js` checks this and that every entry point
   (a "Keep open" decision hides the "Close?" suggestion until that date). They travel with the row.
 - **Tabs the tool adds:** Settings, Intake Queue, Uploads Log, Committee (Name | Initials | Email | Active), Unit Info
   (Unit | Under Review | … ; any mark in a column titled "Under Review" / "…restrict…" = under review), Unit Contacts,
-  Key 3, Activity, Digest Log, Outbox, Unit Requests, Stats History (past years for the Stats page), Closed Archive (January archive of Closed records), `_Sessions` (hidden). Setup / repair tabs adds missing tabs,
+  Key 3, Activity, Digest Log, Outbox, Unit Requests, Stats History (past years for the Stats page), Closed Archive (January archive of Closed records), `_Sessions` (hidden). The **Eagle Archive** tab (past years' Eagles) is not made by Setup / repair: it began as a copy of the tracking tab, and the January archive creates it from the tracking tab's header rows when it is missing. Setup / repair tabs adds missing tabs,
   columns, Settings keys and sections, and never deletes anything.
 - **Schedule sheet** (separate file, Settings → `scheduleSheetId`): one row per session, hidden machine row with
   `date, day, time, scout_name, unit, reps, board_members, slot_type, location, address, duration_min, record_id,
@@ -294,6 +294,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `eborDoneColor`, `exceptionsFolder`, `unitPipeline` | #93c47d, Exceptions, TRUE | Eagle earned paint; folder; unit page candidate list |
 | `closeReviewDays` | 180 | Proposal Not Approved / EBoR Paused with no log line or update for this many days: amber "Close?" tag and digest line (also at 18 or older). Beyond Age is never suggested |
 | `closeSnoozeDays` | 90 | "Keep open" hides the "Close?" suggestion for this many days |
+| `eagleArchiveTab` | Eagle Archive | January archive: a past year's Eagles go to the top of this tab, in the tracking spreadsheet |
 | `closedFolder` | Archive/Closed | January archive: Closed Scouts' folders move to `<Scouts folder>/<this path>` (created when missing) |
 | `eborSignupUrl`, `reviewSignupUrl` | | `{scheduleLink}` while those types aren't booked online |
 
@@ -368,7 +369,7 @@ order (= order of arrival):
 | Proposals (default) | Proposal Received … Proposal Revisions Requested | "New files" marker |
 | Underway | Proposal Approved | Approved |
 | EBoRs | Application Submitted, Application Verified, EBoR Booked | EBoR |
-| Eagles | Eagle Earned (archived to "CC Eagles 20xx" each Jan 1) | EBoR; **age fixed at the EBoR date** |
+| Eagles | Eagle Earned (archived to the Eagle Archive tab each Jan 1) | EBoR; **age fixed at the EBoR date** |
 | Exceptions | EBoR Paused, Eagle Not Awarded, Beyond Age, Proposal Not Approved | Approved, EBoR |
 
 Age = birth date to today (one decimal, rounded down; amber from 17.0, red from 17.5). Last note = first line of the
@@ -837,8 +838,19 @@ Run by `digestHourly`; each fires once (Script Properties `bm:` / `pb:` / `br:`)
   (closures by reason too) go to Stats History first. Logged on Activity.
 - **Closed records, review:** "Close?" tags and the digest's "Exceptions to review (n)" are suggestions for a person
   (see Settings `closeReviewDays`, `closeSnoozeDays`); the dashboard's Exceptions tab hides Closed behind "Show closed (n)".
-- **January archive:** a past year's Eagle Earned rows → spreadsheet "CC Eagles <year>" next to the tracking sheet
-  (a copy of the tab pruned to that year), then removed from the tracking tab; the year's numbers go to Stats History.
+- **January archive of Eagles** (`lib/eagleArchive.js`, `eagleArchiveActions.js`): a past year's Eagle Earned rows go to the **top of the
+  Eagle Archive tab** (Settings `eagleArchiveTab`) of the tracking spreadsheet, as a new **"<year> Eagles"** section (label row,
+  hidden key `S:eagles_<year>`) above the older years; an existing label of that year, with the key or just its text, is reused.
+  The page lists the Scouts, the label and the columns first (dry run), then **Archive** applies it. The archive's columns are
+  matched to the tracking tab's **by hidden machine name** (row 2; case and spaces ignored), so its order and set can differ: a
+  tracking column the archive lacks is added at its right end (group heading, machine name, header and formatting copied; hidden
+  columns stay hidden), archive-only columns stay blank. Each column is copied with `Range.copyTo` (values, formats, notes, links
+  such as the name's folder link), in runs of contiguous rows, rows in EBoR date order (latest first). Formula cells (Age) arrive
+  as their displayed values; the Action column is not copied and the rows carry no dropdowns. Folders stay where they are.
+  Then the Record IDs are read back from the archive, the year goes to Stats History, and the rows are deleted from the tracking
+  tab by Record ID. Nothing leaves the tracking tab unless every row is on the archive; a failure while writing removes the rows
+  it inserted. A Record ID already on the archive is not added again. If the tab doesn't exist yet, the first Archive creates it
+  from a copy of the tracking tab's header rows and stops (nothing moves) so you can check it. Logged on Activity.
 
 ### Units page (`/committee/units`) and unit contacts on the unit page (`lib/unitDirectory.js`, `unitDirectoryActions.js`, `web/js/unitContacts.js`)
 

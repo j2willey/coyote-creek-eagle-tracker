@@ -86,7 +86,7 @@
       </section>
       <section class="admsec">
         <h2>January: archive last year's Eagles</h2>
-        <p class="hint">Moves the Eagle Earned rows of a past year to the spreadsheet "CC Eagles &lt;year&gt;" next to the tracking sheet (same columns and links), then removes them from the tracking tab. Their folders stay where they are.</p>
+        <p class="hint">Moves the Eagle Earned rows of a past year to the top of the "Eagle Archive" tab (Settings → eagleArchiveTab) in the tracking spreadsheet, as a new "&lt;year&gt; Eagles" section above the older years. Columns are matched by their hidden machine name, so the archive can have its own column order; a column the archive lacks is added at its right end. Then the rows leave the tracking tab. Their folders stay where they are. Nothing happens until you confirm; the list shows what it would do.</p>
         <div id="arch"></div>
       </section>
       <section class="admsec">
@@ -248,9 +248,15 @@
             b.disabled = true;
             try {
               const p = await api('adminArchive', { session, year: y.year });
+              const note = (t) => el('p', { className: 'muted', textContent: t });
               confirmDo('Archive ' + p.names.length + ' Eagles of ' + y.year + '?', [
-                el('p', { textContent: 'These rows move to "CC Eagles ' + y.year + '" and leave the tracking tab:' }),
-                el('ul', { className: 'waitlist' }, ...p.names.map(n => el('li', { textContent: n })))], 'Archive', async () => {
+                el('p', { textContent: p.tabExists
+                  ? 'These rows move to the top of the "' + p.tab + '" tab as "' + p.label + '" and leave the tracking tab:'
+                  : 'The "' + p.tab + '" tab does not exist yet. Pressing Archive creates it from a copy of the tracking tab\'s header rows and stops, so you can check it. Nothing moves this time. Then archive ' + y.year + ' again. These rows would move:' }),
+                el('ul', { className: 'waitlist' }, ...p.names.map(n => el('li', { textContent: n }))),
+                ...(p.alreadyThere ? [note(p.alreadyThere + ' of them are already on the archive and will not be added again.')] : []),
+                ...(p.added && p.added.length ? [note('Columns added to the archive (right end): ' + p.added.join(', '))] : []),
+                ...(p.archiveOnly && p.archiveOnly.length ? [note('Archive-only columns, left blank for these rows: ' + p.archiveOnly.join(', '))] : [])], 'Archive', async () => {
                   const r = await api('adminArchive', { session, year: y.year, confirm: true });
                   return r.message;
                 });
