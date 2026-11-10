@@ -48,6 +48,7 @@ var SettingsModel = (function () {
     exceptionsFolder: 'Exceptions', // Scouts folder child for Eagle Not Awarded / Proposal Not Approved (year folders = Eagles only)
     closeReviewDays: 180,         // Proposal Not Approved / EBoR Paused with no log line or update for this long: "Close?" suggestion (lib/closing.js)
     closeSnoozeDays: 90,          // "Keep open" hides the "Close?" suggestion for this long
+    eagleArchiveTab: 'Eagle Archive', // January archive: a past year's Eagles go to the top of this tab (a "<year> Eagles" section)
     closedFolder: 'Archive/Closed', // January archive: Closed Scouts' folders move to <Scouts folder>/<this path>
     councilEaglesEmail: '',       // Council Eagle Services address for the signed EBoR paperwork (set on the Settings tab)
     eborDoneColor: '#93c47d',     // EBoR Date cell painted on "Eagle earned" (the sheet's old green), blank = no paint

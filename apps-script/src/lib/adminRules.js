@@ -1,7 +1,7 @@
 /**
  * AdminRules: the committee Admin page (Jim W., 2026-10-24; every committee member can see it for now). Pure.
  *  - Intake exceptions: web submissions that need a person (never confirmed, possible duplicate, error, stuck).
- *  - Eagle archive: each January the past year's Eagles move from the tracking tab to "CC Eagles <year>".
+ *  - Eagle archive: each January the past year's Eagles move from the tracking tab to the top of the "Eagle Archive" tab (lib/eagleArchive.js).
  */
 var AdminRules = (function () {
   function str(v) { return v == null ? '' : String(v).trim(); }

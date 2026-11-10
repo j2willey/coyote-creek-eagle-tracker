@@ -4,7 +4,7 @@
  * Router actions (committee members):
  *   adminData    {session}                              -> {intake, archive, unitRequests}
  *   adminIntake  {session, queueId, act, recordId?}     -> {message}   act: attach | promote | resend | spam
- *   adminArchive {session, year, confirm}               -> {needsConfirm, names} | {message, url}
+ *   adminArchive {session, year, confirm}               -> {needsConfirm, names, ...} | {message, url}   (eagleArchiveActions.js)
  *   adminClosedArchive {session, confirm}               -> {needsConfirm, rows, folder} | {message}   (closingActions.js)
  *   adminRequestDone {session, id}                       -> {message}   unit host-a-board request handled
  */
@@ -143,59 +143,4 @@ function applyIntakeFields_(req, c, q, recordId, accept) {
       (c.me.initials || c.email) + ': ' + (labels.length ? 'took ' + labels.join(', ') + ' from the form' : 'kept the sheet') + '.' });
   });
   return msg;
-}
-
-/**
- * Jan 1: the year's Eagles move to "CC Eagles <year>" (next to the tracking sheet; one tab per run, with the same
- * columns, formatting and folder links), then leave the tracking tab. Their folders stay in the <year> folder.
- */
-function actionAdminArchive_(req) {
-  var c = committeeMe_(req.session);
-  var year = String(req.year || '').trim();
-  if (!/^\d{4}$/.test(year)) throw userError_('Pick the year.');
-  if (Number(year) >= new Date().getFullYear()) throw userError_('Only past years can be archived (this year\'s Eagles stay until January).');
-  var recs = adminRecords_();
-  var ids = AdminRules.archiveIds(recs, year);
-  if (!ids.length) throw userError_('No Eagles with an EBoR in ' + year + ' on the tracking tab.');
-  var names = recs.filter(function (r) { return ids.indexOf(r.recordId) >= 0; }).map(function (r) { return r.scout_name + ' (' + r.unit + ')'; });
-  if (!req.confirm) return { needsConfirm: true, names: names };
-
-  var sh = getTrackingSheet_();
-  var own = SpreadsheetApp.getActive();
-  var title = 'CC Eagles ' + year;
-  var folder = null;
-  try { var p = DriveApp.getFileById(own.getId()).getParents(); if (p.hasNext()) folder = p.next(); } catch (e) {}
-  var arch = null;
-  if (folder) { var it = folder.getFilesByName(title); if (it.hasNext()) arch = SpreadsheetApp.openById(it.next().getId()); }
-  var created = false;
-  if (!arch) {
-    arch = SpreadsheetApp.create(title);
-    created = true;
-    if (folder) { try { DriveApp.getFileById(arch.getId()).moveTo(folder); } catch (e) { console.warn('archive move: ' + e); } }
-  }
-  // 1. A full copy of the tracking tab, pruned to the header + Eagle Earned label + this year's Eagles.
-  var copy = sh.copyTo(arch);
-  var tabName = 'Eagles ' + year, n = 2;
-  while (arch.getSheetByName(tabName)) tabName = 'Eagles ' + year + ' (' + (n++) + ')';
-  copy.setName(tabName);
-  var top = copy.getRange(1, 1, Math.min(15, copy.getLastRow()), copy.getLastColumn()).getValues();
-  var m = SheetModel.findMachineRow(top);
-  var keys = copy.getRange(1, m.keyCol + 1, copy.getLastRow(), 1).getValues().map(function (r) { return String(r[0]); });
-  var firstData = m.row + 3;
-  AdminRules.deleteRuns(copy.getLastRow(), firstData, function (r) {
-    var k = keys[r - 1];
-    return k === 'S:eagle_earned' || ids.indexOf(k) >= 0;
-  }).forEach(function (run) { copy.deleteRows(run[0], run[1]); });
-  if (created) { var first = arch.getSheets().filter(function (x) { return x.getSheetId() !== copy.getSheetId(); })[0]; if (first) arch.deleteSheet(first); }
-  var statsAdded = addStatsYear_(year);                        // Stats History keeps the year's numbers
-  // 2. Remove them from the tracking tab.
-  withLock_(function () {
-    var k2 = sh.getRange(1, m.keyCol + 1, sh.getLastRow(), 1).getValues().map(function (r) { return String(r[0]); });
-    AdminRules.deleteRuns(sh.getLastRow(), firstData, function (r) { return ids.indexOf(k2[r - 1]) < 0; })
-      .forEach(function (run) { sh.deleteRows(run[0], run[1]); });
-  });
-  Records.invalidate();
-  refreshActionDropdownsQuietly_();
-  adminLog_('Archived ' + ids.length + ' Eagles of ' + year + ' to "' + title + '" (tab ' + tabName + ')' + (statsAdded ? '; ' + year + ' added to Stats History' : ''), c.email);
-  return { message: ids.length + ' Eagles of ' + year + ' moved to "' + title + '".', url: arch.getUrl() + '#gid=' + copy.getSheetId() };
 }
