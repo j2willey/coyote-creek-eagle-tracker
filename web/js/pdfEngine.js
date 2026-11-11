@@ -15,13 +15,11 @@
 
 import {
   analyzeWorkbookPages,
-  canSignPage,
   checkPlacement,
   flattenPageIndices,
   fitTextFontSize,
   fitSignatureDimensions,
-  defaultSignPlacement,
-  defaultItems
+  defaultSignPlacement
 } from './pdfPlan.js';
 
 /**
@@ -859,42 +857,4 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
     pdfBytes: saved instanceof Uint8Array ? saved : new Uint8Array(saved),
     flattenedPages
   };
-}
-
-/**
- * Compatibility wrapper (single page, workbook boxes or a `placement`): kept for callers and tests that sign ONE
- * page with signature + name + date. New code uses `applyPlacedItemsAndFlatten`.
- *
- * @param {any} PDFLib
- * @param {{
- *   pdfBytes: Uint8Array,
- *   analysis: WorkbookAnalysis,
- *   pageIndex: number,
- *   signerIndex?: number,
- *   signaturePngBytes: Uint8Array,
- *   printedName: string,
- *   dateStr: string,
- *   signatureScale?: number,
- *   textFontSize?: number,
- *   placement?: SignPlacement
- * }} opts
- * @returns {Promise<{ pdfBytes: Uint8Array }>}
- */
-export async function applySignatureAndFlatten(PDFLib, opts) {
-  const pageCheck = canSignPage(opts.analysis, opts.pageIndex);
-  if (!pageCheck.ok) throw new Error(pageCheck.reason);
-  const pdfDoc = await loadPdfWithDecrypt(PDFLib, opts.pdfBytes);
-  const page = pdfDoc.getPages()[opts.pageIndex];
-  if (!page) throw new Error('Selected page does not exist in this PDF.');
-  const size = page.getSize();
-  let items = defaultItems(opts.analysis.edition, opts.signerIndex || 0, opts.pageIndex, size);
-  if (opts.placement) {
-    const pl = opts.placement;
-    items = items.map(it => {
-      const b = it.kind === 'signature' ? pl.signature : it.kind === 'name' ? pl.printedName : pl.date;
-      return { ...it, x: b.x, y: b.y, width: b.width, height: b.height };
-    });
-  }
-  const res = await applyPlacedItemsAndFlatten(PDFLib, { ...opts, items });
-  return { pdfBytes: res.pdfBytes };
 }

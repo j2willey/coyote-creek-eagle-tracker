@@ -9,7 +9,6 @@ import {
   isProposalApprovalLandmark,
   analyzeWorkbookPages,
   describeTargetPage,
-  canSignPage,
   SCRIPT_FONTS,
   fitTextFontSize,
   SIG_SCALE_MIN,
@@ -30,6 +29,7 @@ import {
   flattenPageIndices,
   checkPlacement,
   hasTransparentPixel,
+  describePageRanges,
   STAMP_DEFAULT_WIDTH_PT
 } from '../web/js/pdfPlan.js';
 
@@ -134,7 +134,7 @@ describe('pdfPlan: Step 2 Our vs. Not-Ours page landmarks and hard ordering rule
     expect(isProposalApprovalLandmark('22 Certification of Completion', ['Certification of Completion Signature'])).toBe(false);
   });
 
-  it('enforces the hard ordering rule: only approval pages before the first Not-Ours landmark may be signed', () => {
+  it('enforces the hard ordering rule: approval pages are found before the first Not-Ours landmark and no mark may go on or after it', () => {
     const pages = [
       { text: 'Proposal cover', fields: ['Candidates Full Name'] },
       { text: '11 Proposal Approval Council or District Approval', fields: ['District or Council Approval Name'] },
@@ -155,13 +155,13 @@ describe('pdfPlan: Step 2 Our vs. Not-Ours page landmarks and hard ordering rule
     expect(analysis.insertBeforePageIndex).toBe(1);
     expect(analysis.proposalEndPageIndex).toBe(2);
 
-    expect(canSignPage(analysis, 1).ok).toBe(true);
-    expect(canSignPage(analysis, 2).ok).toBe(true);
-    expect(canSignPage(analysis, 0).ok).toBe(false); // cover page, not an approval page
-    expect(canSignPage(analysis, 3).ok).toBe(false); // Project Plan
-    expect(canSignPage(analysis, 4).ok).toBe(false); // Project Plan Reviews
-    expect(canSignPage(analysis, 5).ok).toBe(false); // Certification of Completion
-    expect(canSignPage(analysis, 6).ok).toBe(false); // after firstNotOursPageIndex
+    expect(canPlaceOnPage(analysis, 1).ok).toBe(true);
+    expect(canPlaceOnPage(analysis, 2).ok).toBe(true);
+    expect(canPlaceOnPage(analysis, 0).ok).toBe(true);  // v2: the member decides where marks go among Proposal pages
+    expect(canPlaceOnPage(analysis, 3).ok).toBe(false); // Project Plan
+    expect(canPlaceOnPage(analysis, 4).ok).toBe(false); // Project Plan Reviews
+    expect(canPlaceOnPage(analysis, 5).ok).toBe(false); // Certification of Completion
+    expect(canPlaceOnPage(analysis, 6).ok).toBe(false); // after firstNotOursPageIndex
   });
 
   it('targets the last approval page by default and formats clear multi-approval-page descriptions', () => {
@@ -410,5 +410,14 @@ describe('pdfPlan: Task 9c, stamp transparency check', () => {
     expect(hasTransparentPixel(clear)).toBe(true);
     expect(hasTransparentPixel(soft)).toBe(true);
     expect(hasTransparentPixel(new Uint8ClampedArray(0))).toBe(false);
+  });
+});
+
+describe('pdfPlan: describePageRanges', () => {
+  it('joins consecutive pages into ranges, 1-based', () => {
+    expect(describePageRanges([0, 1, 2, 4])).toBe('1–3, 5');
+    expect(describePageRanges([10])).toBe('11');
+    expect(describePageRanges([3, 1, 2, 2, 9, 11])).toBe('2–4, 10, 12');
+    expect(describePageRanges([])).toBe('');
   });
 });

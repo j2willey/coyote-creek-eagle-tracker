@@ -12,13 +12,12 @@ import {
   loadPdfWithDecrypt,
   flattenPagesUpTo,
   inspectPdfWithPdfJs,
-  applySignatureAndFlatten,
   applyPlacedItemsAndFlatten
 } from '../web/js/pdfEngine.js';
 import {
   PDFLIB_VERSION,
   PDFJS_VERSION,
-  canSignPage,
+  canPlaceOnPage,
   defaultItems,
   newItemAtPoint
 } from '../web/js/pdfPlan.js';
@@ -36,6 +35,12 @@ const TINY_PNG = Uint8Array.from(
     'base64'
   )
 );
+
+/** One page, workbook boxes (signature + name + date) for signer `signerIndex`: what the Workshop does on an approval page. */
+const applySignatureAndFlatten = (lib, o) => applyPlacedItemsAndFlatten(lib, {
+  ...o,
+  items: defaultItems(o.analysis.edition, o.signerIndex || 0, o.pageIndex, { width: 612, height: 792 })
+});
 
 describe('pdfEngine: exact library pins and CDN version parity', () => {
   it('pins pdf-lib@1.17.1 and pdfjs-dist@3.11.174 in package.json, node_modules, and CDN URLs', () => {
@@ -663,9 +668,9 @@ describe.runIf(fs.existsSync(WB_2026) && fs.existsSync(WB_2023A))(
       expect(analysis.edition).toBe('2026');
       expect(analysis.approvalPageIndices).toEqual([10]); // Page 11 (0-based 10)
       expect(analysis.firstNotOursPageIndex).toBe(11);    // Page 12
-      expect(canSignPage(analysis, 10).ok).toBe(true);
-      expect(canSignPage(analysis, 17).ok).toBe(false);   // Page 18 (Project Plan Reviews)
-      expect(canSignPage(analysis, 21).ok).toBe(false);   // Page 22 (Certification of Completion)
+      expect(canPlaceOnPage(analysis, 10).ok).toBe(true);
+      expect(canPlaceOnPage(analysis, 17).ok).toBe(false);   // Page 18 (Project Plan Reviews)
+      expect(canPlaceOnPage(analysis, 21).ok).toBe(false);   // Page 22 (Certification of Completion)
 
       const res = await applySignatureAndFlatten(PDFLib, {
         pdfBytes: bytes,
@@ -700,9 +705,9 @@ describe.runIf(fs.existsSync(WB_2026) && fs.existsSync(WB_2023A))(
       expect(analysis.edition).toBe('2023a');
       expect(analysis.approvalPageIndices).toEqual([14]); // Page 15 (0-based 14)
       expect(analysis.firstNotOursPageIndex).toBe(15);    // Page 16
-      expect(canSignPage(analysis, 14).ok).toBe(true);
-      expect(canSignPage(analysis, 22).ok).toBe(false);   // Page 23 (Fundraising Application)
-      expect(canSignPage(analysis, 28).ok).toBe(false);   // Page 29 (Project Report Page C)
+      expect(canPlaceOnPage(analysis, 14).ok).toBe(true);
+      expect(canPlaceOnPage(analysis, 22).ok).toBe(false);   // Page 23 (Fundraising Application)
+      expect(canPlaceOnPage(analysis, 28).ok).toBe(false);   // Page 29 (Project Report Page C)
 
       const res = await applySignatureAndFlatten(PDFLib, {
         pdfBytes: bytes,

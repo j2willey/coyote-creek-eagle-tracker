@@ -4,9 +4,13 @@
  *
  * Lazy-loads `pdf-lib` and `pdf.js` from `cdn.jsdelivr.net` (and the 10 OFL Google Script Fonts stylesheet) only when
  * a committee member opens the Sign Workshop. Manages the member's signature in `localStorage` (Type in 10 script fonts
- * at 3x DPI, Draw on canvas, or Upload with white background made transparent), supports signature & text sizing plus
- * drag-to-move and corner drag-to-resize on the page preview, defaults to the LAST Proposal Approval page when multiple
- * copies exist, stamps in vector, and flattens form fields ONLY on the Proposal pages (`1..proposalEndPage`).
+ * at 3x DPI, Draw on canvas, or Upload with white background made transparent), supports signature & text sizing.
+ *
+ * v2 (Task 9): the member PLACES the marks. The preview is a scrollable view of every page (rendered lazily with an
+ * IntersectionObserver); the toolbar buttons (Signature, Printed name, Date) arm a click that drops the mark on a page
+ * (or, on a detected approval page, drop it at the workbook's own box). Marks can be dragged, resized and removed.
+ * Nothing is applied until "Sign & Attach PDF"; then the Proposal pages AND every marked page are flattened, never a
+ * Project Plan / Fundraising / Project Report page.
  */
 
 import {
@@ -18,25 +22,29 @@ import {
   TEXT_FONT_MIN_PT,
   TEXT_FONT_MAX_PT,
   SCRIPT_FONTS,
-  canSignPage,
+  canPlaceOnPage,
   describeTargetPage,
+  describePageRanges,
+  approvalBanner,
+  checkPlacement,
+  flattenPageIndices,
+  newItemAtPoint,
+  defaultItem,
   fitTextFontSize,
-  fitSignatureDimensions,
-  resizeBoxInPage,
-  defaultSignPlacement
+  resizeBoxInPage
 } from './pdfPlan.js';
 
 import { CDN_SCRIPTS } from './cdnIntegrity.js';
 
 import {
   inspectPdfWithPdfJs,
-  applySignatureAndFlatten
+  applyPlacedItemsAndFlatten
 } from './pdfEngine.js';
 
 /**
  * @typedef {import('./pdfPlan.js').WorkbookAnalysis} WorkbookAnalysis
- * @typedef {import('./pdfPlan.js').SignPlacement} SignPlacement
- * @typedef {import('./pdfPlan.js').BoxPlacement} BoxPlacement
+ * @typedef {import('./pdfPlan.js').PlacedItem} PlacedItem
+ * @typedef {import('./pdfPlan.js').ItemKind} ItemKind
  * @typedef {import('./pdfPlan.js').ScriptFontKey} ScriptFontKey
  *
  * @typedef {Object} SavedSignature
@@ -354,19 +362,6 @@ function formatDisplayDate(ymd) {
 }
 
 /**
- * Clone a `SignPlacement` object.
- * @param {SignPlacement} p
- * @returns {SignPlacement}
- */
-function clonePlacement(p) {
-  return {
-    signature: { ...p.signature },
-    date: { ...p.date },
-    printedName: { ...p.printedName }
-  };
-}
-
-/**
  * Open the Sign & Flatten Workshop modal.
  * Resolves with `{ file, printedName, dateStr }` when the user clicks "Sign & Attach PDF",
  * or `null` if the user cancels/closes the modal.
@@ -387,15 +382,19 @@ export async function openSignWorkshop(opts) {
     savedSig.pngDataUrl = await renderTypedSignaturePngAsync(savedSig.typedText, savedSig.fontKey);
   }
 
-  // Pick initial page: defaultTargetPageIndex (which targets the LAST Proposal Approval page when multiple exist)
-  let activePageIndex = analysis.defaultTargetPageIndex;
-  if (!canSignPage(analysis, activePageIndex).ok) {
-    const firstValid = analysis.pages.find(p => canSignPage(analysis, p.pageIndex).ok);
-    if (firstValid) activePageIndex = firstValid.pageIndex;
-  }
+  // Opens scrolled to the default target: the LAST approval page, else the last scan, else nothing is preselected
+  // (-1: the page the member scrolls to is the "current" one; no ordinary Proposal page is ever picked for them).
+  const defaultTarget = analysis.defaultTargetPageIndex;
+  let currentPageIndex = defaultTarget >= 0 ? defaultTarget : 0;
+  const totalPages = analysis.pages.length;
+  const pageSizeOf = (/** @type {number} */ i) => pageSizes[i] || { width: 612, height: 792 };
 
-  const activePageSize = () => pageSizes[activePageIndex] || { width: 612, height: 792 };
-  let placement = clonePlacement(defaultSignPlacement(analysis.edition, signerIndex, activePageSize()));
+  /** @type {PlacedItem[]} */
+  let items = [];
+  let nextItemId = 1;
+  const newItemId = () => `m${nextItemId++}`;
+  /** @type {{ kind: ItemKind } | null} */
+  let armed = null;
 
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
@@ -413,11 +412,14 @@ export async function openSignWorkshop(opts) {
       : analysis.edition === '2023a'
         ? '2023a BSA Workbook'
         : 'PDF Document';
-    const flattenEndPageNum = Math.max(activePageIndex, analysis.proposalEndPageIndex) + 1;
-    const totalPages = analysis.pages.length;
-    const flattenSummary = flattenEndPageNum < totalPages
-      ? `Proposal pages 1–${flattenEndPageNum} will be flattened; pages ${flattenEndPageNum + 1}–${totalPages} stay fillable for Plan & Report.`
-      : `All ${totalPages} page(s) in this Proposal PDF will have their form fields flattened.`;
+    const flattenSummaryText = () => {
+      const flat = flattenPageIndices(analysis, items);
+      const rest = [];
+      for (let i = 0; i < totalPages; i++) if (!flat.includes(i)) rest.push(i);
+      return rest.length
+        ? `Pages ${describePageRanges(flat)} (Proposal pages and pages you mark) will be flattened; pages ${describePageRanges(rest)} stay fillable for Plan & Report.`
+        : `All ${totalPages} page(s) in this PDF will have their form fields flattened.`;
+    };
 
     const fontOptionsHtml = SCRIPT_FONTS.map(
       f => `<option value="${f.key}" style="font-family: '${f.family}', cursive; font-size: 1.15rem;">${f.label}</option>`
@@ -429,23 +431,27 @@ export async function openSignWorkshop(opts) {
           <h2>Sign &amp; Flatten Proposal in Browser</h2>
           <p class="hint ws-subhead">
             <span class="tag signing">${editionLabel}</span>
-            <span id="wsFlattenSummary">${flattenSummary}</span>
+            <span id="wsFlattenSummary">${flattenSummaryText()}</span>
           </p>
         </div>
         <button type="button" class="ws-close" aria-label="Close">✕</button>
       </div>
       <div class="ws-body">
         <div class="ws-preview-col">
+          <div class="ws-banner warnbox" id="wsBanner" hidden></div>
+          <div class="ws-toolbar" id="wsToolbar" role="toolbar" aria-label="Place marks on the page">
+            <span class="hint">Place:</span>
+            <button type="button" class="ws-place-btn" data-kind="signature">✍ Signature</button>
+            <button type="button" class="ws-place-btn" data-kind="name">Printed name</button>
+            <button type="button" class="ws-place-btn" data-kind="date">Date</button>
+          </div>
           <div class="ws-pagebar" id="wsPageBar"></div>
           <div class="ws-canvas-wrap" id="wsCanvasWrap">
-            <div class="ws-stage" id="wsStage">
-              <canvas id="wsPageCanvas"></canvas>
-              <div class="ws-overlay" id="wsOverlay"></div>
-            </div>
+            <div class="ws-doc" id="wsDoc"></div>
           </div>
           <div class="hint ws-drag-hint">
-            <span>Tip: Drag the Signature, Date, or Printed Name boxes to move them, or drag a corner handle to resize.</span>
-            <button type="button" class="ws-linkbtn" id="wsResetPos">Reset default position &amp; size</button>
+            <span>Click a Place button, then click on a page. Drag a mark to move it, drag its corner to resize, ✕ removes it. Nothing is applied until you click Sign &amp; Attach PDF.</span>
+            <button type="button" class="ws-linkbtn" id="wsClearMarks">Remove all marks</button>
           </div>
         </div>
         <div class="ws-controls-col">
@@ -551,10 +557,12 @@ export async function openSignWorkshop(opts) {
     const applyBtn = /** @type {HTMLButtonElement} */ (q('#wsApplyBtn'));
     const statusMsg = q('#wsStatusMsg');
     const pageBar = q('#wsPageBar');
-    const pageCanvas = /** @type {HTMLCanvasElement} */ (q('#wsPageCanvas'));
-    const overlay = q('#wsOverlay');
-    const stage = q('#wsStage');
-    const resetPosBtn = /** @type {HTMLButtonElement} */ (q('#wsResetPos'));
+    const banner = q('#wsBanner');
+    const toolbar = q('#wsToolbar');
+    const docWrap = q('#wsCanvasWrap');
+    const docEl = q('#wsDoc');
+    const flattenSummaryEl = q('#wsFlattenSummary');
+    const clearMarksBtn = /** @type {HTMLButtonElement} */ (q('#wsClearMarks'));
     const secondBanner = q('#wsSecondBanner');
     const typedSigInput = /** @type {HTMLInputElement} */ (q('#wsTypedSig'));
     const fontSelect = /** @type {HTMLSelectElement} */ (q('#wsFontSelect'));
@@ -617,77 +625,133 @@ export async function openSignWorkshop(opts) {
     syncSizeControls();
 
     let closed = false;
+    /** @type {IntersectionObserver | null} */
+    let renderObserver = null;
+    /** @type {IntersectionObserver | null} */
+    let currentObserver = null;
+    const onKeyDown = (/** @type {KeyboardEvent} */ ev) => {
+      if (ev.key === 'Escape' && armed) {
+        ev.stopPropagation();
+        disarm();
+        updateValidationState();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
     function cleanupAndResolve(/** @type {WorkshopResult | null} */ res) {
       if (closed) return;
       closed = true;
+      document.removeEventListener('keydown', onKeyDown, true);
+      if (renderObserver) renderObserver.disconnect();
+      if (currentObserver) currentObserver.disconnect();
       backdrop.remove();
+      try { void pdfjsDoc.destroy(); } catch { /* ignore */ }
       resolve(res);
     }
 
     closeBtn.onclick = () => cleanupAndResolve(null);
     cancelBtn.onclick = () => cleanupAndResolve(null);
 
-    // 1. Build page selector bar (defaults to the LAST approval page when multiple exist)
+    // 1. Banner, jump buttons and the toolbar
+    const bannerText = approvalBanner(analysis);
+    if (bannerText) {
+      banner.hidden = false;
+      banner.textContent = bannerText;
+    }
+
+    /** @type {HTMLButtonElement[]} */
+    const jumpBtns = [];
     function renderPageBar() {
       pageBar.replaceChildren();
-      const targetDesc = describeTargetPage(analysis, activePageIndex);
-      const info = document.createElement('span');
-      info.className = 'ws-page-pill active';
-      info.textContent = `Signing: ${targetDesc}`;
-      pageBar.appendChild(info);
+      jumpBtns.length = 0;
+      const lbl = document.createElement('span');
+      lbl.className = 'hint';
+      lbl.textContent = defaultTarget >= 0
+        ? `Opened at: ${describeTargetPage(analysis, defaultTarget)}. Jump to:`
+        : 'Jump to page:';
+      pageBar.appendChild(lbl);
+      for (let i = 0; i < totalPages; i++) {
+        const pg = analysis.pages[i];
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ws-page-btn' +
+          (pg.forbidden ? ' locked' : pg.role === 'approval' ? ' approval' : pg.scanCandidate ? ' scan' : '');
+        btn.textContent = String(i + 1);
+        btn.title = pg.forbidden
+          ? `Page ${i + 1}: ${pg.notOursSection || 'Plan / Report'} (locked)`
+          : pg.role === 'approval' ? `Page ${i + 1}: Proposal Approval`
+            : pg.scanCandidate ? `Page ${i + 1}: looks like a scan` : `Page ${i + 1}`;
+        btn.onclick = () => scrollToPage(i);
+        pageBar.appendChild(btn);
+        jumpBtns.push(btn);
+      }
+      refreshPageBar();
+    }
+    function refreshPageBar() {
+      jumpBtns.forEach((b, i) => {
+        b.classList.toggle('active', i === currentPageIndex);
+        b.classList.toggle('marked', items.some(it => it.pageIndex === i));
+      });
+    }
 
-      if (analysis.approvalPageIndices.length > 1) {
-        const switchWrap = document.createElement('span');
-        switchWrap.className = 'ws-page-switch';
-        const lbl = document.createElement('span');
-        lbl.className = 'hint';
-        lbl.textContent = 'Switch approval page:';
-        switchWrap.appendChild(lbl);
+    const placeBtns = /** @type {NodeListOf<HTMLButtonElement>} */ (toolbar.querySelectorAll('.ws-place-btn'));
+    function refreshToolbar() {
+      placeBtns.forEach(b => b.classList.toggle('active', !!armed && b.dataset.kind === armed.kind));
+      docEl.classList.toggle('armed', !!armed);
+    }
+    function arm(/** @type {ItemKind} */ kind) {
+      armed = { kind };
+      refreshToolbar();
+      const what = kind === 'signature' ? 'your signature' : kind === 'name' ? 'your printed name' : 'the date';
+      setStatus(`Click on the page where ${what} goes (Esc cancels).`, 'hint');
+    }
+    function disarm() {
+      armed = null;
+      refreshToolbar();
+    }
+    function setStatus(/** @type {string} */ msg, /** @type {string} */ cls) {
+      statusMsg.textContent = msg;
+      statusMsg.className = cls;
+    }
 
-        analysis.approvalPageIndices.forEach((idx, pos) => {
-          const isLast = pos === analysis.approvalPageIndices.length - 1;
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'ws-page-btn' + (idx === activePageIndex ? ' active' : '');
-          btn.textContent = isLast ? `Page ${idx + 1} (last)` : `Page ${idx + 1}`;
-          btn.onclick = () => {
-            if (!canSignPage(analysis, idx).ok) return;
-            activePageIndex = idx;
-            placement = clonePlacement(defaultSignPlacement(analysis.edition, signerIndex, activePageSize()));
-            renderPageBar();
-            updateValidationState();
-            void renderPdfPage();
-          };
-          switchWrap.appendChild(btn);
-        });
-        pageBar.appendChild(switchWrap);
-      } else if (analysis.approvalPageIndices.length === 0) {
-        const candidates = analysis.pages.filter(p => !p.forbidden).map(p => p.pageIndex);
-        for (const idx of candidates) {
-          const check = canSignPage(analysis, idx);
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'ws-page-btn' + (idx === activePageIndex ? ' active' : '');
-          btn.textContent = `Page ${idx + 1}`;
-          btn.disabled = !check.ok;
-          btn.onclick = () => {
-            if (!canSignPage(analysis, idx).ok) return;
-            activePageIndex = idx;
-            placement = clonePlacement(defaultSignPlacement(analysis.edition, signerIndex, activePageSize()));
-            renderPageBar();
-            updateValidationState();
-            void renderPdfPage();
-          };
-          pageBar.appendChild(btn);
+    /**
+     * A Place button: on a detected approval page the mark starts at the workbook's own box (unless that kind is
+     * already there); anywhere else it waits for a click on the page.
+     */
+    function onPlaceButton(/** @type {ItemKind} */ kind) {
+      if (armed && armed.kind === kind) {
+        disarm();
+        updateValidationState();
+        return;
+      }
+      const cur = currentPageIndex;
+      const detected = analysis.approvalPageIndices.includes(cur);
+      if (detected && canPlaceOnPage(analysis, cur).ok && !items.some(it => it.kind === kind && it.pageIndex === cur)) {
+        const it = defaultItem(kind, analysis.edition, signerIndex, cur, pageSizeOf(cur), newItemId());
+        if (it) {
+          disarm();
+          items.push(it);
+          itemsChanged([cur]);
+          return;
         }
       }
+      arm(kind);
+    }
+    placeBtns.forEach(b => {
+      b.onclick = () => onPlaceButton(/** @type {ItemKind} */ (b.dataset.kind));
+    });
+    clearMarksBtn.onclick = () => {
+      const pagesTouched = [...new Set(items.map(it => it.pageIndex))];
+      items = [];
+      disarm();
+      itemsChanged(pagesTouched);
+    };
 
-      if (analysis.firstNotOursPageIndex < totalPages) {
-        const guardNote = document.createElement('span');
-        guardNote.className = 'hint';
-        guardNote.textContent = ` (Pages ${analysis.firstNotOursPageIndex + 1}–${totalPages} are Plan/Report — locked against Proposal signing)`;
-        pageBar.appendChild(guardNote);
-      }
+    // Called after items were added, moved in count or removed: redraw those pages, refresh the summary and checks.
+    function itemsChanged(/** @type {number[]} */ pagesTouched) {
+      for (const i of pagesTouched) renderPageItems(i);
+      refreshPageBar();
+      flattenSummaryEl.textContent = flattenSummaryText();
+      updateValidationState();
     }
 
     // 2. Signature tabs (Type / Draw / Upload) & sizing
@@ -825,48 +889,107 @@ export async function openSignWorkshop(opts) {
       updateValidationState();
     };
 
-    resetPosBtn.onclick = () => {
-      placement = clonePlacement(defaultSignPlacement(analysis.edition, signerIndex, activePageSize()));
-      setSignatureScale(1);
-      setTextFontSize(0);
-    };
+    // 3. The document: one fixed-size box per page; canvases are rendered lazily; marks live in a per-page overlay
+    function computeScale() {
+      const maxW = Math.max(...pageSizes.map(p => p.width), 612);
+      const avail = (docWrap.clientWidth || 720) - 28;
+      return Math.max(0.5, Math.min(1.3, avail / maxW));
+    }
+    const cssScale = computeScale();
 
-    // 3. Interactive overlay boxes (Signature, Date, Printed Name) with drag-to-move AND corner drag-to-resize
-    function renderOverlayBoxes() {
-      overlay.replaceChildren();
-      const ps = activePageSize();
-      const stageWidthPx = stage.clientWidth || 700;
-      const pxPerPt = stageWidthPx / Math.max(1, ps.width);
+    /** @type {Array<{ wrap: HTMLElement, canvas: HTMLCanvasElement, overlay: HTMLElement, rendered: boolean, rendering: boolean, want: boolean }>} */
+    const pageEls = [];
+    for (let i = 0; i < totalPages; i++) {
+      const ps = pageSizeOf(i);
+      const pg = analysis.pages[i];
+      const wrap = document.createElement('div');
+      wrap.className = 'ws-page' + (pg.forbidden ? ' locked' : '');
+      wrap.dataset.page = String(i);
+      wrap.style.width = `${Math.round(ps.width * cssScale)}px`;
+      wrap.style.height = `${Math.round(ps.height * cssScale)}px`;
+      const label = document.createElement('span');
+      label.className = 'ws-page-label';
+      label.textContent = pg.forbidden
+        ? `Page ${i + 1} · ${pg.notOursSection || 'Plan / Report'} (locked)`
+        : `Page ${i + 1}` + (pg.role === 'approval' ? ' · Proposal Approval' : pg.scanCandidate ? ' · scan?' : '');
+      const canvas = document.createElement('canvas');
+      canvas.width = 0;
+      canvas.height = 0;
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      const overlay = document.createElement('div');
+      overlay.className = 'ws-overlay';
+      wrap.append(canvas, overlay, label);
+      docEl.appendChild(wrap);
+      pageEls.push({ wrap, canvas, overlay, rendered: false, rendering: false, want: false });
+      wrap.addEventListener('click', ev => onPageClick(i, ev));
+    }
 
-      const items = /** @type {Array<{ key: keyof SignPlacement, label: string }>} */ ([
-        { key: 'signature', label: 'Signature' },
-        { key: 'date', label: 'Date' },
-        { key: 'printedName', label: 'Printed Name' }
-      ]);
+    function scrollToPage(/** @type {number} */ i) {
+      const el = pageEls[i];
+      if (!el) return;
+      docWrap.scrollTop = Math.max(0, el.wrap.offsetTop - 8);
+      setCurrentPage(i);
+    }
+    function setCurrentPage(/** @type {number} */ i) {
+      if (i === currentPageIndex) return;
+      currentPageIndex = i;
+      refreshPageBar();
+    }
 
-      for (const item of items) {
-        const box = placement[item.key];
+    // Click-to-place: the point is converted from the click on the page box to PDF points (bottom-left origin).
+    function onPageClick(/** @type {number} */ i, /** @type {MouseEvent} */ ev) {
+      if (!armed) return;
+      const target = /** @type {HTMLElement} */ (ev.target);
+      if (target.closest && target.closest('.ws-place-box')) return;
+      const chk = canPlaceOnPage(analysis, i);
+      if (!chk.ok) {
+        setStatus(chk.reason, 'hint err');
+        return;
+      }
+      const ps = pageSizeOf(i);
+      const r = pageEls[i].wrap.getBoundingClientRect();
+      const point = {
+        x: ((ev.clientX - r.left) / Math.max(1, r.width)) * ps.width,
+        y: ps.height - ((ev.clientY - r.top) / Math.max(1, r.height)) * ps.height
+      };
+      items.push(newItemAtPoint(armed.kind, i, point, ps, { id: newItemId() }));
+      disarm();
+      itemsChanged([i]);
+    }
+
+    function renderOverlayBoxes() { renderAllItems(); }
+    function renderAllItems() {
+      const touched = new Set(items.map(it => it.pageIndex));
+      pageEls.forEach((_, i) => { if (touched.has(i) || pageEls[i].overlay.childElementCount) renderPageItems(i); });
+    }
+
+    // Marks on one page: drag-to-move, bottom-right corner resize, ✕ to remove
+    function renderPageItems(/** @type {number} */ pageIndex) {
+      const pe = pageEls[pageIndex];
+      if (!pe) return;
+      const ps = pageSizeOf(pageIndex);
+      pe.overlay.replaceChildren();
+      const labels = /** @type {Record<ItemKind, string>} */ ({ signature: 'Signature', name: 'Printed Name', date: 'Date', stamp: 'Stamp' });
+
+      for (const box of items.filter(it => it.pageIndex === pageIndex)) {
+        const label = labels[box.kind];
         const elBox = document.createElement('div');
-        elBox.className = `ws-place-box ws-place-${item.key}`;
-        elBox.title = `Drag to move ${item.label}, or drag the bottom-right corner to resize`;
+        elBox.className = `ws-place-box ws-place-${box.kind}`;
+        elBox.title = `Drag to move the ${label.toLowerCase()}, or drag the bottom-right corner to resize`;
 
         const applyBoxGeometry = () => {
-          const leftPct = (box.x / ps.width) * 100;
-          const topPct = ((ps.height - box.y - box.height) / ps.height) * 100;
-          const widthPct = (box.width / ps.width) * 100;
-          const heightPct = (box.height / ps.height) * 100;
-          elBox.style.left = `${leftPct}%`;
-          elBox.style.top = `${topPct}%`;
-          elBox.style.width = `${widthPct}%`;
-          elBox.style.height = `${heightPct}%`;
+          elBox.style.left = `${(box.x / ps.width) * 100}%`;
+          elBox.style.top = `${((ps.height - box.y - box.height) / ps.height) * 100}%`;
+          elBox.style.width = `${(box.width / ps.width) * 100}%`;
+          elBox.style.height = `${(box.height / ps.height) * 100}%`;
         };
         applyBoxGeometry();
 
         const contentSpan = document.createElement('span');
         contentSpan.className = 'ws-place-content';
-
         const applyContentStyle = () => {
-          if (item.key === 'signature') {
+          if (box.kind === 'signature') {
             contentSpan.replaceChildren();
             if (savedSig.pngDataUrl) {
               const img = document.createElement('img');
@@ -877,39 +1000,51 @@ export async function openSignWorkshop(opts) {
             } else {
               contentSpan.textContent = 'Signature';
             }
-          } else {
-            const txt = item.key === 'date'
+          } else if (box.kind === 'name' || box.kind === 'date') {
+            const txt = box.kind === 'date'
               ? (dateStrInput.value || 'Date')
               : (printedNameInput.value || 'Printed Name');
             contentSpan.textContent = txt;
             const ptSize = fitTextFontSize(txt, box.width, box.height, textFontSize);
-            contentSpan.style.fontSize = `${Math.max(9, Math.round(ptSize * pxPerPt * 10) / 10)}px`;
+            contentSpan.style.fontSize = `${Math.max(9, Math.round(ptSize * cssScale * 10) / 10)}px`;
           }
         };
         applyContentStyle();
         elBox.appendChild(contentSpan);
 
-        // Bottom-right corner resize handle
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'ws-item-x';
+        remove.textContent = '✕';
+        remove.title = `Remove the ${label.toLowerCase()}`;
+        remove.setAttribute('aria-label', remove.title);
+        remove.addEventListener('pointerdown', ev => ev.stopPropagation());
+        remove.addEventListener('click', ev => {
+          ev.stopPropagation();
+          items = items.filter(it => it !== box);
+          itemsChanged([pageIndex]);
+        });
+        elBox.appendChild(remove);
+
         const handle = document.createElement('span');
         handle.className = 'ws-resize-handle';
-        handle.title = `Drag corner to resize ${item.label}`;
+        handle.title = `Drag corner to resize the ${label.toLowerCase()}`;
         elBox.appendChild(handle);
 
         handle.addEventListener('pointerdown', ev => {
           ev.preventDefault();
           ev.stopPropagation();
           handle.setPointerCapture(ev.pointerId);
-          const stageRect = overlay.getBoundingClientRect();
+          const stageRect = pe.overlay.getBoundingClientRect();
           const startX = ev.clientX;
           const startY = ev.clientY;
           const origBox = { ...box };
-
           const onResizeMove = (/** @type {PointerEvent} */ mv) => {
             const dxPt = ((mv.clientX - startX) / Math.max(1, stageRect.width)) * ps.width;
             const dyPt = ((mv.clientY - startY) / Math.max(1, stageRect.height)) * ps.height;
             const resized = resizeBoxInPage(origBox, dxPt, dyPt, ps, {
-              minWidth: item.key === 'date' ? 36 : 54,
-              minHeight: item.key === 'signature' ? 14 : 10
+              minWidth: box.kind === 'date' ? 36 : 54,
+              minHeight: box.kind === 'signature' ? 14 : 10
             });
             box.x = resized.x;
             box.y = resized.y;
@@ -928,17 +1063,15 @@ export async function openSignWorkshop(opts) {
           handle.addEventListener('pointercancel', onResizeUp);
         });
 
-        // Pointer drag-to-move handler on the box itself
         elBox.addEventListener('pointerdown', ev => {
-          if (ev.target === handle) return;
+          if (ev.target === handle || ev.target === remove) return;
           ev.preventDefault();
           elBox.setPointerCapture(ev.pointerId);
-          const stageRect = overlay.getBoundingClientRect();
+          const stageRect = pe.overlay.getBoundingClientRect();
           const startX = ev.clientX;
           const startY = ev.clientY;
           const origX = box.x;
           const origY = box.y;
-
           const onMove = (/** @type {PointerEvent} */ mv) => {
             const dxPt = ((mv.clientX - startX) / Math.max(1, stageRect.width)) * ps.width;
             const dyPt = ((mv.clientY - startY) / Math.max(1, stageRect.height)) * ps.height;
@@ -956,69 +1089,94 @@ export async function openSignWorkshop(opts) {
           elBox.addEventListener('pointercancel', onUp);
         });
 
-        overlay.appendChild(elBox);
+        pe.overlay.appendChild(elBox);
       }
     }
 
-    // 4. Render the active PDF page onto `wsPageCanvas`
-    async function renderPdfPage() {
-      const page = await pdfjsDoc.getPage(activePageIndex + 1);
-      const cssScale = 1.15;
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const vpCss = page.getViewport({ scale: cssScale });
-      const vpRender = page.getViewport({ scale: cssScale * dpr });
-
-      pageCanvas.width = Math.round(vpRender.width);
-      pageCanvas.height = Math.round(vpRender.height);
-      pageCanvas.style.width = `${Math.round(vpCss.width)}px`;
-      pageCanvas.style.height = `${Math.round(vpCss.height)}px`;
-      stage.style.width = `${Math.round(vpCss.width)}px`;
-      stage.style.height = `${Math.round(vpCss.height)}px`;
-
-      const ctx = pageCanvas.getContext('2d');
-      if (ctx) {
-        await page.render({ canvasContext: ctx, viewport: vpRender }).promise;
+    // 4. Lazy rendering: only pages near the viewport hold a canvas; far pages release theirs (Safari memory)
+    let renderChain = Promise.resolve();
+    function requestRender(/** @type {number} */ i) {
+      const pe = pageEls[i];
+      pe.want = true;
+      if (pe.rendered || pe.rendering) return;
+      pe.rendering = true;
+      renderChain = renderChain.then(async () => {
+        if (!pe.want || closed) { pe.rendering = false; return; }
+        try {
+          const page = await pdfjsDoc.getPage(i + 1);
+          const dpr = Math.min(2, window.devicePixelRatio || 1);
+          const vpRender = page.getViewport({ scale: cssScale * dpr });
+          pe.canvas.width = Math.round(vpRender.width);
+          pe.canvas.height = Math.round(vpRender.height);
+          const ctx = pe.canvas.getContext('2d');
+          if (ctx) await page.render({ canvasContext: ctx, viewport: vpRender }).promise;
+          pe.rendered = true;
+          if (!pe.want) releaseCanvas(i);
+        } catch {
+          /* leave blank; scrolling away and back retries */
+        } finally {
+          pe.rendering = false;
+        }
+      });
+    }
+    function releaseCanvas(/** @type {number} */ i) {
+      const pe = pageEls[i];
+      pe.want = false;
+      if (pe.rendered) {
+        pe.canvas.width = 0;
+        pe.canvas.height = 0;
+        pe.rendered = false;
       }
-      renderOverlayBoxes();
+    }
+    if (typeof IntersectionObserver === 'function') {
+      renderObserver = new IntersectionObserver(entries => {
+        for (const en of entries) {
+          const i = Number(/** @type {HTMLElement} */ (en.target).dataset.page);
+          if (en.isIntersecting) requestRender(i); else releaseCanvas(i);
+        }
+      }, { root: docWrap, rootMargin: '900px 0px' });
+      // The "current" page (for the Place buttons) is the one most visible in the scroll view.
+      /** @type {Map<number, number>} */
+      const ratios = new Map();
+      currentObserver = new IntersectionObserver(entries => {
+        for (const en of entries) ratios.set(Number(/** @type {HTMLElement} */ (en.target).dataset.page), en.intersectionRatio);
+        let best = -1;
+        let bestRatio = 0;
+        ratios.forEach((r, i) => { if (r > bestRatio + 1e-6 || (Math.abs(r - bestRatio) < 1e-6 && i < best)) { best = i; bestRatio = r; } });
+        if (best >= 0) setCurrentPage(best);
+      }, { root: docWrap, threshold: [0, 0.2, 0.4, 0.6, 0.8, 1] });
+      pageEls.forEach(pe => { renderObserver && renderObserver.observe(pe.wrap); currentObserver && currentObserver.observe(pe.wrap); });
+    } else {
+      // Very old browsers: render the page we opened at and its neighbours.
+      [currentPageIndex - 1, currentPageIndex, currentPageIndex + 1].filter(i => i >= 0 && i < totalPages).forEach(requestRender);
     }
 
     // 5. Validation state
     function updateValidationState() {
-      const pageOk = canSignPage(analysis, activePageIndex);
-      if (!pageOk.ok) {
+      const check = checkPlacement(analysis, items, {
+        signaturePresent: !!savedSig.pngDataUrl,
+        printedName: printedNameInput.value,
+        dateStr: dateStrInput.value
+      });
+      if (check.errors.length) {
         applyBtn.disabled = true;
-        statusMsg.textContent = pageOk.reason;
-        statusMsg.className = 'hint err';
-        return;
-      }
-      if (!savedSig.pngDataUrl) {
-        applyBtn.disabled = true;
-        statusMsg.textContent = 'Create or upload your signature in Section 1.';
-        statusMsg.className = 'hint';
-        return;
-      }
-      if (!printedNameInput.value.trim()) {
-        applyBtn.disabled = true;
-        statusMsg.textContent = 'Enter your printed name in Section 2.';
-        statusMsg.className = 'hint';
-        return;
-      }
-      if (!dateStrInput.value.trim()) {
-        applyBtn.disabled = true;
-        statusMsg.textContent = 'Enter the approval date in Section 2.';
-        statusMsg.className = 'hint';
+        if (!armed) setStatus(check.errors[0], 'hint');
         return;
       }
       applyBtn.disabled = false;
-      statusMsg.textContent = `Ready to sign ${describeTargetPage(analysis, activePageIndex)} and flatten Proposal fields.`;
-      statusMsg.className = 'hint ok';
+      if (armed) return;
+      const pagesMarked = [...new Set(items.map(it => it.pageIndex))].sort((a, b) => a - b);
+      setStatus(
+        `Ready: ${items.length} mark${items.length === 1 ? '' : 's'} on page${pagesMarked.length === 1 ? '' : 's'} ${describePageRanges(pagesMarked)}.` +
+          (check.warnings.length ? ' ' + check.warnings.join(' ') : ''),
+        check.warnings.length ? 'hint' : 'hint ok'
+      );
     }
 
-    // 6. Apply Signature & Flatten Proposal
+    // 6. Apply: draw every placed mark, flatten the Proposal pages and the marked pages
     applyBtn.onclick = async () => {
       applyBtn.disabled = true;
-      statusMsg.textContent = 'Signing and flattening Proposal fields…';
-      statusMsg.className = 'hint';
+      setStatus('Signing and flattening Proposal fields…', 'hint');
       try {
         if (savedSig.mode === 'type') {
           savedSig.pngDataUrl = await renderTypedSignaturePngAsync(typedSigInput.value, fontSelect.value);
@@ -1038,17 +1196,16 @@ export async function openSignWorkshop(opts) {
         }
 
         const sigBytes = dataUrlToBytes(savedSig.pngDataUrl);
-        const res = await applySignatureAndFlatten(PDFLib, {
+        const res = await applyPlacedItemsAndFlatten(PDFLib, {
           pdfBytes: opts.pdfBytes,
           analysis,
-          pageIndex: activePageIndex,
+          items,
           signerIndex,
           signaturePngBytes: sigBytes,
           printedName: printedNameInput.value.trim(),
           dateStr: dateStrInput.value.trim(),
           signatureScale,
-          textFontSize,
-          placement
+          textFontSize
         });
 
         if (res.pdfBytes.byteLength > maxBytes) {
@@ -1065,18 +1222,22 @@ export async function openSignWorkshop(opts) {
           dateStr: dateStrInput.value.trim()
         });
       } catch (e) {
-        statusMsg.textContent = e instanceof Error ? e.message : String(e);
-        statusMsg.className = 'hint err';
+        setStatus(e instanceof Error ? e.message : String(e), 'hint err');
         applyBtn.disabled = false;
       }
     };
 
     // Initialize UI
     renderPageBar();
+    refreshToolbar();
     if (savedSig.mode === 'upload' && savedSig.pngDataUrl) {
       uploadPreviewImg.src = savedSig.pngDataUrl;
     }
     void setSigMode(savedSig.mode === 'upload' && savedSig.pngDataUrl ? 'upload' : 'type');
-    void renderPdfPage();
+    updateValidationState();
+    // Open scrolled to the default target (the last approval page, else the last scan); otherwise at the top.
+    if (defaultTarget >= 0) {
+      requestAnimationFrame(() => scrollToPage(defaultTarget));
+    }
   });
 }

@@ -547,42 +547,6 @@ export function describeTargetPage(analysis, pageIndex) {
 }
 
 /**
- * Hard guardrail checking whether a given 0-based `pageIndex` is allowed to be signed at Proposal Review.
- * - Pages matching a Not-Ours landmark (Project Plan, Fundraising Application, Project Report) or sitting at/after
- *   `firstNotOursPageIndex` can NEVER be selected or signed, regardless of user clicks.
- * - When one or more Proposal Approval landmark pages were detected (`approvalPageIndices.length > 0`), only those
- *   pages may be signed.
- *
- * @param {WorkbookAnalysis} analysis
- * @param {number} pageIndex
- * @returns {{ ok: boolean, reason: string }}
- */
-export function canSignPage(analysis, pageIndex) {
-  if (!analysis || !Array.isArray(analysis.pages)) {
-    return { ok: false, reason: 'Workbook analysis is unavailable.' };
-  }
-  const pg = analysis.pages[pageIndex];
-  if (!pg) {
-    return { ok: false, reason: 'Page is out of range.' };
-  }
-  if (pg.forbidden || pageIndex >= analysis.firstNotOursPageIndex) {
-    const sec = pg.notOursSection || 'post-Proposal section';
-    return {
-      ok: false,
-      reason: `Page ${pg.pageNumber} belongs to the ${sec} and cannot be signed during Proposal Review.`
-    };
-  }
-  if (analysis.approvalPageIndices.length > 0 && !analysis.approvalPageIndices.includes(pageIndex)) {
-    const allowed = analysis.approvalPageIndices.map(i => i + 1).join(', ');
-    return {
-      ok: false,
-      reason: `Only Proposal Approval page(s) (${allowed}) may be signed.`
-    };
-  }
-  return { ok: true, reason: '' };
-}
-
-/**
  * Compute the effective font size (in PDF points) for a Printed Name or Date box.
  * - When `requestedFontSize` is `0` or omitted ("Auto-fit"), fits the text to the box's height and width.
  * - When `requestedFontSize > 0` is specified by the user, clamps it to `[TEXT_FONT_MIN_PT, TEXT_FONT_MAX_PT]` (7 to 16 pt, the same range the UI offers).
@@ -961,3 +925,22 @@ export function hasTransparentPixel(rgba) {
 
 /** Warning shown when a stamp PNG has no transparency. */
 export const STAMP_OPAQUE_WARNING = 'This stamp has a white background and will cover the page under it.';
+
+/**
+ * Compact page-range text for 0-based page indices: `[0,1,2,4]` becomes `"1–3, 5"`.
+ * @param {number[]} indices
+ * @returns {string}
+ */
+export function describePageRanges(indices) {
+  const nums = [...new Set((indices || []).filter(n => Number.isInteger(n) && n >= 0))].sort((a, b) => a - b).map(n => n + 1);
+  /** @type {string[]} */
+  const parts = [];
+  let i = 0;
+  while (i < nums.length) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+    parts.push(j > i ? `${nums[i]}–${nums[j]}` : String(nums[i]));
+    i = j + 1;
+  }
+  return parts.join(', ');
+}
