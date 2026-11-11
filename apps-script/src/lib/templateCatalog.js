@@ -91,6 +91,19 @@ var TemplateCatalog = (function () {
       'The {type} on {when} for {scout} was cancelled. Pick a new time here: {pageLink}']));
   });
 
+  // Follow-Up / Consult (Jim W., 2026-11-11): a committee-made meeting with a Scout outside the normal steps. Always made
+  // by a member (Mode Review: the Outbox), never booked or changed by the Scout: no cancel link, replies go to the committee.
+  var FOLLOWUP = 'Follow-Up / Consult';
+  var FOLLOWUP_ADULT = 'Youth protection: a parent/guardian or another adult 21 or older must be with the Scout for the whole meeting.';
+  LIST.push(t('Booked: ' + FOLLOWUP, 'B', ['scout', 'type', 'when', 'where', 'with', 'meetLink', 'pageLink'], '{type} booked: {scout}, {when}', [
+    'A {type} is booked for {scout}.', '', '- When: {when}', '- Where: {where}', '- With: {with}', '- Join: {meetLink}', '',
+    'A calendar invitation is on its way.', '', FOLLOWUP_ADULT, '', 'Need to change it? Reply to this email.'], 'group', 'review'));
+  LIST.push(t('Moved: ' + FOLLOWUP, 'B', ['scout', 'type', 'when', 'where', 'pageLink'], '{type} changed: {scout}, now {when}', [
+    'The {type} for {scout} has a new date, time or place.', '', '- When: {when}', '- Where: {where}', '',
+    'The calendar invitation has been updated. Questions? Reply to this email.'], 'group', 'review'));
+  LIST.push(t('Cancelled: ' + FOLLOWUP, 'B', ['scout', 'type', 'when', 'pageLink'], '{type} cancelled: {scout}, {when}', [
+    'The {type} on {when} for {scout} was cancelled. Questions? Reply to this email.'], 'group', 'review'));
+
   // EBoR (Jim W., 2026-10-29): Booked / Moved / Cancelled go To the Scout AND the unit contacts in ONE email, Cc the
   // parent/guardian and the committee. It used to be two emails (4.1.a-c to the family, 4.1.d-g to the unit), and the
   // committee got both. {boardLink} is empty when the unit is under review (the committee fills the board) or has no
@@ -292,11 +305,14 @@ var TemplateCatalog = (function () {
     'Open times: Proposal Review': ['2.2.d', 'In-Person Review: To Book', '(same)', 'Same as 1.4.d', 'all Scouts ready to book; Cc their parents/guardians + committee'],
     'Open times: Eagle Board of Review': ['4.1.i', 'Application Verified', '(same)', 'Same as 1.4.d', 'all Scouts ready to book; Cc their parents/guardians + committee'],
     'Please book': ['6.2.c', 'any To Book stage (online booking)', '(same)', 'Hourly: Settings → pleaseBookDays in a To Book stage (default 7 + 14 days; EBoR 7): drafted into the Outbox', SF],
-    'Session briefing': ['6.2.b', 'any Booked stage', '(same)', 'Hourly: the day before (within 24 h), sent automatically', 'committee members on the slot'],
+    'Session briefing': ['6.2.b', 'any Booked stage', '(same)', 'Hourly: the day before (within 24 h), sent automatically (a Follow-Up / Consult too)', 'committee members on the slot'],
     'EBoR paused': ['4.2.a', 'EBoR Booked', 'EBoR Paused', 'Row action "EBoR paused" (with note)', SF],
     'Eagle not awarded': ['4.2.b', 'EBoR Booked / EBoR Paused', 'Eagle Not Awarded', 'Row action "Eagle not awarded" (with reasons)', SF],
     'New Eagle Scout': ['5.1.a', 'EBoR Booked', 'Eagle Earned', 'Row action "Eagle earned" (photos attached)', 'Scout; Cc parent/guardian, ' + UC + ', the board, others to invite'],
     'Council: Eagle paperwork': ['5.1.b', 'EBoR Booked / Eagle Earned', 'Eagle Earned', '"Eagle earned" or "Send signed paperwork to Council" (scans attached); fills the sent date', 'Council Eagle Services (Settings → councilEaglesEmail); Cc ' + UC],
+    'Booked: Follow-Up / Consult': ['6.2.d', 'any stage but Eagle Earned', '(same)', 'Committee page: Follow-Up / Consult created and booked (row action "Schedule a follow-up / consult…" or New session); the tracking row does not move', SF],
+    'Moved: Follow-Up / Consult': ['6.2.e', 'any stage but Eagle Earned', '(same)', 'Booked Follow-Up / Consult moved (committee page or the schedule sheet)', SF],
+    'Cancelled: Follow-Up / Consult': ['6.2.f', 'any stage but Eagle Earned', '(same)', 'Follow-Up / Consult cancelled (the schedule row is removed: a follow-up is never open for booking)', SF],
     'Status + page link': ['6.1.a', 'any', '(same)', 'Sheet Action "✉ Email status + page link"', SF]
   };
   LIST.forEach(function (x) {
@@ -377,7 +393,7 @@ var TemplateCatalog = (function () {
   }
 
   var PLACEHOLDER_HELP = [
-    ['{scout}', 'Scout\'s name'], ['{unit}', 'Unit (e.g. T719)'], ['{type}', 'Pre-Review Call / Proposal Review / Eagle Board of Review'],
+    ['{scout}', 'Scout\'s name'], ['{unit}', 'Unit (e.g. T719)'], ['{type}', 'Pre-Review Call / Proposal Review / Eagle Board of Review / Follow-Up / Consult'],
     ['{when}', 'Date and time, e.g. Wed 10/28 7:00 PM'], ['{where}', 'Place and address (in person)'], ['{with}', 'Committee member(s) (Pre-Review Call)'],
     ['{meetLink}', 'Google Meet link (Pre-Review Call)'], ['{pageLink}', 'Sign-in page of the Eagle Project site'],
     ['{link}', 'The one-time link (sign-in / confirm)'], ['{minutes}', 'Minutes the sign-in link works'], ['{days}', 'Days the confirm link works'], ['{status}', 'Stage text (Settings → Scout status)'],

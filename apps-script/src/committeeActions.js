@@ -50,7 +50,10 @@ function actionCommitteeSchedule_(req) {
   });
   var scouts = CommitteeSchedule.scoutChoices(Records.all(['scout_name', 'unit']),
     function (k) { return SettingsModel.sectionLabel(s, k); },
-    function (id, type) { var b = Booking.currentBooking(rows, id, type, Date.now()); return b ? whenText_(b.start) : ''; });
+    function (id, type) {
+      if (Booking.isCommitteeOnly(type)) return '';                       // a Scout can have several Follow-Ups: nothing is released
+      var b = Booking.currentBooking(rows, id, type, Date.now()); return b ? whenText_(b.start) : '';
+    });
   Object.keys(scouts).forEach(function (t) { scouts[t].forEach(function (x) { x.unitCode = Units.primary(x.unit); }); });   // reserved-for-unit matching
   return {
     me: { name: String(c.me.name || ''), initials: String(c.me.initials || ''), email: c.email },
@@ -283,11 +286,13 @@ function actionCancelSlotBooking_(req) {
   var row = bookedRow_(readSchedule_(), req.key);
   var rec = Records.get(String(row.record_id));
   if (!rec) throw userError_('The Scout booked here is no longer on the tracking tab. Clear the slot on the schedule sheet.');
-  var cur = upcomingBooking_(readSchedule_().rows, rec.recordId);
-  if (!cur || cur.b.key !== String(row._key)) throw userError_('This booking is in the past or not the Scout\'s current one. Change it on the schedule sheet.');
-  var res = cancelBooking_(rec, c.email, false);
+  var followup = Booking.isCommitteeOnly(Booking.typeCode(row.slot_type));   // a Follow-Up / Consult is cancelled by its own row
+  var cur = followup ? Booking.bookingAt(readSchedule_().rows, rec.recordId, String(row._key)) : upcomingBooking_(readSchedule_().rows, rec.recordId);
+  if (!cur || cur.b.key !== String(row._key) || cur.b.start < Date.now() - 3600 * 1000) throw userError_('This booking is in the past or not the Scout\'s current one. Change it on the schedule sheet.');
+  var res = cancelBooking_(rec, c.email, false, followup ? String(row._key) : '');
   if (res.shadow) return { message: 'Cleared the shadow booking for ' + rec.fields.scout_name + ' on ' + res.when + ' (no email; the slot is open again).' };
-  return { message: 'Cancelled ' + rec.fields.scout_name + '\'s ' + res.label + ' on ' + res.when + '. The invitation was removed and the slot is open again; ' +
+  return { message: 'Cancelled ' + rec.fields.scout_name + '\'s ' + res.label + ' on ' + res.when + '. The invitation was removed and ' +
+    (followup ? 'the session was taken off the schedule (a follow-up / consult is never open for booking); ' : 'the slot is open again; ') +
     (res.mailQueued ? 'the email to the Scout and parent is waiting in the Outbox.' : 'the Scout and parent were emailed.'), outboxId: res.outboxId };
 }
 
@@ -299,7 +304,7 @@ function actionCancelSlotBooking_(req) {
 function bookForScout_(rec, type, key, by) {
   var released = '';
   var sched = readSchedule_();
-  var cur = Booking.currentBooking(sched.rows, rec.recordId, type, Date.now());
+  var cur = Booking.rules(type).multiple ? null : Booking.currentBooking(sched.rows, rec.recordId, type, Date.now());   // Follow-Ups: several allowed
   if (cur && cur.key !== key) {
     withLock_(function () {
       var s2 = readSchedule_();
@@ -314,6 +319,17 @@ function bookForScout_(rec, type, key, by) {
   var res;
   try { res = bookSlot_(rec, type, key, by, 0, true); }
   catch (e) {
+    if (Booking.isCommitteeOnly(type)) {                           // never leave an unbooked Follow-Up / Consult on the schedule
+      try {
+        withLock_(function () {
+          var s3 = readSchedule_();
+          var rw = s3.rows.filter(function (x) { return String(x._key) === key; })[0];
+          if (rw && !String(rw.record_id || '').trim()) s3.sheet.deleteRow(rw._row);
+          readSchedule_._memo = null;
+        });
+      } catch (e2) { console.warn('unbooked follow-up not removed: ' + e2); }
+      throw userError_(Booking.label(type) + ' for ' + rec.fields.scout_name + ' could not be booked, so it was not added: ' + (e.userMessage || e.message));
+    }
     throw userError_('The slot was saved but ' + rec.fields.scout_name + ' could not be booked into it: ' + (e.userMessage || e.message) +
       (released ? ' Their earlier time (' + released + ') was already released.' : ''));
   }

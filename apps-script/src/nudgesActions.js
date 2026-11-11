@@ -163,21 +163,12 @@ function digestAwaiting_() {
         return { label: Booking.label(code), count: open.length, next: open.length ? Utilities.formatDate(new Date(open[0].start), digestTz_(), 'EEE M/d') : '' };
       });
     });
-    sched.rows.forEach(function (r) {
-      var id = String(r.record_id || '').trim(), st = Booking.slotStart(r.date, r.time) || 0;
-      if (!(st >= now && st < now + 7 * dayMs)) return;
-      if (!id && Booking.isReserved(r) && !String(r.scout_name || '').trim()) {          // reserved, no Scout yet
-        upcoming.push({ start: st, when: Utilities.formatDate(new Date(st), digestTz_(), 'EEE M/d h:mm a'),
-          what: Booking.label(Booking.typeCode(r.slot_type)) + ': Reserved' + (String(r.unit || '').trim() ? ' (' + String(r.unit).trim() + ')' : '') +
-            (String(r.reps || '').trim() ? ', ' + String(r.reps).trim() : ', no members yet') });
-        return;
-      }
-      if (!id) return;
-      upcoming.push({ start: st, when: Utilities.formatDate(new Date(st), digestTz_(), 'EEE M/d h:mm a'),
-        what: Booking.label(Booking.typeCode(r.slot_type)) + ': ' + (byId[id] ? title(byId[id]) : String(r.scout_name || id)) +
-          (String(r.reps || '').trim() ? ', ' + String(r.reps).trim() : ', no members yet') });
+    Nudges.upcomingSessions(sched.rows, now, 7).forEach(function (x) {                  // every booked type (Follow-Up / Consult too) + reserved
+      var when = Utilities.formatDate(new Date(x.start), digestTz_(), 'EEE M/d h:mm a');
+      var members = x.reps ? ', ' + x.reps : ', no members yet';
+      upcoming.push({ start: x.start, when: when, what: Booking.label(x.type) + ': ' + (x.reserved
+        ? 'Reserved' + (x.unit ? ' (' + x.unit + ')' : '') : (byId[x.recordId] ? title(byId[x.recordId]) : x.scoutName || x.recordId)) + members });
     });
-    upcoming.sort(function (x, y) { return x.start - y.start; });
   }
   part('intake', function () {
     return AdminRules.intakeExceptions(Tabs.read(QUEUE_TAB), now).filter(function (x) { return x.why.indexOf('Waiting for the family') !== 0; })

@@ -193,7 +193,7 @@ function syncBookedRow_(row, ctx, report) {
   report = report || { checked: 0, added: 0, removed: 0, moved: 0 };
   var s = ctx.s, c = ctx.c;
   var type = Booking.typeCode(row.slot_type);
-  if (Booking.BOOKABLE.indexOf(type) < 0 || !String(row.record_id || '').trim() || !String(row.event_id || '').trim()) return report;
+  if (Booking.BOOKED_TYPES.indexOf(type) < 0 || !String(row.record_id || '').trim() || !String(row.event_id || '').trim()) return report;
   var r = Booking.rules(type);
   var start = Booking.slotStart(row.date, row.time);
   if (!(start > Date.now())) return report;
@@ -229,7 +229,7 @@ function syncBookedRow_(row, ctx, report) {
     Calendar.Events.patch(patch, calId_(), ev.id, { sendUpdates: s.testMode !== false ? 'none' : 'all' });
     var whenNow = whenText_(ch.start);
     setTrackingDateWho_(rec.recordId, type, new Date(ch.start), who.join('/'));
-    addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [tool] ' + Booking.label(type) + ' moved to ' + whenNow +
+    addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [tool] ' + (r.committeeOnly ? Booking.followupLog('moved', whenNow, who) : Booking.label(type) + ' moved to ' + whenNow) +
       (virtR ? '' : ' at ' + ch.place));
     if (r.notifyUnit) {
       eborMail_(rec, 'moved', whenNow, virtR ? '' : ch.place, { start: evStart, where: String(ev.location || ''), newStart: ch.start,
@@ -259,8 +259,8 @@ function syncBookedRow_(row, ctx, report) {
     }
   }
   var cols = Records.columns();
-  var whoCol = s[r.whoCol];
-  if (cols.indexOf(whoCol) >= 0 && String(rec.fields[whoCol] || '') !== who.join('/')) {
+  var whoCol = r.whoCol ? s[r.whoCol] : '';              // a Follow-Up / Consult has no tracking Who column
+  if (whoCol && cols.indexOf(whoCol) >= 0 && String(rec.fields[whoCol] || '') !== who.join('/')) {
     var upd = {}; upd[whoCol] = who.join('/');
     Records.update(rec.recordId, upd);
   }
@@ -347,13 +347,13 @@ function handleScheduleNameEdit_(e) {
   var note = function (t) { try { e.range.setNote(t); } catch (x) {} };
   if (!name && linked) {
     var r0 = Records.get(linked);
-    if (r0) { try { cancelBooking_(r0, by, false); note(''); } catch (err) { note('Not cancelled: ' + (err.userMessage || err.message)); } }
+    if (r0) { try { cancelBooking_(r0, by, false, Booking.isCommitteeOnly(Booking.typeCode(row.slot_type)) ? String(row._key) : ''); note(''); } catch (err) { note('Not cancelled: ' + (err.userMessage || err.message)); } }
     return;
   }
   if (!name) return;
   if (linked) { note('Already booked for another Scout. To change it: clear the name (cancels), then type the new name.'); return; }
   var type = Booking.typeCode(row.slot_type);
-  if (Booking.BOOKABLE.indexOf(type) < 0) return;          // not a bookable slot (e.g. committee meeting): leave it alone
+  if (Booking.BOOKED_TYPES.indexOf(type) < 0) return;      // not a bookable slot (e.g. committee meeting): leave it alone
   var m = Booking.matchScout(Records.all(['scout_name', 'unit', 'preferred_name']), name, row.unit, Units.code);
   if (m.error) { note('Not linked: ' + m.error); return; }
   try {
@@ -367,6 +367,7 @@ function handleScheduleNameEdit_(e) {
 function setTrackingDateWho_(recordId, type, date, whoText) {
   var s = getSettings_();
   var r = Booking.rules(type);
+  if (!r.dateCol) return;                                  // Follow-Up / Consult: no tracking date or Who column
   var cols = Records.columns();
   var upd = {};
   if (cols.indexOf(s[r.dateCol]) >= 0) upd[s[r.dateCol]] = date;
@@ -386,7 +387,7 @@ function bookSlot_(rec, type, slotKey, by, leadHours, prefilled) {
   if (!shadow && r.notifyUnit && !units_().length) notifyAdmin_('No unit contacts', 'EBoR booked but the Key 3 and Unit Contacts tabs list no units, so no unit was notified.');
   var slot = withLock_(function () {
     var sched = readSchedule_();
-    if (Booking.currentBooking(sched.rows, rec.recordId, type, Date.now())) {
+    if (!r.multiple && Booking.currentBooking(sched.rows, rec.recordId, type, Date.now())) {
       throw userError_('You already have a ' + lbl + ' booked. Cancel it first to pick another time.');
     }
     // prefilled: a committee member typed the Scout's name into the slot on the schedule sheet; treat it as open.
@@ -440,12 +441,13 @@ function bookSlot_(rec, type, slotKey, by, leadHours, prefilled) {
   if (moveTo) Records.move(rec.recordId, moveTo);
   setTrackingDateWho_(rec.recordId, type, new Date(slot.start), slot.who.join('/'));
   var when = whenText_(slot.start);
-  addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [tool] ' + lbl + ' booked for ' + when +
-    (slot.who.length ? ' with ' + slot.who.join('/') : '') + ' (by ' + by + ')' + (ev.id ? '' : '. NO INVITE: calendar failed'));
+  addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [tool] ' + (r.committeeOnly ? Booking.followupLog('booked', when, slot.who, by)
+    : lbl + ' booked for ' + when + (slot.who.length ? ' with ' + slot.who.join('/') : '') + ' (by ' + by + ')') + (ev.id ? '' : '. NO INVITE: calendar failed'));
 
   var shown = r.showWho ? people.names.join(', ') : '';
   var virtS = Booking.isVirtual(type, slot);
-  var m = Booking.bookedEmail(lbl, rec.fields.scout_name, when, shown, ev.meetUrl, pageUrl_(), virtS ? '' : Booking.place(slot));
+  var m = r.committeeOnly ? Booking.followupBookedEmail(rec.fields.scout_name, when, shown, ev.meetUrl, virtS ? '' : Booking.place(slot))
+    : Booking.bookedEmail(lbl, rec.fields.scout_name, when, shown, ev.meetUrl, pageUrl_(), virtS ? '' : Booking.place(slot));
   var mailRes = r.notifyUnit ? eborMail_(rec, 'booked', when, virtS ? '' : Booking.place(slot), '', by, by !== 'Scout')
     : mailFromTemplate_('Booked: ' + lbl, { scout: String(rec.fields.scout_name), type: lbl, when: when, where: virtS ? '' : Booking.place(slot),
     with: shown, meetLink: ev.meetUrl || '', pageLink: pageUrl_() }, {
@@ -464,17 +466,23 @@ function upcomingBooking_(rows, recordId) {
   return null;
 }
 
-function cancelBooking_(rec, by, enforceCutoff) {
+/**
+ * Cancel the record's upcoming booking. slotKey (optional): cancel the booking in that schedule row instead (a Scout can
+ * have several Follow-Ups / Consults). A Follow-Up / Consult row is removed from the schedule: it is never open for booking.
+ */
+function cancelBooking_(rec, by, enforceCutoff, slotKey) {
   var s = getSettings_();
   var hit = withLock_(function () {
     var sched = readSchedule_();
-    var cur = upcomingBooking_(sched.rows, rec.recordId);
+    var cur = slotKey ? Booking.bookingAt(sched.rows, rec.recordId, slotKey) : upcomingBooking_(sched.rows, rec.recordId);
     if (!cur) throw userError_('No upcoming booking to cancel.');
+    if (slotKey && !(cur.b.start >= Date.now() - 3600 * 1000)) throw userError_('That session has already happened.');
     if (enforceCutoff && !Booking.canCancel(cur.b.start, Date.now(), s.cancelCutoffHours)) {
       throw userError_('It is less than ' + (s.cancelCutoffHours || 24) + ' hours away. Please email the committee to change it.');
     }
     var row = sched.rows.filter(function (x) { return String(x._key) === cur.b.key; })[0];
-    writeSchedule_(sched, row._row, { scout_name: '', unit: '', record_id: '', event_id: '' });
+    if (Booking.isCommitteeOnly(cur.type)) { sched.sheet.deleteRow(row._row); readSchedule_._memo = null; }
+    else writeSchedule_(sched, row._row, { scout_name: '', unit: '', record_id: '', event_id: '' });
     return cur;
   });
   var r = Booking.rules(hit.type);
@@ -494,8 +502,9 @@ function cancelBooking_(rec, by, enforceCutoff) {
     if (now && now.section === r.movesTo) Records.move(rec.recordId, r.cancelBackTo);
   }
   var when = whenText_(hit.b.start);
-  addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [tool] ' + lbl + ' on ' + when + ' cancelled (by ' + by + ')');
-  var m = Booking.cancelledEmail(lbl, rec.fields.scout_name, when, pageUrl_());
+  addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [tool] ' + (r.committeeOnly ? Booking.followupLog('cancelled', when, [], by)
+    : lbl + ' on ' + when + ' cancelled (by ' + by + ')'));
+  var m = r.committeeOnly ? Booking.followupCancelledEmail(rec.fields.scout_name, when) : Booking.cancelledEmail(lbl, rec.fields.scout_name, when, pageUrl_());
   var mailRes = r.notifyUnit ? eborMail_(rec, 'cancelled', when, Booking.place(hit.b), '', by, by !== 'Scout')
     : mailFromTemplate_('Cancelled: ' + lbl, { scout: String(rec.fields.scout_name), type: lbl, when: when, pageLink: pageUrl_() }, {
     committee: by !== 'Scout', by: by, recordId: rec.recordId, scout: String(rec.fields.scout_name), to: familyMsg_(rec.fields, s.committeeGroupEmail).to, cc: familyMsg_(rec.fields, s.committeeGroupEmail).cc, keepCc: familyMsg_(rec.fields).keepCc,
@@ -509,7 +518,7 @@ function onlineType_(section) { return Booking.onlineType(section, getSettings_(
 /** For myRecord: what the Scout can book or has booked. */
 function bookingInfo_(rec) {
   var s = getSettings_();
-  var out = { canBook: null, booking: null };
+  var out = { canBook: null, booking: null, followups: [] };
   try {
     var cur = upcomingBooking_(readSchedule_().rows, rec.recordId);
     if (cur) {
@@ -528,6 +537,13 @@ function bookingInfo_(rec) {
       var byC = Booking.committeeType(rec.section, s);
       if (byC) out.byCommittee = Booking.label(byC);
     }
+    // Follow-Ups / Consults the committee made for this Scout: shown like any booked session, never changed by the Scout.
+    var rows = readSchedule_().rows, c = committee_();
+    out.followups = Booking.upcomingBookings(rows, rec.recordId, Booking.FOLLOWUP, Date.now()).map(function (b) {
+      var virt = Booking.isVirtual(Booking.FOLLOWUP, b);
+      return { type: Booking.label(Booking.FOLLOWUP), when: whenText_(b.start), member: Booking.resolveWho(b.who, c).names.join(', '),
+        where: virt ? '' : Booking.place(b), meetUrl: virt && !Booking.isShadow(b.eventId) ? meetUrlFor_(b.eventId) : '' };
+    });
   } catch (e) { console.warn('bookingInfo_: ' + e); }
   return out;
 }

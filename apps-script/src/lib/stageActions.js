@@ -20,6 +20,8 @@
  *   Eagle Earned                     Send signed paperwork to Council (later) | Council received the paperwork
  *   EBoR Paused                      Book an EBoR again (schedule page) | Eagle not awarded without reconvening (note email)
  *   any proposal/EBoR stage          ✓ Checked: nothing to do (only when new files are waiting)
+ *   every stage but Eagle Earned     Schedule a follow-up / consult… (opens the schedule page's new-session dialog, create-and-book
+ *                                    mode, type Follow-Up / Consult, this Scout; Jim W., 2026-11-11). No row move, no tracking date.
  *
  *   Application submitted  Proposal Approved -> Application Submitted; records the submitted date; acknowledgement (3.1.a) in the Outbox
  *                          (just a heads-up that an EBoR is coming).
@@ -47,6 +49,8 @@ var StageActions = (function () {
 
   var EXCEPTIONS = ['ebor_paused', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved'];   // lib/closing.js FROM_SECTIONS
   var CLOSE_REVIEW = ['proposal_not_approved', 'ebor_paused'];                                   // lib/closing.js REVIEW_SECTIONS
+  // Follow-Up / Consult: every stage except Eagle Earned (same list as CommitteeSchedule.FOLLOWUP_SECTIONS; a test keeps them equal)
+  var FOLLOWUP_STAGES = PROPOSAL_STAGES.filter(function (k) { return k !== 'eagle_earned'; }).concat(EXCEPTIONS, ['closed']);
 
   // email: 'note' = the member's note goes into the email (draft always in the Outbox); booking: the "Book: <type>"
   // email (online type: as the sheet's Action does, template Mode decides; not online: Outbox draft with {scheduleLink}).
@@ -106,7 +110,9 @@ var StageActions = (function () {
     // Closed records (Jim W., 2026-11-10; lib/closing.js, closingActions.js): no email, folder stays put
     { key: 'close', label: 'Close record…', sections: EXCEPTIONS, closing: 'close', dateLabel: 'Date closed', past: 'Record closed' },
     { key: 'keep_open', label: 'Keep open (hide "Close?")', sections: CLOSE_REVIEW, closing: 'keep', ifSuggest: true, past: 'Kept open' },
-    { key: 'reopen', label: 'Reopen…', sections: ['closed'], closing: 'reopen', past: 'Record reopened' }
+    { key: 'reopen', label: 'Reopen…', sections: ['closed'], closing: 'reopen', past: 'Record reopened' },
+    // Follow-Up / Consult (2026-11-11): a page action; the schedule page opens its dialog with this Scout and the type chosen
+    { key: 'followup', label: 'Schedule a follow-up / consult…', sections: FOLLOWUP_STAGES, page: '/committee/schedule', pageQuery: 'new=Followup' }
   ];
 
   var FILE_LABELS = { application: 'signed Eagle Scout Rank Application (PDF)', report: 'signed Advancement Report (PDF)', photo: 'EBoR photos' };
@@ -129,7 +135,7 @@ var StageActions = (function () {
   function forSection(sectionKey) {
     return ACTIONS.filter(function (a) { return a.sections.indexOf(sectionKey) >= 0; }).map(function (a) {
       var o = { key: a.key, label: a.label };
-      if (a.page) { o.page = a.page; return o; }
+      if (a.page) { o.page = a.page; if (a.pageQuery) o.pageQuery = a.pageQuery; return o; }
       if (a.dateLabel) o.dateLabel = a.dateLabel;
       if (a.dateDefault) o.dateDefault = a.dateDefault;
       if (a.ifPending) o.ifPending = true;

@@ -36,8 +36,8 @@ describe('CommitteeSchedule', () => {
 
   it('type defaults come from Settings', () => {
     const t = CS.typeDefaults(settings);
-    expect(t.map(x => x.minutes)).toEqual([20, 60, 90, 120]);
-    expect(t[3]).toMatchObject({ code: 'CCAC', label: 'Blocked', block: true });
+    expect(t.map(x => x.minutes)).toEqual([20, 60, 90, 30, 120]);
+    expect(t[4]).toMatchObject({ code: 'CCAC', label: 'Blocked', block: true });
     expect(t[0]).toMatchObject({ code: 'Intake', virtual: true, location: '' });
     expect(t[1]).toMatchObject({ code: 'ESSPPR', location: 'Test Y', address: '1 Fake St' });
   });
@@ -149,7 +149,7 @@ describe('CommitteeSchedule', () => {
     expect(CS.entries(r2, settings).find(x => x.key === 'SL_S')).toMatchObject({ booked: true, shadow: true });
     expect(CS.entries(r2, settings).find(x => x.key === 'SL_B').shadow).toBe(false);
     const t = CS.typeDefaults(Object.assign({}, settings, { onlineBooking: 'Pre-Review Call' }));
-    expect(t.map(x => x.shadow)).toEqual([false, true, true, undefined]);
+    expect(t.map(x => x.shadow)).toEqual([false, true, true, false, undefined]);
   });
 });
 

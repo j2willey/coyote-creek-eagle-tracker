@@ -1,7 +1,7 @@
 /**
  * UnitCalendar: the unit page's read-only calendar (Jim W., 2026-10-24). Pure.
  *
- * Default: the unit's own Scouts' sessions (Pre-Review Calls, Proposal Reviews, EBoRs; booked online or the old way),
+ * Default: the unit's own Scouts' sessions (Pre-Review Calls, Proposal Reviews, EBoRs, Follow-Ups / Consults; booked online or the old way),
  * so unit leaders see what is coming. "Show open times": open slots of the types Scouts book online now
  * (Settings → onlineBooking), to advise their Scouts. Other units' Scouts are never shown; open slots carry no names.
  */
@@ -22,7 +22,7 @@ var UnitCalendar = (function () {
     (rows || []).forEach(function (r) {
       var code = b.typeCode(r.slot_type);
       var id = str(r.record_id);
-      if (!id || b.BOOKABLE.indexOf(code) < 0) return;
+      if (!id || b.BOOKED_TYPES.indexOf(code) < 0) return;      // a Follow-Up / Consult shows too (never as an open time)
       var who = recordUnit(id);
       if (!who || !(who.unitCodes || [who.unitCode]).some(function (c) { return codes.indexOf(c) >= 0; })) return;   // any of the Scout's units
       var start = b.slotStart(r.date, r.time);

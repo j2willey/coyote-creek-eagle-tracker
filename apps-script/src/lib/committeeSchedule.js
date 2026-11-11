@@ -20,7 +20,14 @@ var CommitteeSchedule = (function () {
 
   /** Types a member can create from the page (Blocked comes later). */
   var CREATE_TYPES = ['Intake', 'ESSPPR', 'EBoR'];
-  var MINUTES_KEY = { Intake: 'intakeMinutes', ESSPPR: 'reviewMinutes', EBoR: 'eborMinutes' };
+  var MINUTES_KEY = { Intake: 'intakeMinutes', ESSPPR: 'reviewMinutes', EBoR: 'eborMinutes', Followup: 'followupMinutes' };
+  // Follow-Up / Consult (Jim W., 2026-11-11): made here by a member, always for a Scout (never open for booking), at any
+  // stage but Eagle Earned. It is not in CREATE_TYPES (that list is what Scouts are offered, reserved, opened by email...).
+  var FOLLOWUP = 'Followup';
+  var BOOK_TYPES = CREATE_TYPES.concat([FOLLOWUP]);
+  var FOLLOWUP_SECTIONS = ['proposal_received', 'proposal_incomplete', 'intake_to_book', 'intake_booked', 'intake_revisions',
+    'review_to_book', 'review_booked', 'proposal_revisions', 'proposal_approved', 'app_submitted', 'app_verified', 'ebor_booked',
+    'ebor_paused', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved', 'closed'];
 
   /**
    * Create-and-book (committee puts a Scout straight into a slot): which Scouts each type offers.
@@ -29,7 +36,7 @@ var CommitteeSchedule = (function () {
    */
   var PRE_APPROVAL = ['proposal_received', 'proposal_incomplete', 'intake_to_book', 'intake_booked', 'intake_revisions',
     'review_to_book', 'review_booked', 'proposal_revisions'];
-  var SCOUT_SECTIONS = { Intake: PRE_APPROVAL, ESSPPR: PRE_APPROVAL, EBoR: ['app_verified', 'ebor_booked', 'ebor_paused'] };
+  var SCOUT_SECTIONS = { Intake: PRE_APPROVAL, ESSPPR: PRE_APPROVAL, EBoR: ['app_verified', 'ebor_booked', 'ebor_paused'], Followup: FOLLOWUP_SECTIONS };
   // Booking from these stages moves the row to the type's "Booked" section; other stages stay where they are.
   var MOVE_FROM = {
     Intake: ['proposal_received', 'proposal_incomplete', 'intake_to_book'],
@@ -51,7 +58,7 @@ var CommitteeSchedule = (function () {
    */
   function scoutChoices(records, labelFn, bookingFn) {
     var out = {};
-    CREATE_TYPES.forEach(function (type) {
+    BOOK_TYPES.forEach(function (type) {
       var list = (records || []).filter(function (r) { return SCOUT_SECTIONS[type].indexOf(r.section) >= 0 && str(r.scout_name); })
         .map(function (r) {
           return { recordId: r.recordId, name: str(r.scout_name), unit: str(r.unit), stage: labelFn ? labelFn(r.section) : r.section,
@@ -85,21 +92,27 @@ var CommitteeSchedule = (function () {
   }
 
   var BLOCK = 'CCAC';                     // Booking.BLOCKING: "Blocked" rows (meetings, holidays); written as "Blocked"
-  var FORM_TYPES = CREATE_TYPES.concat([BLOCK]);
+  var FORM_TYPES = BOOK_TYPES.concat([BLOCK]);
 
   /** Type list + defaults for the page's form (bookable types, then Blocked). */
   function typeDefaults(settings) {
     var s = settings || {};
-    var fallback = { Intake: 20, ESSPPR: 60, EBoR: 90 };
-    return CREATE_TYPES.map(function (code) {
+    var fallback = { Intake: 20, ESSPPR: 60, EBoR: 90, Followup: 30 };
+    return BOOK_TYPES.map(function (code) {
       var r = B().rules(code);
-      return {
+      var t = {
         code: code, label: B().label(code), virtual: !!r.virtual, canBeOnline: !r.virtual, block: false, shadow: B().isShadowType(code, s),
         minutes: Number(s[MINUTES_KEY[code]]) || fallback[code],
         leadHours: Number(s[r.lead]) || 0,                 // Settings lead time (a session's own Lead (h) replaces it)
         location: r.virtual ? '' : str(s.defaultLocation),
         address: r.virtual ? '' : str(s.defaultAddress)
       };
+      if (r.committeeOnly) {                               // Follow-Up / Consult: online (Meet) unless a place is given; always for a Scout
+        t.committeeOnly = true; t.defaultOnline = true; t.leadHours = 0;
+        t.location = B().ONLINE_PLACE; t.address = '';
+        t.inPersonLocation = str(s.defaultLocation); t.inPersonAddress = str(s.defaultAddress);
+      }
+      return t;
     }).concat([{ code: BLOCK, label: B().label(BLOCK), virtual: false, block: true, minutes: 120, location: '', address: '' }]);
   }
 
@@ -186,6 +199,7 @@ var CommitteeSchedule = (function () {
     var x = input || {};
     var code = str(x.type);
     var block = code === BLOCK;
+    var followup = code === FOLLOWUP;
     if (FORM_TYPES.indexOf(code) < 0) errors.push('Pick a session type.');
     var allDay = block && !str(x.time);
     var start = allDay ? startOf(x.date, '00:00') : startOf(x.date, x.time);
@@ -194,20 +208,22 @@ var CommitteeSchedule = (function () {
     var minutes = allDay ? 0 : Math.round(Number(x.minutes));
     if (!allDay && !(minutes >= 5 && minutes <= 720)) errors.push('Length must be between 5 and 720 minutes.');
     var reps = (x.reps || []).map(str).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
-    var reserved = !block && !!x.reserved;
+    var reserved = !block && !followup && !!x.reserved;
     var unit = reserved ? str(x.unit) : '';
+    if (followup && !str(x.recordId) && !str(x.key)) errors.push('Pick a Scout: a follow-up / consult is made for a Scout and is never open for booking.');
     if (!reps.length && !block) {
-      if (str(x.recordId)) errors.push('Add a committee member before booking a Scout into this slot.');
+      if (followup) errors.push('Add a committee member: who is meeting the Scout?');
+      else if (str(x.recordId)) errors.push('Add a committee member before booking a Scout into this slot.');
       else warnings.push('No committee member on this session. Scouts and units can\'t book it until one signs up, and the digest lists it until then.');
     }
     var unknown = reps.filter(function (t) { return !B().findMember(t, committee); });
     if (unknown.length) errors.push('Not on the Committee tab: ' + unknown.join(', ') + '.');
-    var r = CREATE_TYPES.indexOf(code) >= 0 ? B().rules(code) : {};
+    var r = BOOK_TYPES.indexOf(code) >= 0 ? B().rules(code) : {};
     var location = r.virtual ? '' : str(x.location);
     var address = r.virtual || block ? '' : str(x.address);
     // Lead (h): this session's own lead time; blank = the type's Settings value (Jim W. 2026-10-31).
     var leadOwn = null;
-    if (!block && x.leadHours !== undefined && x.leadHours !== null && str(x.leadHours) !== '') {
+    if (!block && !followup && x.leadHours !== undefined && x.leadHours !== null && str(x.leadHours) !== '') {
       leadOwn = Number(x.leadHours);
       if (isNaN(leadOwn) || leadOwn < 0 || leadOwn > 720) { errors.push('Lead time must be blank or between 0 and 720 hours.'); leadOwn = null; }
     }
@@ -279,6 +295,7 @@ var CommitteeSchedule = (function () {
     var list = (times || []).filter(function (t) { return t && (str(t.date) || str(t.time)); });
     if (!list.length) return { errors: ['Add at least one date and start time.'], warnings: [], items: [] };
     if (list.length > BATCH_MAX) return { errors: ['At most ' + BATCH_MAX + ' sessions at a time.'], warnings: [], items: [] };
+    if (str(x.type) === FOLLOWUP) return { errors: ['A follow-up / consult is made one at a time, for a Scout.'], warnings: [], items: [] };
     if (str(x.type) === BLOCK && list.length > 1) return { errors: ['Blocked times are added one at a time.'], warnings: [], items: [] };
     var extra = [], items = [], seen = {};
     var errs = [], warns = [];   // [{text, when}]
@@ -354,7 +371,7 @@ var CommitteeSchedule = (function () {
   }
 
   return {
-    CREATE_TYPES: CREATE_TYPES, FORM_TYPES: FORM_TYPES, BLOCK: BLOCK, windowOf: windowOf, SCOUT_SECTIONS: SCOUT_SECTIONS, moveOnBook: moveOnBook, scoutChoices: scoutChoices, memberFor: memberFor, timeText: timeText, time24: time24,
+    CREATE_TYPES: CREATE_TYPES, FORM_TYPES: FORM_TYPES, BLOCK: BLOCK, FOLLOWUP: FOLLOWUP, FOLLOWUP_SECTIONS: FOLLOWUP_SECTIONS, windowOf: windowOf, SCOUT_SECTIONS: SCOUT_SECTIONS, moveOnBook: moveOnBook, scoutChoices: scoutChoices, memberFor: memberFor, timeText: timeText, time24: time24,
     typeDefaults: typeDefaults, defaultStart: defaultStart, minutesFor: minutesFor,
     entries: entries, startOf: startOf, check: check, checkBatch: checkBatch, BATCH_MAX: BATCH_MAX, checkMove: checkMove, insertBefore: insertBefore, attention: attention
   };

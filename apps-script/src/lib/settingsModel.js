@@ -83,6 +83,7 @@ var SettingsModel = (function () {
     intakeMinutes: 20,            // Pre-Review Call length
     reviewMinutes: 60,            // Proposal Review length
     eborMinutes: 90,              // EBoR length
+    followupMinutes: 30,          // Follow-Up / Consult length (made by a member, always for a Scout; Jim W., 2026-11-11)
     defaultStartTime: '7:00 PM',  // start time when a member clicks a day
     defaultLocation: '',          // e.g. the YMCA (Proposal Review, EBoR)
     defaultAddress: '',

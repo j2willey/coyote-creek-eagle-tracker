@@ -134,13 +134,32 @@ var Nudges = (function () {
     return (rows || []).map(function (r) {
       var id = str(r.record_id), type = B().typeCode(r.slot_type), rule = B().rules(type);
       var st = B().slotStart(r.date, r.time) || 0;
-      if (!id || !rule || !st || !(st < nowMs - 2 * 3600 * 1000 && st > nowMs - 60 * DAY)) return null;
+      if (!id || !rule || !rule.movesTo || !st || !(st < nowMs - 2 * 3600 * 1000 && st > nowMs - 60 * DAY)) return null;
       return sectionOf(id) === rule.movesTo ? { recordId: id, type: type, start: st } : null;
     }).filter(Boolean);
   }
 
+  /**
+   * The digest's "Next 7 days": booked sessions of every type (a Follow-Up / Consult too) starting in the next `days`
+   * days, plus reserved slots that have no Scout yet. -> [{start, recordId, type, reserved, unit, reps, scoutName}] soonest first.
+   */
+  function upcomingSessions(rows, nowMs, days) {
+    var out = [];
+    (rows || []).forEach(function (r) {
+      var id = str(r.record_id), st = B().slotStart(r.date, r.time) || 0, type = B().typeCode(r.slot_type);
+      if (!(st >= nowMs && st < nowMs + (Number(days) || 7) * DAY)) return;
+      if (!id) {
+        if (!B().isReserved(r) || str(r.scout_name) || B().isCommitteeOnly(type)) return;     // reserved, no Scout yet
+        out.push({ start: st, recordId: '', type: type, reserved: true, unit: str(r.unit), reps: str(r.reps), scoutName: '' });
+        return;
+      }
+      out.push({ start: st, recordId: id, type: type, reserved: false, unit: '', reps: str(r.reps), scoutName: str(r.scout_name) });
+    });
+    return out.sort(function (a, b) { return a.start - b.start; });
+  }
+
   return { TO_BOOK: TO_BOOK, stageSince: stageSince, pleaseBook: pleaseBook, parseBookDays: parseBookDays, BOOK_DAYS_DEFAULT: BOOK_DAYS_DEFAULT, boardMissing: boardMissing, briefings: briefings,
-    awaiting: awaiting, daysBetween: daysBetween, reviewsDue: reviewsDue };
+    awaiting: awaiting, daysBetween: daysBetween, reviewsDue: reviewsDue, upcomingSessions: upcomingSessions };
 })();
 
 if (typeof module !== 'undefined') module.exports = Nudges;

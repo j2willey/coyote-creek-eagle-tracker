@@ -16,7 +16,9 @@ var Booking = (function () {
     Intake: { label: 'Pre-Review Call', aliases: ['pre-review call', 'pre-review', 'prescreen'] },
     ESSPPR: { label: 'Proposal Review', aliases: ['proposal review'] },
     EBoR: { label: 'Eagle Board of Review', aliases: ['ebor', 'eagle board of review'] },
-    Followup: { label: 'Follow-up Review', aliases: ['follow-up', 'follow up'] },
+    // Follow-Up / Consult (Jim W., 2026-11-11): a meeting a member and a Scout agreed on outside the normal steps.
+    // Made by the committee only, always for a Scout, never offered online. 'follow-up review' is the old label.
+    Followup: { label: 'Follow-Up / Consult', aliases: ['follow-up', 'follow up', 'followup', 'consult', 'follow-up / consult', 'follow-up/consult', 'follow-up review'] },
     CCAC: { label: 'Blocked', aliases: ['blocked', 'committee meeting'] }   // blocks overlapping slots (meetings, holidays); no time = whole day
   };
   var PRE_REVIEW = 'Intake';
@@ -24,6 +26,7 @@ var Booking = (function () {
   var BLOCKING = 'CCAC';
   // Section (position = status) -> the slot type a Scout there may book.
   var EBOR = 'EBoR';
+  var FOLLOWUP = 'Followup';
   var BOOKABLE_BY_SECTION = { intake_to_book: PRE_REVIEW, review_to_book: PROPOSAL_REVIEW, app_verified: EBOR };
   var BOOKABLE_SECTIONS = Object.keys(BOOKABLE_BY_SECTION);
 
@@ -43,8 +46,16 @@ var Booking = (function () {
     EBoR: { virtual: false, showWho: false, adult: false, movesTo: 'ebor_booked', cancelBackTo: 'app_verified',
       lead: 'eborLeadHours', dateCol: 'eborDateColumn', whoCol: 'eborWhoColumn', notifyUnit: true, boardOnInvite: true }
   };
+  // Follow-Up / Consult: committee-made only (never in BOOKABLE: no open times, no online booking, no please-book).
+  // It books a Scout at once, moves no tracking row and fills no tracking Date/Who column (no dateCol/whoCol/movesTo).
+  // multiple: a Scout may have several. Online (Meet) by default on the committee page; in person when a place is given.
+  RULES.Followup = { virtual: false, showWho: true, adult: true, committeeOnly: true, multiple: true };
   function rules(code) { return RULES[code] || null; }
   var BOOKABLE = [PRE_REVIEW, PROPOSAL_REVIEW, EBOR];
+  // Every type that can be booked to a Scout (invites, moves, cancels, the Scout's and unit's pages): the types Scouts
+  // book plus the committee-made one.
+  var BOOKED_TYPES = BOOKABLE.concat([FOLLOWUP]);
+  function isCommitteeOnly(code) { return !!(RULES[code] && RULES[code].committeeOnly); }
 
   /**
    * Did a booked slot move? row: schedule row now; ev: {startMs, location}
@@ -218,6 +229,7 @@ var Booking = (function () {
    * session's own Lead (h) replaces it.
    */
   function openSlots(rows, type, nowMs, leadHours, opts) {
+    if (isCommitteeOnly(type) && !(opts && opts.committee)) return [];     // a Follow-Up / Consult is never offered
     var noLead = !!(opts && (opts.committee || opts.noLead));
     var windows = blocked(rows);
     var committee = !!(opts && opts.committee);
@@ -245,6 +257,25 @@ var Booking = (function () {
     }).filter(function (b) { return b.start >= nowMs - 3600 * 1000; });   // still upcoming (or just started)
     mine.sort(function (a, b) { return b.start - a.start; });
     return mine[0] || null;
+  }
+
+  /** All of the record's upcoming bookings of `type` (a Scout may have several Follow-Ups), soonest first. */
+  function upcomingBookings(rows, recordId, type, nowMs) {
+    return (rows || []).filter(function (r) {
+      return str(r.record_id) === recordId && isType(r, type);
+    }).map(function (r) {
+      return { key: str(r._key), start: slotStart(r.date, r.time), who: who(r),
+        location: str(r.location), address: str(r.address), eventId: str(r.event_id), minutes: minutesOf(r, type) };
+    }).filter(function (b) { return b.start >= nowMs - 3600 * 1000; }).sort(function (a, b) { return a.start - b.start; });
+  }
+
+  /** The record's booking in the schedule row with this key (any bookable type, past or future): {type, b} or null. */
+  function bookingAt(rows, recordId, key) {
+    var r = (rows || []).filter(function (x) { return str(x._key) === str(key) && str(x.record_id) === str(recordId); })[0];
+    var type = r ? typeCode(r.slot_type) : '';
+    if (!r || BOOKED_TYPES.indexOf(type) < 0) return null;
+    return { type: type, b: { key: str(r._key), start: slotStart(r.date, r.time), who: who(r), location: str(r.location),
+      address: str(r.address), eventId: str(r.event_id), minutes: minutesOf(r, type) } };
   }
 
   function canCancel(startMs, nowMs, cutoffHours) {
@@ -369,6 +400,7 @@ var Booking = (function () {
 
   var ADULT = 'Youth protection: a parent/guardian or another adult 21 or older must be with the Scout for the whole call.';
   var ADULT_IN_PERSON = 'Youth protection: a parent/guardian or another adult 21 or older must come with the Scout to the review.';
+  var FOLLOWUP_ADULT = 'Youth protection: a parent/guardian or another adult 21 or older must be with the Scout for the whole meeting.';
 
   /** "East Valley YMCA, 123 Fake St" (address left out when blank or a placeholder). */
   /**
@@ -409,6 +441,16 @@ var Booking = (function () {
           'Have your signed Proposal at hand (printed or on a device) and wear your Field uniform.\n' +
           (isOnlinePlace(slot && slot.location) ? ADULT : ADULT_IN_PERSON) + '\n\n' +
           'Need to change it? Use your Eagle Project page, or email the committee if it is less than 24 hours away.'
+      };
+    }
+    if (code === FOLLOWUP) {
+      var online = isOnlinePlace(slot && slot.location);
+      return {
+        summary: label(code) + ': ' + scoutName + ' (' + unit + ')',
+        description: 'Follow-up / consult with the Coyote Creek District Advancement Committee.\n' +
+          (member ? 'Committee member: ' + member + '\n' : '') + 'When: ' + whenText + '\n' +
+          'Where: ' + (online ? 'online: join with the Google Meet link in this invitation' : place(slot)) + '\n\n' +
+          FOLLOWUP_ADULT + '\n\nNeed to change it? Email the committee.'
       };
     }
     return eventText(label(code), scoutName, unit, member, whenText);
@@ -513,6 +555,33 @@ var Booking = (function () {
     };
   }
 
+  /** Follow-Up / Consult confirmation (built-in wording; template "Booked: Follow-Up / Consult"). Scouts can't change it themselves. */
+  function followupBookedEmail(scoutName, whenText, member, meetUrl, where) {
+    return {
+      subject: label(FOLLOWUP) + ' booked: ' + scoutName + ', ' + whenText,
+      body: 'A ' + label(FOLLOWUP) + ' is booked for ' + scoutName + '.\n\n  When: ' + whenText + '\n' + (where ? '  Where: ' + where + '\n' : '') +
+        (member ? '  With: ' + member + '\n' : '') + (meetUrl ? '  Join: ' + meetUrl + '\n' : '') +
+        '\nA calendar invitation is on its way.\n\n' + FOLLOWUP_ADULT + '\n\nNeed to change it? Reply to this email.' + SIGN
+    };
+  }
+
+  function followupCancelledEmail(scoutName, whenText) {
+    return {
+      subject: label(FOLLOWUP) + ' cancelled: ' + scoutName + ', ' + whenText,
+      body: 'The ' + label(FOLLOWUP) + ' on ' + whenText + ' for ' + scoutName + ' was cancelled. Questions? Reply to this email.' + SIGN
+    };
+  }
+
+  /**
+   * Log line for a Follow-Up / Consult ("Follow-up / consult booked Thu 11/12 5:00 PM with MB", Jim W. 2026-11-11).
+   * kind: 'booked' | 'moved' (whenText = the new time) | 'cancelled'. who: initials list. by: who did it (optional).
+   */
+  function followupLog(kind, whenText, whoList, by) {
+    var w = (whoList || []).filter(Boolean).join('/');
+    return 'Follow-up / consult ' + kind + (kind === 'moved' ? ' to ' : ' ') + whenText + (kind === 'cancelled' ? '' : (w ? ' with ' + w : '')) +
+      (str(by) ? ' (by ' + str(by) + ')' : '');
+  }
+
   function movedEmail(type, scoutName, whenText, where, pageUrl) {
     return {
       subject: type + ' changed: ' + scoutName + ', now ' + whenText,
@@ -531,7 +600,9 @@ var Booking = (function () {
   return {
     TYPES: TYPES, PRE_REVIEW: PRE_REVIEW, PROPOSAL_REVIEW: PROPOSAL_REVIEW, BLOCKING: BLOCKING, ADULT: ADULT, ADULT_IN_PERSON: ADULT_IN_PERSON,
     ONLINE_PLACE: ONLINE_PLACE, isOnlinePlace: isOnlinePlace, isVirtual: isVirtual,
-    EBOR: EBOR, BOOKABLE: BOOKABLE, BOOKABLE_SECTIONS: BOOKABLE_SECTIONS, rules: rules, slotChanges: slotChanges, place: place, inviteText: inviteText, missingGuests: missingGuests, guestChanges: guestChanges, SHADOW: SHADOW, isShadowType: isShadowType, isShadow: isShadow,
+    EBOR: EBOR, FOLLOWUP: FOLLOWUP, BOOKABLE: BOOKABLE, BOOKED_TYPES: BOOKED_TYPES, isCommitteeOnly: isCommitteeOnly,
+    upcomingBookings: upcomingBookings, bookingAt: bookingAt, followupBookedEmail: followupBookedEmail, followupCancelledEmail: followupCancelledEmail,
+    followupLog: followupLog, FOLLOWUP_ADULT: FOLLOWUP_ADULT, BOOKABLE_SECTIONS: BOOKABLE_SECTIONS, rules: rules, slotChanges: slotChanges, place: place, inviteText: inviteText, missingGuests: missingGuests, guestChanges: guestChanges, SHADOW: SHADOW, isShadowType: isShadowType, isShadow: isShadow,
     bookingLinkEmail: bookingLinkEmail, movedEmail: movedEmail, changeWords: changeWords,
     typeCode: typeCode, label: label, splitWho: splitWho, makeSlotKey: makeSlotKey, missingKeys: missingKeys,
     parseTime: parseTime, slotStart: slotStart, who: who, openSlots: openSlots, leadOf: leadOf, isReserved: isReserved, isStaffed: isStaffed,

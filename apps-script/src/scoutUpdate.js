@@ -191,7 +191,7 @@ function actionMyRecord_(req) {
   // The page follows the stage (Jim W., 2026-10-12): project details and files only while the Proposal is in play;
   // at the EBoR stage only booking + others to invite; after approval, status only.
   var out = { recordId: o.rec.recordId, status: status, phase: phase, scoutName: String(o.rec.fields.scout_name || ''),
-    canBook: b.canBook, booking: b.booking, request: ScoutFiles.requestFor(o.rec.fields._request, o.rec.section) };
+    canBook: b.canBook, booking: b.booking, followups: b.followups || [], request: ScoutFiles.requestFor(o.rec.fields._request, o.rec.section) };
   if (phase === 'proposal') { out.fields = fields; out.files = files; out.tags = Intake.TAGS; }
   if (phase === 'ebor') out.cc = Units.parseCc(o.rec.fields._cc);
   return out;

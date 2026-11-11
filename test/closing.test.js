@@ -99,9 +99,9 @@ describe('Closing row actions', () => {
   it('Close is offered on every Exceptions stage, Reopen on Closed, Keep open on the two reviewable stages', () => {
     ['ebor_paused', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved'].forEach(k =>
       expect(StageActions.forSection(k).find(a => a.key === 'close')).toMatchObject({ closing: 'close', dateLabel: 'Date closed' }));
-    expect(StageActions.forSection('closed').map(a => a.key)).toEqual(['reopen']);
+    expect(StageActions.forSection('closed').map(a => a.key)).toEqual(['reopen', 'followup']);
     expect(StageActions.forSection('proposal_not_approved').find(a => a.key === 'keep_open')).toMatchObject({ closing: 'keep', ifSuggest: true });
-    expect(StageActions.forSection('beyond_age').map(a => a.key)).toEqual(['close']);
+    expect(StageActions.forSection('beyond_age').map(a => a.key)).toEqual(['close', 'followup']);
     expect(StageActions.forSection('eagle_earned').some(a => a.closing)).toBe(false);
     expect(StageActions.forSection('proposal_received').some(a => a.closing)).toBe(false);
   });

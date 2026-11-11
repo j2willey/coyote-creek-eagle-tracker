@@ -11,25 +11,25 @@ describe('StageActions', () => {
     expect(SA.resolveColumns([], {}).verified).toBe('');
   });
   it('offers actions by stage', () => {
-    expect(SA.forSection('app_submitted').map(a => a.key)).toEqual(['app_verified', 'checked']);
-    expect(SA.forSection('proposal_approved').map(a => a.key)).toEqual(['app_submitted', 'app_verified', 'checked']);
+    expect(SA.forSection('app_submitted').map(a => a.key)).toEqual(['app_verified', 'checked', 'followup']);
+    expect(SA.forSection('proposal_approved').map(a => a.key)).toEqual(['app_submitted', 'app_verified', 'checked', 'followup']);
     expect(SA.forSection('review_booked')[0]).toMatchObject({ key: 'review_outcome', page: '/committee/review' });
     expect(SA.forSection('eagle_earned').map(a => a.key)).toEqual(['paperwork', 'svmbc_received']);
     expect(SA.resolveColumns(['signed_eagle_application_and.date', 'signed_eagle_application_and.who', 'eagle_earned.svmbc_received'], {}))
       .toMatchObject({ signedSent: 'signed_eagle_application_and.date', svmbcReceived: 'eagle_earned.svmbc_received' });
     expect(Object.keys(SA.bySection(['proposal_approved', 'eagle_not_awarded', 'app_submitted']))).toEqual(['proposal_approved', 'eagle_not_awarded', 'app_submitted']);   // Close record… (2026-11-10)
     expect(Object.keys(SA.bySection(['proposal_approved', 'nowhere', 'app_submitted']))).toEqual(['proposal_approved', 'app_submitted']);
-    expect(SA.forSection('proposal_received').map(a => a.key)).toEqual(['intake_ok', 'incomplete', 'not_approved', 'checked']);
-    expect(SA.forSection('proposal_incomplete').map(a => a.key)).toEqual(['intake_ok', 'incomplete', 'not_approved', 'checked']);
-    expect(SA.forSection('intake_to_book').map(a => a.key)).toEqual(['resend_intake', 'book_intake', 'checked']);
-    expect(SA.forSection('intake_booked').map(a => a.key)).toEqual(['review_ok', 'intake_revisions', 'not_approved', 'checked']);
-    expect(SA.forSection('intake_revisions').map(a => a.key)).toEqual(['review_ok', 'intake_revisions', 'not_approved', 'checked']);
-    expect(SA.forSection('review_to_book').map(a => a.key)).toEqual(['resend_review', 'book_review', 'checked']);
-    expect(SA.forSection('proposal_revisions').map(a => a.key)).toEqual(['review_outcome', 'checked']);
-    expect(SA.forSection('proposal_not_approved').map(a => a.key)).toEqual(['close', 'keep_open']);   // no stage moves from here; Closed records (2026-11-10)
-    expect(SA.forSection('app_verified').map(a => a.key)).toEqual(['book_ebor', 'resend_ebor', 'checked']);
-    expect(SA.forSection('ebor_booked').map(a => a.key)).toEqual(['eagle_earned', 'ebor_paused', 'eagle_not_awarded', 'checked']);
-    expect(SA.forSection('ebor_paused').map(a => a.key)).toEqual(['book_ebor', 'paused_not_awarded', 'close', 'keep_open']);
+    expect(SA.forSection('proposal_received').map(a => a.key)).toEqual(['intake_ok', 'incomplete', 'not_approved', 'checked', 'followup']);
+    expect(SA.forSection('proposal_incomplete').map(a => a.key)).toEqual(['intake_ok', 'incomplete', 'not_approved', 'checked', 'followup']);
+    expect(SA.forSection('intake_to_book').map(a => a.key)).toEqual(['resend_intake', 'book_intake', 'checked', 'followup']);
+    expect(SA.forSection('intake_booked').map(a => a.key)).toEqual(['review_ok', 'intake_revisions', 'not_approved', 'checked', 'followup']);
+    expect(SA.forSection('intake_revisions').map(a => a.key)).toEqual(['review_ok', 'intake_revisions', 'not_approved', 'checked', 'followup']);
+    expect(SA.forSection('review_to_book').map(a => a.key)).toEqual(['resend_review', 'book_review', 'checked', 'followup']);
+    expect(SA.forSection('proposal_revisions').map(a => a.key)).toEqual(['review_outcome', 'checked', 'followup']);
+    expect(SA.forSection('proposal_not_approved').map(a => a.key)).toEqual(['close', 'keep_open', 'followup']);   // no stage moves from here; Closed records (2026-11-10)
+    expect(SA.forSection('app_verified').map(a => a.key)).toEqual(['book_ebor', 'resend_ebor', 'checked', 'followup']);
+    expect(SA.forSection('ebor_booked').map(a => a.key)).toEqual(['eagle_earned', 'ebor_paused', 'eagle_not_awarded', 'checked', 'followup']);
+    expect(SA.forSection('ebor_paused').map(a => a.key)).toEqual(['book_ebor', 'paused_not_awarded', 'close', 'keep_open', 'followup']);
     expect(SA.plan({ section: 'ebor_paused', action: 'paused_not_awarded', note: 'x', cols: {} })).toMatchObject({ errors: [], warnings: [], set: {}, to: 'eagle_not_awarded' });
     expect(SA.forSection('eagle_earned').map(a => a.key)).toEqual(['paperwork', 'svmbc_received']);
     expect(SA.resolveColumns(['signed_eagle_application_and.date', 'signed_eagle_application_and.who', 'eagle_earned.svmbc_received'], {}))
