@@ -9,8 +9,9 @@
  * v2 (Task 9): the member PLACES the marks. The preview is a scrollable view of every page (rendered lazily with an
  * IntersectionObserver); the toolbar buttons (Signature, Printed name, Date) arm a click that drops the mark on a page
  * (or, on a detected approval page, drop it at the workbook's own box). Marks can be dragged, resized and removed.
- * Nothing is applied until "Sign & Attach PDF"; then the Proposal pages AND every marked page are flattened, never a
- * Project Plan / Fundraising / Project Report page.
+ * Nothing is applied until "Sign & Attach PDF"; then the marked page(s) are flattened (optionally the Proposal pages
+ * before them too), never a Project Plan / Fundraising / Project Report page. A page is locked only if it is itself
+ * identified as one of those; a page after a locked page asks for a one-time confirm.
  */
 
 import {
@@ -443,6 +444,9 @@ export async function openSignWorkshop(opts) {
   const newItemId = () => `m${nextItemId++}`;
   /** @type {{ kind: ItemKind, stampId?: string } | null} */
   let armed = null;
+  let flattenEarlier = false;
+  /** @type {Set<number>} */
+  const confirmedPages = new Set();
   const stampApi = opts.stampApi || null;
   /** @type {Array<{ id: string, name: string, bytes: number }>} */
   let stampList = [];
@@ -464,11 +468,12 @@ export async function openSignWorkshop(opts) {
         ? '2023a BSA Workbook'
         : 'PDF Document';
     const flattenSummaryText = () => {
-      const flat = flattenPageIndices(analysis, items);
+      const flat = flattenPageIndices(analysis, items, { includeEarlier: flattenEarlier });
+      if (!flat.length) return 'Only the page(s) you mark are flattened (none marked yet); every other page stays fillable.';
       const rest = [];
       for (let i = 0; i < totalPages; i++) if (!flat.includes(i)) rest.push(i);
       return rest.length
-        ? `Pages ${describePageRanges(flat)} (Proposal pages and pages you mark) will be flattened; pages ${describePageRanges(rest)} stay fillable for Plan & Report.`
+        ? `Page${flat.length === 1 ? '' : 's'} ${describePageRanges(flat)} will be flattened; ${flattenEarlier ? 'the pages you mark and the Proposal pages before them' : 'only the pages you mark'}. Pages ${describePageRanges(rest)} stay fillable.`
         : `All ${totalPages} page(s) in this PDF will have their form fields flattened.`;
     };
 
@@ -505,6 +510,10 @@ export async function openSignWorkshop(opts) {
           <div class="ws-canvas-wrap" id="wsCanvasWrap">
             <div class="ws-doc" id="wsDoc"></div>
           </div>
+          <label class="choice ws-flatten-opt">
+            <input type="checkbox" id="wsFlattenEarlier">
+            <span>Also flatten the pages before the signature page</span>
+          </label>
           <div class="hint ws-drag-hint">
             <span>Click a Place button, then click on a page. Drag a mark to move it, drag its corner to resize, ✕ removes it. Nothing is applied until you click Sign &amp; Attach PDF.</span>
             <button type="button" class="ws-linkbtn" id="wsClearMarks">Remove all marks</button>
@@ -623,6 +632,11 @@ export async function openSignWorkshop(opts) {
     const docWrap = q('#wsCanvasWrap');
     const docEl = q('#wsDoc');
     const flattenSummaryEl = q('#wsFlattenSummary');
+    const flattenEarlierCheck = /** @type {HTMLInputElement} */ (q('#wsFlattenEarlier'));
+    flattenEarlierCheck.onchange = () => {
+      flattenEarlier = flattenEarlierCheck.checked;
+      flattenSummaryEl.textContent = flattenSummaryText();
+    };
     const clearMarksBtn = /** @type {HTMLButtonElement} */ (q('#wsClearMarks'));
     const secondBanner = q('#wsSecondBanner');
     const typedSigInput = /** @type {HTMLInputElement} */ (q('#wsTypedSig'));
@@ -1086,18 +1100,37 @@ export async function openSignWorkshop(opts) {
       refreshPageBar();
     }
 
+    // A refused click shows its reason next to the click (the side panel alone is easy to miss).
+    function showToast(/** @type {number} */ i, /** @type {number} */ x, /** @type {number} */ y, /** @type {string} */ msg) {
+      const wrap = pageEls[i].wrap;
+      wrap.querySelectorAll('.ws-toast').forEach(n => n.remove());
+      const t = document.createElement('div');
+      t.className = 'ws-toast';
+      t.setAttribute('role', 'alert');
+      t.textContent = msg;
+      t.style.left = `${Math.max(4, Math.min(x + 10, wrap.clientWidth - 230))}px`;
+      t.style.top = `${Math.max(4, Math.min(y + 10, wrap.clientHeight - 60))}px`;
+      wrap.appendChild(t);
+      setTimeout(() => t.remove(), 3500);
+    }
+
     // Click-to-place: the point is converted from the click on the page box to PDF points (bottom-left origin).
     function onPageClick(/** @type {number} */ i, /** @type {MouseEvent} */ ev) {
       if (!armed) return;
       const target = /** @type {HTMLElement} */ (ev.target);
       if (target.closest && target.closest('.ws-place-box')) return;
       const chk = canPlaceOnPage(analysis, i);
+      const r = pageEls[i].wrap.getBoundingClientRect();
       if (!chk.ok) {
         setStatus(chk.reason, 'hint err');
+        showToast(i, ev.clientX - r.left, ev.clientY - r.top, chk.reason);
         return;
       }
+      if (chk.confirm && !confirmedPages.has(i)) {
+        if (!window.confirm(chk.confirm)) return;
+        confirmedPages.add(i);
+      }
       const ps = pageSizeOf(i);
-      const r = pageEls[i].wrap.getBoundingClientRect();
       const point = {
         x: ((ev.clientX - r.left) / Math.max(1, r.width)) * ps.width,
         y: ps.height - ((ev.clientY - r.top) / Math.max(1, r.height)) * ps.height
@@ -1377,7 +1410,8 @@ export async function openSignWorkshop(opts) {
           dateStr: dateStrInput.value.trim(),
           signatureScale,
           textFontSize,
-          stampPngs
+          stampPngs,
+          flattenEarlier
         });
 
         if (res.pdfBytes.byteLength > maxBytes) {

@@ -592,19 +592,26 @@ normal Approved path above.
   box (signer 2 and later go below signer 1's line); a second press of the same button on that page waits for a click.
   Marks can be dragged, resized from the corner and removed with ✕, on any Proposal page. **Nothing is applied until
   Sign & Attach PDF**; a signature is required, a missing printed name or date only warns.
-- **Guardrail:** Project Plan, Fundraising Application and Project Report pages, and every page after the first of them,
-  refuse marks (`canPlaceOnPage`); they are striped on screen.
+- **Guardrail (per page):** a page is locked only if **it** is identified as Project Plan, Fundraising Application or
+  Project Report (`canPlaceOnPage`); locked pages are striped and refuse marks, with the reason shown as a toast next to
+  the click as well as in the side panel. Any other page takes marks; one that sits after a locked page (and is not an
+  approval page) asks "Place here anyway?" once. **Page H wins:** a page with the "Proposal Page H" footer, or the
+  "Council or District Approval" heading with "Candidate's Promise", is an approval page even when it follows Plan
+  pages and carries a Candidate's Promise date field (that field alone no longer marks a Plan Reviews page).
 - **Stamps:** PNG files (up to 2 MB, transparent background) in one Drive folder named by the Settings key
   `stampsFolderId` (blank = no Stamp button; Setup adds the key). The button places the last stamp used (its Drive file
-  id is remembered in this browser), the arrow lists them with thumbnails. A stamp is 1.6 in wide, drawn under the
+  id is remembered in this browser), the arrow lists them with thumbnails. A stamp is placed 1.6 in (115 pt) wide with its aspect kept (any placed image is capped at 40% of the page width,
+  resizable afterwards), drawn under the
   signature, name and date so they can sit on its lines; a PNG with no transparency warns that it covers the page under
   it. Actions `stampList` / `stampFetch` (committee only). No stamp images are kept in the repo.
 - **Signature:** typed (10 OFL script fonts from Google Fonts, loaded when the Workshop opens), drawn, or an uploaded
   image; size control and drag/resize on the page; printed name and date go into the workbook's own fields for the
   first signer when the marks sit at the workbook's boxes on an approval page whose field has a single widget (else
   drawn as text). "Remember my signature" keeps it in this browser's local storage.
-- **Result:** the marks are drawn as images/text, and form fields are flattened on the **Proposal pages and on every
-  page that received a mark**, never on Plan, Fundraising or Report pages (they stay fillable for the Scout). The BSA
+- **Result:** the marks are drawn as images/text, and form fields are flattened **only on the page(s) that received a
+  mark**. The checkbox "Also flatten the pages before the signature page" (default off) adds the pages before the first
+  marked page. Never on Plan, Fundraising or Report pages (they stay fillable for the Scout). Transparent images show a
+  checkerboard on screen only (stamp list, signature preview, placed marks), never in the PDF. The BSA
   workbooks' permissions encryption (empty user password, AES-256) is removed in the browser so pdf-lib can edit them
   (the committee's existing practice also inserts pages and flattens; Jim W. 2026-11-09).
 - **Libraries:** pdf-lib 1.17.1 and pdf.js 3.11.174 from jsDelivr, loaded only when the Workshop opens; the exact
