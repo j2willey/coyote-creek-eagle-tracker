@@ -44,7 +44,7 @@
         <p class="hint" id="moreNote" hidden>Several times: each becomes its own session with the same type, length, members, place and lead time. Nobody is booked into them; once they are saved you can email the Scouts who are ready to book.</p>
       </div>
       <label class="choice" id="wholeDayBox" hidden><input type="checkbox" id="fWholeDay"> Whole day</label>
-      <label class="choice" id="onlineBox" hidden><input type="checkbox" id="fOnline"> Online (Google Meet): the invitation gets a Meet link, no place (an exception, e.g. a Scout who lives too far)</label>
+      <label class="choice" id="onlineBox" hidden><input type="checkbox" id="fOnline"> <span id="onlineText">Online (Google Meet): the invitation gets a Meet link, no place (an exception, e.g. a Scout who lives too far)</span></label>
       <div id="placeBox">
         <label for="fLoc" id="locLabel">Location</label><input id="fLoc" autocomplete="off">
         <div id="addrBox"><label for="fAddr">Address <span class="opt">(optional)</span></label><input id="fAddr" autocomplete="off"></div>
@@ -61,7 +61,7 @@
       <p id="blockNote" class="hint" hidden>Blocked times are never offered to Scouts and create no invitation.</p>
       <p id="onlineNote" class="hint" hidden>Online: a Google Meet link is added to the invitation when a Scout books.</p>
       <div id="scoutBox">
-        <label for="fScout">Scout <span class="opt">(optional: book a Scout into it now)</span></label>
+        <label for="fScout" id="scoutLabel">Scout <span class="opt">(optional: book a Scout into it now)</span></label>
         <select id="fScout"></select>
         <p class="hint" id="scoutNote"></p>
       </div>
@@ -138,8 +138,8 @@
       actionButton({ label: 'Record outcomes', href: '/committee/review', icon: 'check', count: 'review', title: 'Record the outcome of a review that was held' })]);
     newBtn.onclick = () => { if (data) newOn(new Date(), false); };
 
-    const COLORS = { Intake: '#2a6db0', ESSPPR: '#1f8a4c', EBoR: '#7b3fa0', CCAC: '#8a8a84', Other: '#8a8a84' };
-    const SHORT = { Intake: 'Pre-Review', ESSPPR: 'Review', EBoR: 'EBoR' };
+    const COLORS = { Intake: '#2a6db0', ESSPPR: '#1f8a4c', EBoR: '#7b3fa0', Followup: '#c2571a', CCAC: '#8a8a84', Other: '#8a8a84' };
+    const SHORT = { Intake: 'Pre-Review', ESSPPR: 'Review', EBoR: 'EBoR', Followup: 'Follow-up' };
     let data = null, cal = null, editing = null, confirmNext = false, moving = false, pendingRevert = null;
 
     const pad = (n) => String(n).padStart(2, '0');
@@ -196,26 +196,35 @@
       else if (/^\s*online\b/i.test($('fLoc').value)) { $('fLoc').value = savedPlace ? savedPlace.loc : ''; $('fAddr').value = savedPlace ? savedPlace.addr : ''; }
       const t = typeOf(document.querySelector('input[name=type]:checked') ? document.querySelector('input[name=type]:checked').value : '') || {};
       $('placeBox').hidden = !!t.virtual || on; $('onlineNote').hidden = !(t.virtual || on);
+      $('onlineNote').textContent = t.committeeOnly ? 'Online: a Google Meet link is added to the invitation when it is booked.'
+        : 'Online: a Google Meet link is added to the invitation when a Scout books.';
     }
     $('fOnline').onchange = () => { onlineChanged(); resetConfirm(); };
     function setType(code, keepValues) {
       const t = typeOf(code);
       $('onlineBox').hidden = !t.canBeOnline;
+      $('onlineText').textContent = t.committeeOnly ? 'Online (Google Meet): the invitation gets a Meet link, no place. Untick to meet in person (then a place is required).'
+        : 'Online (Google Meet): the invitation gets a Meet link, no place (an exception, e.g. a Scout who lives too far)';
       if (!t.canBeOnline) $('fOnline').checked = false;
       $('placeBox').hidden = t.virtual || $('fOnline').checked; $('onlineNote').hidden = !(t.virtual || $('fOnline').checked);
       $('addrBox').hidden = !!t.block; $('blockNote').hidden = $('wholeDayBox').hidden = !t.block; $('scoutBox').hidden = !!t.block;
-      $('resBox').hidden = !!t.block; $('repNote').hidden = !!t.block;
-      if (t.block) $('fReserved').checked = false;
+      $('resBox').hidden = !!t.block || !!t.committeeOnly; $('repNote').hidden = !!t.block || !!t.committeeOnly;   // a follow-up / consult is never reserved or left without a member
+      if (t.block || t.committeeOnly) $('fReserved').checked = false;
       reservedChanged();
       $('locLabel').textContent = t.block ? 'Description (e.g. CCAC meeting, Thanksgiving)' : 'Location';
       $('repLegend').textContent = t.block ? 'Committee member(s) (optional)' : 'Committee member(s)';
       if (!t.block) $('fWholeDay').checked = false;
       wholeDayChanged();
-      if (!keepValues) { $('fMin').value = t.minutes; $('fLoc').value = t.location; $('fAddr').value = t.address; $('fOnline').checked = false; onlineChanged(); }
-      $('leadBox').hidden = !!t.block || moving;
+      if (!keepValues) {
+        $('fMin').value = t.minutes; $('fLoc').value = t.location; $('fAddr').value = t.address;
+        $('fOnline').checked = !!t.defaultOnline;                               // Follow-Up / Consult: online (Meet) unless unticked
+        if (t.defaultOnline) savedPlace = { loc: t.inPersonLocation || '', addr: t.inPersonAddress || '' };   // what unticking brings back
+        onlineChanged();
+      }
+      $('leadBox').hidden = !!t.block || !!t.committeeOnly || moving;
       $('leadNote').textContent = t.block ? '' : 'Scouts can book this until that many hours before it starts. Blank = the usual ' + (t.leadHours || 0) +
         ' hours (Settings). Use a short one (e.g. 2) when you can take a session at short notice. Committee members can always book.';
-      $('moreBox').hidden = !!editing || !!t.block;
+      $('moreBox').hidden = !!editing || !!t.block || !!t.committeeOnly;
       if (t.block) $('moreTimes').replaceChildren();
       fillScouts(code);
       moreChanged();
@@ -227,7 +236,9 @@
       const resUnit = $('fReserved').checked ? unitCode($('fUnit').value) : '';
       let list = ((data.scouts && data.scouts[code]) || []).slice();
       if (resUnit) list = list.filter(x => x.unitCode === resUnit).concat(list.filter(x => x.unitCode !== resUnit));
-      $('fScout').replaceChildren(el('option', { value: '', textContent: $('fReserved').checked ? '— No Scout yet (keep it reserved) —' : '— Leave open (a Scout books it online) —' }),
+      const tt0 = typeOf(code) || {};
+      $('scoutLabel').replaceChildren('Scout ', el('span', { className: 'opt', textContent: tt0.committeeOnly ? '(required: it is booked at once, never open for booking)' : '(optional: book a Scout into it now)' }));
+      $('fScout').replaceChildren(el('option', { value: '', textContent: tt0.committeeOnly ? '— Pick a Scout —' : $('fReserved').checked ? '— No Scout yet (keep it reserved) —' : '— Leave open (a Scout books it online) —' }),
         ...list.map(x => el('option', { value: x.recordId,
           textContent: (resUnit && x.unitCode === resUnit ? '★ ' : '') + x.name + (x.unit ? ' (' + x.unit + ')' : '') + ' · ' + x.stage + (x.booked ? ' · booked ' + x.booked : '') })));
       if (list.some(x => x.recordId === keep)) $('fScout').value = keep;
@@ -263,7 +274,8 @@
     function scoutChanged() {
       const x = chosenScout();
       const tt = typeOf((document.querySelector('input[name=type]:checked') || {}).value) || {};
-      $('scoutNote').textContent = !x ? ($('fReserved').checked ? 'Reserved: only the committee sees it. Pick a Scout when the unit confirms.' : '') : tt.shadow
+      $('scoutNote').textContent = !x ? ($('fReserved').checked ? 'Reserved: only the committee sees it. Pick a Scout when the unit confirms.' : tt.committeeOnly ? 'Pick the Scout you agreed the meeting with. Only the Scout, parent, members and the Scout\'s unit see it; it is never offered to anyone else.' : '') : tt.committeeOnly
+        ? 'Saving books ' + x.name + ' at once: invitation (Meet link when online) to the Scout, parent and members, and a confirmation email in the Outbox. The Scout\'s stage does not change.' : tt.shadow
         ? 'Shadow booking: records ' + x.name + ' here (row moves, Date/Who filled) with NO invitation and NO email: mirror of the old schedule.'
         : x.booked
         ? 'Saving moves ' + x.name + ' here: the current time (' + x.booked + ') is released and opens up again; the family gets the new invitation and one email.'
@@ -277,7 +289,7 @@
       moving = !!(editing && slot.booked);   // a booked session: only date, time, place and members change (one email)
       confirmNext = false;
       $('slotTitle').textContent = moving ? 'Move ' + slot.scoutName + "'s " + typeOf(slot.type).label
-        : editing ? (slot.reserved ? 'Reserved ' : 'Change ') + typeOf(slot.type).label : 'New session';
+        : editing ? (slot.reserved ? 'Reserved ' : 'Change ') + typeOf(slot.type).label : slot && slot.type === 'Followup' ? 'New follow-up / consult' : 'New session';
       $('delBtn').hidden = !editing || moving;
       $('warnBox').hidden = true; $('formMsg').textContent = ''; $('saveBtn').textContent = 'Save';
       const code = (slot && slot.type) || (data.types.find(t => t.code === 'Intake') || data.types[0]).code;
@@ -294,7 +306,7 @@
           (t.shadow ? ' · shadow (Scouts book it on the old system)' : ''));
       }));
       setType(code, false);
-      $('fDate').value = slot.date; $('fTime').value = slot.allDay ? data.defaultStart : slot.time;
+      $('fDate').value = slot.date; $('fTime').value = slot.allDay ? data.defaultStart : (slot.time || '');
       if (editing) { $('fMin').value = slot.minutes || typeOf(code).minutes; $('fLoc').value = slot.location || ''; $('fAddr').value = slot.address || '';
         $('fOnline').checked = !typeOf(code).virtual && /^\s*online\b/i.test(slot.location || ''); onlineChanged(); }
       repBoxes($('repChoices'), editing ? slot.reps : [data.me.initials], resetConfirm);
@@ -400,6 +412,7 @@
       const slot = formSlot();
       const sc = moving ? null : chosenScout();
       if (moving && !slot.reps.length) { $('formMsg').textContent = 'A booked session needs at least one committee member.'; $('formMsg').className = 'err'; return; }
+      if (!moving && !editing && (typeOf(slot.type) || {}).committeeOnly && !sc) { $('formMsg').textContent = 'Pick a Scout: a follow-up / consult is made for a Scout and is never open for booking.'; $('formMsg').className = 'err'; return; }
       if (!slot.reps.length && sc) { $('formMsg').textContent = 'Add a committee member before booking a Scout into this slot.'; $('formMsg').className = 'err'; return; }
       if (editing && editing.reserved && !slot.reserved && !sc && slot.reps.length && !confirmNext &&
         !confirm('Release this reservation?\n\nThe slot becomes open: Scouts who can book online will be offered it.')) return;
@@ -535,7 +548,8 @@
       if (!confirm(shown.shadow
         ? 'Clear the shadow booking for ' + who + ' on ' + nice(shown.start) + '?\n\nNo email is sent (it is only a mirror of the old schedule). The slot becomes open again.'
         : 'Cancel ' + who + "'s " + shown.label + ' on ' + nice(shown.start) + '?\n\n' +
-        'This removes the calendar invitation and emails the Scout and parent that it was cancelled. The slot becomes open again.')) return;
+        'This removes the calendar invitation and emails the Scout and parent that it was cancelled. ' +
+        (shown.type === 'Followup' ? 'The session is taken off the schedule (a follow-up / consult is never open for booking).' : 'The slot becomes open again.'))) return;
       $('bkCancel').disabled = true; infoMsg('Cancelling…', 'muted');
       try { const r = await api('cancelSlotBooking', { session, key: shown.key }); infoMsg(r.message, 'ok');
         $('bkReps').hidden = $('bkSave').hidden = $('bkCancel').hidden = $('bkMove').hidden = true; await load();
@@ -662,6 +676,21 @@
     // schedule is in (not from the cached copy, so members and board are current).
     const wantSlot = new URLSearchParams(location.search).get('s');
     let wantDone = !wantSlot, otDone = false;
+    // ?r=<record id>&new=Followup (dashboard row action "Schedule a follow-up / consult…", 2026-11-11): open the new-session dialog
+    // for that Scout, type Follow-Up / Consult, date and time empty. Done once the fresh schedule (and Scout list) is in.
+    const q0 = new URLSearchParams(location.search);
+    const wantScout = q0.get('new') === 'Followup' ? q0.get('r') : '';
+    let scoutDone = !wantScout;
+    function openWantedScout() {
+      if (scoutDone) return;
+      scoutDone = true;
+      try { history.replaceState(null, '', location.pathname); } catch {}
+      if (!typeOf('Followup')) return;
+      const x = ((data.scouts && data.scouts.Followup) || []).find(s => s.recordId === wantScout);
+      if (!x) { $('meLine').textContent += ' · That Scout is not at a stage that takes a follow-up / consult (Eagle Earned, or the record is gone). Reload the dashboard.'; return; }
+      openForm({ type: 'Followup', date: '', time: '' });
+      $('fScout').value = x.recordId; scoutChanged();
+    }
     function openWanted() {
       if (wantDone) return;
       wantDone = true;
@@ -676,6 +705,7 @@
       const d = await api('committeeSchedule', { session });
       show(d, false);
       openWanted();
+      openWantedScout();
       // ?ot=1 (the dashboard's "Email open times"): open that dialog once the schedule is in.
       if (!otDone && new URLSearchParams(location.search).get('ot')) { otDone = true; try { history.replaceState(null, '', location.pathname); } catch {} otBtn.click(); }
       try { localStorage.setItem(CACHE_KEY, JSON.stringify({ session, at: Date.now(), d })); } catch {}

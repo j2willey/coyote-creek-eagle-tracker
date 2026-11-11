@@ -55,6 +55,12 @@
       <p id="bookMsg" role="status"></p>
     </section>
 
+    <section class="card" id="followCard" hidden>
+      <h2>Your follow-up / consult</h2>
+      <div id="followList"></div>
+      <p class="hint">The committee set this up with you. To change it, reply to the committee's email.</p>
+    </section>
+
     <section class="card" id="ccCard" hidden>
       <h2>Others to invite to your board</h2>
       <p class="hint">Add anyone who should get the calendar invitation: a parent, or your current Scoutmaster if the unit's
@@ -166,7 +172,20 @@
     let needAdult = true, changing = false;
     const bsay = (t, cls = 'muted') => { $('bookMsg').textContent = t; $('bookMsg').className = cls; };
 
+    // Follow-up / consult sessions the committee made for this Scout (never booked or changed here).
+    function showFollowups(r) {
+      const list = r.followups || [];
+      $('followCard').hidden = !list.length;
+      $('followList').replaceChildren(...list.map((f) => {
+        const box = document.createElement('p');
+        box.append(Object.assign(document.createElement('b'), { textContent: f.when }), f.member ? ' with ' + f.member : '', f.where ? ' · ' + f.where : '');
+        if (f.meetUrl) box.append(' · Join: ', Object.assign(document.createElement('a'), { href: f.meetUrl, target: '_blank', rel: 'noopener', textContent: f.meetUrl }));
+        return box;
+      }));
+    }
+
     async function showBooking(r) {
+      showFollowups(r);
       $('bookCard').hidden = true; $('booked').hidden = true; $('picker').hidden = true; bsay('');
       if (r.booking) {
         $('bookTitle').textContent = 'Your ' + r.booking.type;

@@ -270,7 +270,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `webOrigin` | | Base URL of the pages (links in emails) |
 | `onlineBooking` | Pre-Review Call | Types Scouts book online (`all`, `none`, or a list) |
 | `bookingLeadHours`, `reviewLeadHours`, `eborLeadHours`, `cancelCutoffHours` | 48, 48, 336, 24 | Online booking/cancel cutoffs (a session's own Lead (h) replaces the booking cutoff) |
-| `intakeMinutes`, `reviewMinutes`, `eborMinutes` | 20, 60, 90 | Default session lengths (committee page) |
+| `intakeMinutes`, `reviewMinutes`, `eborMinutes`, `followupMinutes` | 20, 60, 90, 30 | Default session lengths (committee page); `followupMinutes` is the Follow-Up / Consult |
 | `defaultStartTime`, `defaultLocation`, `defaultAddress` | 7:00 PM | Committee page defaults |
 | `linkMinutes`, `sessionDays`, `committeeSessionDays` | 60, 14, 30 | Sign-in link and session lifetimes |
 | `signinCode` | FALSE | TRUE: the sign-in email also carries a 6-digit code, typed on the page that asked (5 tries; one waiting code per browser; using the link or the code uses up both). For iPhone email apps that open links in their own browser |
@@ -526,6 +526,7 @@ Each dashboard row has an **Action** dropdown (⋯) with the actions allowed for
 | Application submitted… | Proposal Approved | Application Submitted date | Application Submitted | "3.1.a Application submitted: acknowledgement" (Outbox draft) |
 | Application verified… | Application Submitted, Proposal Approved | Application Verified = date of Council's email (+ Submitted, if empty) | Application Verified | **"Book: Eagle Board of Review"** tab to Scout, parent and the unit's contacts (Key 3 Unit Leader + Committee Chair + Unit Contacts), Cc the group, Outbox draft; **"Emailed to set up EBoR" is filled when it is sent** (Outbox Send / I sent it) |
 | Book an EBoR (schedule)… | Application Verified, EBoR Paused | (opens the schedule page: create-and-book) | | |
+| Schedule a follow-up / consult… | **Every stage except Eagle Earned** (side sections and Closed too) | (opens the schedule page's new-session dialog: `/committee/schedule?r=<id>&new=Followup`; see Committee schedule page) | | none from here; the booking sends its own (see Follow-Up / Consult) |
 | Resend EBoR next-steps email | Application Verified | | | "Book: Eagle Board of Review" again (Outbox draft; fills Emailed to set up EBoR when sent) |
 | **Eagle earned…** (one step) | EBoR Booked | EBoR Date = the board's date (default the row's EBoR date), cell painted green (Settings `eborDoneColor`) | Eagle Earned | Uploads: signed application + Advancement Report (PDF scans, both or neither) → `<Name>-<Unit>_EagleApplication-Signed.pdf` / `_AdvancementReport-Signed.pdf` in the folder; photos → `EBoR Photos/<Name>-<Unit>_EBoR-<yyyymmdd>-NN.jpg`. Drafts **"Council: Eagle paperwork"** (to `councilEaglesEmail`, Cc group + unit contacts, both scans attached; fills "signed paperwork sent" when sent) and **"New Eagle Scout"** (Scout, family, unit contacts, the board: district reps + Unit Board Members from the last EBoR slot, others to invite; Cc group; photos attached) |
 | Send signed paperwork to Council… | Eagle Earned | | | Both scans required; "Council: Eagle paperwork" as above |
@@ -660,6 +661,31 @@ Design note (kept outside the repo).
   like a Pre-Review Call (`Booking.isVirtual`: Pre-Review Calls, or any slot whose place starts with "Online"; typing
   that in the schedule sheet's Location works too). Emails and the invitation say online and use the online adult rule.
 - **Blocked** entries (meetings, holidays): description + date, time optional (= whole day); never offered to Scouts.
+- **Follow-Up / Consult** (Jim W., 2026-11-11; slot type code `Followup`): a meeting a member and a Scout agreed on outside
+  the normal steps (a consult on the Proposal, a follow-up after a review, help with the plan or paperwork).
+  - **Made by the committee only, for a Scout, after the time is agreed.** It is never open for booking (`Booking.openSlots`
+    returns nothing for it unless a committee member is booking a Scout into that very row), so it is not in any open-times
+    list, the unit page's open times, an open-times email or `onlineBooking`, and never in "Scouts waiting to book",
+    please-book reminders or "staffed before bookable". No unbooked follow-ups: the dialog needs a Scout and a member.
+  - **Where:** the dashboard Action **Schedule a follow-up / consult…** (every stage but Eagle Earned) opens
+    `/committee/schedule?r=<record id>&new=Followup`: the new-session dialog with type Follow-Up / Consult, that Scout
+    chosen, length **30 min** (Settings `followupMinutes`), you ticked as the member, date and time empty. It is also a
+    type in the page's own **New session** dialog (then pick a Scout; "several times at once" is not offered).
+  - **Online (Google Meet) by default**; untick the box and a place is required (Settings `defaultLocation` is offered).
+  - **Booking it** writes the schedule row, the Calendar invitation (Scout, parent, members; Meet link when online), a log
+    line ("Follow-up / consult booked Thu 11/12 5:00 PM with MA") and Activity, and queues the "Booked: Follow-Up / Consult"
+    email (6.2.d). It **does not move the tracking row and fills no tracking Date/Who column**. A Scout may have several;
+    creating one never releases another.
+  - **Move, add or remove members, cancel:** the same paths as other booked sessions (this page, the schedule sheet).
+    Moves send "Moved: Follow-Up / Consult" (6.2.e); cancelling sends "Cancelled: …" (6.2.f) and **removes the schedule
+    row** (it is never left open).
+  - **Seen by:** the Scout on their own page ("Your follow-up / consult": time, members, place or Meet link; the Scout cannot
+    change or cancel it), the Scout's unit on the unit calendar (like the Scout's other sessions, never as an open time),
+    the digest's Next 7 days, and the day-before Session briefing (6.2.b). It is **not** counted as a Pre-Review Call,
+    Proposal Review or EBoR: not the dashboard Session column, not Stats "sessions held", not "Reviews with no outcome yet".
+  - Own calendar colour (orange). Rules: `Booking` (`Followup` rules, `isCommitteeOnly`, `upcomingBookings`, `bookingAt`),
+    `CommitteeSchedule` (`FOLLOWUP_SECTIONS`, `typeDefaults`, `check`), `StageActions` (`followup`, a page action with
+    `pageQuery`). Tests: `test/followup.test.js`.
 - **Staffed before bookable** (design note kept outside the repo, Jim W. 2026-10-28): a slot with no committee member
   (a place secured, or the availability pattern to keep) is saved but never offered to Scouts or units
   (`Booking.openSlots` requires a member). Shown with ⚠ and listed in the digest until a member signs up.
@@ -770,7 +796,7 @@ Design note (kept outside the repo); list of every email: **Admin → Templates:
   times of the Scout's own type; clicking one selects it (the radio list stays the source of truth). Choice remembered
   per browser.
 - **Unit page:** read-only calendar, default **Your Scouts** (the unit's Scouts' Pre-Review Calls, Proposal Reviews,
-  EBoRs, online or the old way; click for type, time, place), switch to **Open times** (types booked online now, no
+  EBoRs and Follow-Ups / Consults, online or the old way; click for type, time, place), switch to **Open times** (types booked online now, no
   names) to advise Scouts. Never other units' Scouts. FullCalendar 6 loaded only when a calendar is shown; month view,
   list view on phones.
 
@@ -793,7 +819,7 @@ Design note (kept outside the repo); list of every email: **Admin → Templates:
   (district/council + unit): the unit page, the dashboard tag and the digest warn under 3 and note over 6.
 - **Unit requests:** on `/unit`, "Hold a board at your unit" (Scout, date, time, place, note) → Unit Requests tab,
   the Scout's log and a committee email; listed on the Admin page (Done) and in the digest until done.
-- **Slot Type codes:** `Intake`, `ESSPPR`, `EBoR`, `Followup`, `Blocked` (also `CCAC`). Slot keys `SL_yymmdd_XXX` never change.
+- **Slot Type codes:** `Intake`, `ESSPPR`, `EBoR`, `Followup` (Follow-Up / Consult: committee-made, never open for booking), `Blocked` (also `CCAC`). Slot keys `SL_yymmdd_XXX` never change.
 
 ### New files waiting on the committee (`_pending_since`)
 
@@ -832,7 +858,7 @@ Run by `digestHourly`; each fires once (Script Properties `bm:` / `pb:` / `br:`)
 - **6.2.c Please book:** days in a To Book stage of a type booked online, per type: Settings `pleaseBookDays`
   (default `Intake 7,14; ESSPPR 7,14; EBoR 7`: an EBoR may be held up to 24 months after the requirements are done, so one
   reminder; a type with no days = none) → Outbox draft to the Scout. None from a week after the last mark (the digest lists them).
-- **6.2.b Session briefing:** the day before (within 24 h) → sent to the members on the slot (folder and log links).
+- **6.2.b Session briefing:** the day before (within 24 h) → sent to the members on the slot (folder and log links); a Follow-Up / Consult too.
 - **6.9.e Health check** (once a day, also from `syncInvitesHourly`): a missing trigger or a Digest Log silent for
   2 days → adminEmail.
 

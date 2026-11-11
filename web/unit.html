@@ -118,14 +118,14 @@
     }
 
     // Calendar: the unit's Scouts' sessions (default) or the open times Scouts can book online (read-only).
-    const COLORS = { Intake: '#2a6db0', ESSPPR: '#1f8a4c', EBoR: '#7b3fa0' };
+    const COLORS = { Intake: '#2a6db0', ESSPPR: '#1f8a4c', EBoR: '#7b3fa0', Followup: '#c2571a' };
     async function showCalendar() {
       let cal = null, data = null, mode = 'mine';
       try { data = await api('unitCalendar', { session }); } catch (e) { return; }
       const evs = () => (mode === 'mine' ? data.booked : data.open).map((x, i) => ({ id: mode + i,
         title: mode === 'mine' ? x.title + ' · ' + x.type : x.title, start: x.start, end: x.end, color: COLORS[x.code] || '#6b6b66' }));
       const hint = () => { $('calHint').textContent = mode === 'mine'
-        ? 'Sessions booked for your unit\'s Scouts (Pre-Review Calls, Proposal Reviews, Eagle Boards of Review). Click one for details.'
+        ? 'Sessions booked for your unit\'s Scouts (Pre-Review Calls, Proposal Reviews, Eagle Boards of Review, and follow-ups or consults the committee set up with a Scout). Click one for details.'
         : 'Open times Scouts can book online now, to help you advise them. Scouts book on their own page; this calendar is read-only.'; };
       $('calCard').hidden = false; hint();
       try {

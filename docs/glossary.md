@@ -96,7 +96,11 @@ A dated time at a place where the committee can hold a session. Its use (Proposa
 _Avoid_: EBoR slot (for an unbooked slot)
 
 **Slot Type**:
-The code in a Review Slot's type cell: **Intake** (Pre-Review Call), **ESSPPR** (Proposal Review), **EBoR**, **Followup** (a later review with a Scout after the first), **Blocked** (also written **CCAC**: a committee meeting, holiday or other time no session may be offered; no time = the whole day). Each slot also has a hidden key `SL_yymmdd_XXX` that never changes, even if the slot is moved.
+The code in a Review Slot's type cell: **Intake** (Pre-Review Call), **ESSPPR** (Proposal Review), **EBoR**, **Followup** (a Follow-Up / Consult: see below), **Blocked** (also written **CCAC**: a committee meeting, holiday or other time no session may be offered; no time = the whole day). Each slot also has a hidden key `SL_yymmdd_XXX` that never changes, even if the slot is moved.
+
+**Follow-Up / Consult**:
+A meeting a Committee Member and a Scout agreed on outside the normal steps (a consult on the Proposal, a follow-up after a review, help with the plan or paperwork). Slot Type `Followup`. Made by the committee only, for a Scout, after the time is agreed (dashboard Action "Schedule a follow-up / consult…", any stage but Eagle Earned); 30 minutes, online by default. Never open for booking and never listed as an open time; the Scout and the Scout's unit see their own. It does not move the Scout's Stage or fill a tracking date, and is not counted as a Pre-Review Call, Proposal Review or EBoR.
+_Avoid_: follow-up review (the old label)
 
 **Initials**:
 How Committee Members are written in Who / Rep columns (full names make columns too wide). Several allowed, separated by `,` or `/` (e.g. `JW/AB`): one member creates a slot, others add their initials to join. The Committee tab maps initials to name and email.

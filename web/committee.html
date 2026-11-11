@@ -483,7 +483,7 @@
         const a = list.find(x => x.key === sel.value);
         sel.value = '';
         if (!a) return;
-        if (a.page) { location.href = a.page + '?r=' + encodeURIComponent(r.recordId); return; }
+        if (a.page) { location.href = a.page + '?r=' + encodeURIComponent(r.recordId) + (a.pageQuery ? '&' + a.pageQuery : ''); return; }
         openAction(r, g, a);
       };
       return [sel];
