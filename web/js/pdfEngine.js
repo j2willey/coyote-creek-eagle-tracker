@@ -18,7 +18,10 @@ import {
   checkPlacement,
   flattenPageIndices,
   fitTextFontSize,
-  fitSignatureDimensions,
+  normalizeRotation,
+  viewerRectToUser,
+  markDrawSpec,
+  textDrawSpec,
   defaultSignPlacement
 } from './pdfPlan.js';
 
@@ -670,7 +673,7 @@ export function flattenPagesUpTo(PDFLib, pdfDoc, pages, fallbackFont) {
  * post-Proposal pages.
  * @param {any} pdfjsLib
  * @param {Uint8Array} pdfBytes
- * @returns {Promise<{ pdfjsDoc: any, analysis: WorkbookAnalysis, pageSizes: Array<{ width: number, height: number }> }>}
+ * @returns {Promise<{ pdfjsDoc: any, analysis: WorkbookAnalysis, pageSizes: Array<{ width: number, height: number }>, pageRotations: number[] }>}
  */
 export async function inspectPdfWithPdfJs(pdfjsLib, pdfBytes) {
   const copy = new Uint8Array(pdfBytes.byteLength);
@@ -680,11 +683,15 @@ export async function inspectPdfWithPdfJs(pdfjsLib, pdfBytes) {
   const descriptors = [];
   /** @type {Array<{ width: number, height: number }>} */
   const pageSizes = [];
+  /** @type {number[]} */
+  const pageRotations = [];
 
   for (let p = 1; p <= pdfjsDoc.numPages; p++) {
     const page = await pdfjsDoc.getPage(p);
     const vp = page.getViewport({ scale: 1 });
+    // pageSizes are the DISPLAYED sizes (pdf.js applies /Rotate): the Workshop keeps its marks in this viewer space.
     pageSizes.push({ width: vp.width, height: vp.height });
+    pageRotations.push(normalizeRotation(page.rotate));
 
     const tc = await page.getTextContent();
     const text = tc.items.map((/** @type {any} */ it) => it.str || '').join(' ').replace(/\s+/g, ' ').trim();
@@ -709,7 +716,7 @@ export async function inspectPdfWithPdfJs(pdfjsLib, pdfBytes) {
   }
 
   const analysis = analyzeWorkbookPages(descriptors);
-  return { pdfjsDoc, analysis, pageSizes };
+  return { pdfjsDoc, analysis, pageSizes, pageRotations };
 }
 
 /**
@@ -734,6 +741,9 @@ function sameBoxSizeAndPos(a, b) {
  *   Project Report page). At least one signature item is required; a name or date item needs its text.
  * - Form fields are flattened FIRST on the pages that received a mark (plus, with `flattenEarlier`, the Proposal pages
  *   before the first marked page; see `flattenPageIndices`), then the marks are drawn on top (stamps first, so the text and signature sit on them).
+ * - Item coordinates are in VIEWER space (the page as displayed, `/Rotate` applied). Each page's rotation and crop box
+ *   are read here and the marks are drawn rotated back, so they look upright and exactly where they were placed.
+ * - A signature / stamp image fills its item box exactly (the Workshop keeps the box at the image's aspect ratio).
  * - Signer 1's printed name / date go into the workbook's own AcroForm field when the item sits at the default box on
  *   a detected approval page whose field has exactly one widget; otherwise they are drawn as text.
  *
@@ -746,7 +756,6 @@ function sameBoxSizeAndPos(a, b) {
  *   signaturePngBytes: Uint8Array,
  *   printedName: string,
  *   dateStr: string,
- *   signatureScale?: number,
  *   textFontSize?: number,
  *   stampPngs?: Record<string, Uint8Array>,
  *   flattenEarlier?: boolean
@@ -759,7 +768,6 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
     analysis,
     signerIndex = 0,
     signaturePngBytes,
-    signatureScale = 1,
     textFontSize = 0
   } = opts;
   const items = Array.isArray(opts.items) ? opts.items : [];
@@ -785,7 +793,16 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
     if (!pages[it.pageIndex]) throw new Error('A mark is on a page that does not exist in this PDF.');
   }
 
-  const { StandardFonts, rgb } = PDFLib;
+  const { StandardFonts, rgb, degrees } = PDFLib;
+  /** The unrotated crop box (what pdf.js shows), the rotation and the box origin of a page. */
+  const viewOf = (/** @type {number} */ idx) => {
+    const pg = pages[idx];
+    const cb = typeof pg.getCropBox === 'function' ? pg.getCropBox() : pg.getSize();
+    const size = { width: cb.width, height: cb.height };
+    const origin = { x: Number(cb.x) || 0, y: Number(cb.y) || 0 };
+    const rotation = normalizeRotation(pg.getRotation ? pg.getRotation().angle : 0);
+    return { size, origin, rotation };
+  };
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const form = pdfDoc.getForm();
   const isFirstSigner = Number(signerIndex) === 0;
@@ -798,9 +815,12 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
   if (isFirstSigner && !hasCustomFontSize) {
     for (const it of items) {
       if ((it.kind !== 'name' && it.kind !== 'date') || !analysis.approvalPageIndices.includes(it.pageIndex)) continue;
-      const def = defaultSignPlacement(analysis.edition, signerIndex, pages[it.pageIndex].getSize());
+      const v = viewOf(it.pageIndex);
+      const def = defaultSignPlacement(analysis.edition, signerIndex, v.size);
       const box = it.kind === 'name' ? def.printedName : def.date;
-      if (!box.fieldName || !sameBoxSizeAndPos(it, box) || filled.has(box.fieldName)) continue;
+      // The item is in viewer space; the workbook's box is in user space.
+      const userRect = viewerRectToUser(it, v.size, v.rotation, v.origin);
+      if (!box.fieldName || !sameBoxSizeAndPos(userRect, box) || filled.has(box.fieldName)) continue;
       try {
         const tf = form.getTextField(box.fieldName);
         const widgets = tf.acroField.getWidgets();
@@ -827,28 +847,32 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
   let sigImage = null;
   for (const it of ordered) {
     const page = pages[it.pageIndex];
-    if (it.kind === 'stamp') {
-      const sid = /** @type {string} */ (it.stampId);
-      if (!stampImages.has(sid)) stampImages.set(sid, await pdfDoc.embedPng(stampPngs[sid]));
-      const img = stampImages.get(sid);
-      const d = img.scale(1);
-      const fit = fitSignatureDimensions(d.width, d.height, it, 1);
-      page.drawImage(img, { x: fit.x, y: fit.y, width: fit.width, height: fit.height });
-    } else if (it.kind === 'signature') {
-      if (!sigImage) sigImage = await pdfDoc.embedPng(signaturePngBytes);
-      const d = sigImage.scale(1);
-      const fit = fitSignatureDimensions(d.width, d.height, it, signatureScale);
-      page.drawImage(sigImage, { x: fit.x, y: fit.y, width: fit.width, height: fit.height });
+    const v = viewOf(it.pageIndex);
+    if (it.kind === 'stamp' || it.kind === 'signature') {
+      /** @type {any} */
+      let img;
+      if (it.kind === 'stamp') {
+        const sid = /** @type {string} */ (it.stampId);
+        if (!stampImages.has(sid)) stampImages.set(sid, await pdfDoc.embedPng(stampPngs[sid]));
+        img = stampImages.get(sid);
+      } else {
+        if (!sigImage) sigImage = await pdfDoc.embedPng(signaturePngBytes);
+        img = sigImage;
+      }
+      const spec = markDrawSpec(it, v.size, v.rotation, v.origin);
+      page.drawImage(img, { x: spec.x, y: spec.y, width: spec.width, height: spec.height, rotate: degrees(spec.angle) });
     } else {
       if (filled.has(it.id)) continue;
       const text = it.kind === 'name' ? cleanName : cleanDate;
       const fSize = fitTextFontSize(text, it.width, it.height, hasCustomFontSize ? textFontSize : 0);
+      const spec = textDrawSpec(it, { dx: 2, dy: Math.max(2, (it.height - fSize) / 2) }, v.size, v.rotation, v.origin);
       page.drawText(text, {
-        x: it.x + 2,
-        y: it.y + Math.max(2, (it.height - fSize) / 2),
+        x: spec.x,
+        y: spec.y,
         size: fSize,
         font: helvetica,
-        color: rgb(0.05, 0.05, 0.1)
+        color: rgb(0.05, 0.05, 0.1),
+        rotate: degrees(spec.angle)
       });
     }
   }

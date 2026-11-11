@@ -20,6 +20,7 @@ import {
   defaultSignPlacement,
   canPlaceOnPage,
   approvalBanner,
+  approvalBannerIsInfo,
   defaultItemSize,
   clampItemToPage,
   newItemAtPoint,
@@ -32,7 +33,19 @@ import {
   checkPlacement,
   hasTransparentPixel,
   describePageRanges,
-  STAMP_DEFAULT_WIDTH_PT
+  STAMP_DEFAULT_WIDTH_PT,
+  SIGNATURE_BASE_WIDTH_PT,
+  normalizeRotation,
+  viewerSizeOf,
+  viewerToUserPoint,
+  userToViewerPoint,
+  viewerRectToUser,
+  userRectToViewer,
+  markDrawSpec,
+  textDrawSpec,
+  inkBoundingBox,
+  resizeImageBoxInPage,
+  setImageItemWidth
 } from '../web/js/pdfPlan.js';
 
 describe('pdfPlan: classifyFile', () => {
@@ -165,7 +178,7 @@ describe('pdfPlan: Step 2 Our vs. Not-Ours page landmarks and hard ordering rule
     expect(canPlaceOnPage(analysis, 5).ok).toBe(false); // Certification of Completion
     // Per page, not "everything after": an unidentified page after the Plan is allowed, with a one-time confirm
     expect(canPlaceOnPage(analysis, 6).ok).toBe(true);
-    expect(canPlaceOnPage(analysis, 6).confirm).toBe('This page comes after the Project Plan. Place here anyway?');
+    expect(canPlaceOnPage(analysis, 6).confirm).toBe('Page 6 looks like Project Report (it may be a blank template page left in). Place on page 7 anyway?');
     expect(canPlaceOnPage(analysis, 0).confirm).toBe('');
   });
 
@@ -269,17 +282,18 @@ describe('pdfPlan: Task 9a, no silent fallback to an ordinary Proposal page', ()
     expect(a.defaultTargetPageIndex).toBe(-1);
     expect(describeTargetPage(a, a.defaultTargetPageIndex)).toBe('no page chosen yet');
     expect(approvalBanner(a)).toBe("Couldn't find the Proposal Approval page (Page H): scroll to it.");
+    expect(approvalBannerIsInfo(a)).toBe(false);
   });
 
-  it('treats image-only pages inside the Proposal section as candidates and defaults to the last one', () => {
+  it('treats image-only pages anywhere (also after Plan pages) as candidates and defaults to the last one', () => {
     const a = analyzeWorkbookPages([proposal, scan, proposal, scan, planPage, scan]);
-    // the scan after the first Plan page is locked, not a candidate
-    expect(a.scanCandidatePageIndices).toEqual([1, 3]);
-    expect(a.defaultTargetPageIndex).toBe(3);
-    expect(a.pages[3].scanCandidate).toBe(true);
-    expect(a.pages[5].scanCandidate).toBe(false);
+    expect(a.scanCandidatePageIndices).toEqual([1, 3, 5]);
+    expect(a.defaultTargetPageIndex).toBe(5);
+    expect(a.pages[5].scanCandidate).toBe(true);
+    expect(a.pages[4].scanCandidate).toBe(false); // a Plan page is never a candidate
     expect(describeTargetPage(a, 3)).toBe('Page 4 of 6 (a scanned page)');
-    expect(approvalBanner(a)).toMatch(/Couldn't find the Proposal Approval page.*Pages 2, 4 look like scans/);
+    expect(approvalBanner(a)).toBe('Pages 2, 4, 6 look like scanned signature pages (the last one is opened).');
+    expect(approvalBannerIsInfo(a)).toBe(true);
   });
 
   it('prefers the last approval page over scans, and gives no banner when one was found', () => {
@@ -301,9 +315,11 @@ describe('pdfPlan: Task 9a, no silent fallback to an ordinary Proposal page', ()
     expect(canPlaceOnPage(a, 2).ok).toBe(true);   // a scan
     expect(canPlaceOnPage(a, 3).ok).toBe(false);  // Project Plan
     expect(canPlaceOnPage(a, 3).reason).toMatch(/Page 4 belongs to the Project Plan/);
-    expect(a.pages[4].scanCandidate).toBe(false);
-    expect(canPlaceOnPage(a, 4).ok).toBe(true);   // not identified as Plan / Report itself: allowed, but with a confirm
-    expect(canPlaceOnPage(a, 4).confirm).toMatch(/after the Project Plan/);
+    expect(a.pages[4].scanCandidate).toBe(true);  // image-only page after the Plan: a signature-page candidate
+    expect(canPlaceOnPage(a, 4)).toEqual({ ok: true, reason: '', confirm: '' }); // no confirm on a candidate
+    const withText = analyzeWorkbookPages([proposal, approval, planPage, { text: 'Extra notes', fields: [] }]);
+    expect(canPlaceOnPage(withText, 3).ok).toBe(true); // ordinary page after the Plan: allowed, but with a confirm
+    expect(canPlaceOnPage(withText, 3).confirm).toMatch(/looks like Project Plan.*Place on page 4 anyway/);
     expect(canPlaceOnPage(a, 99).ok).toBe(false);
   });
 });
@@ -454,7 +470,7 @@ describe('pdfPlan: Task 9.1, Proposal Page H after Plan Page A (2023a, instructi
   it('has the confirm only on non-approval pages after a locked page', () => {
     const a = analyzeWorkbookPages([...pages, { text: 'Extra notes', fields: [] }]);
     expect(canPlaceOnPage(a, 12).ok).toBe(true);
-    expect(canPlaceOnPage(a, 12).confirm).toMatch(/after the Project Plan/);
+    expect(canPlaceOnPage(a, 12).confirm).toMatch(/^Page \d+ looks like Project .*Place on page 13 anyway\?$/);
     expect(canPlaceOnPage(a, 9).confirm).toBe('');
   });
 });
@@ -477,5 +493,182 @@ describe('pdfPlan: Task 9.1, image size on placement', () => {
     expect(newItemAtPoint('signature', 0, { x: 100, y: 130 }, small).width).toBe(80);
     expect(newItemAtPoint('name', 0, { x: 100, y: 130 }, small).width).toBe(170);
     expect(capImageSize('stamp', { width: 100, height: 50 }, page)).toEqual({ width: 100, height: 50 });
+  });
+});
+
+describe('pdfPlan: Task 9.2, a scanned signature page after a blank Plan page', () => {
+  // Fictional descriptor fixture of the pattern: Proposal pages 0-7, a blank Plan Page A left in at 8, the signed Page H
+  // as a text-less scan at 9, then slides (text) at 10-25.
+  const pages = [
+    ...Array.from({ length: 8 }, (_, i) => ({ text: `Workbook Proposal Page ${'ABCDEFG'[i % 7]}`, fields: ['Proposal-Notes' + i] })),
+    { text: 'Comments from Your Proposal Review Project Plan Page A', fields: [] },
+    { text: '', fields: [] },
+    ...Array.from({ length: 16 }, (_, i) => ({ text: `Slide ${i + 1} Project overview`, fields: [] }))
+  ];
+
+  it('offers the scan as the default target, with an info line instead of the "Couldn\'t find" banner', () => {
+    const a = analyzeWorkbookPages(pages);
+    expect(a.approvalPageIndices).toEqual([]);
+    expect(a.pages[8].forbidden).toBe(true);
+    expect(a.pages[8].lockedLabel).toBe('Project Plan Page A');
+    expect(a.scanCandidatePageIndices).toEqual([9]);
+    expect(a.defaultTargetPageIndex).toBe(9);
+    expect(approvalBanner(a)).toBe('Page 10 looks like a scanned signature page.');
+    expect(approvalBannerIsInfo(a)).toBe(true);
+  });
+
+  it('asks no confirm on the scan, and names the triggering page on an ordinary page after it', () => {
+    const a = analyzeWorkbookPages(pages);
+    expect(canPlaceOnPage(a, 9)).toEqual({ ok: true, reason: '', confirm: '' });
+    expect(canPlaceOnPage(a, 11).confirm).toBe('Page 9 looks like Project Plan Page A (it may be a blank template page left in). Place on page 12 anyway?');
+    expect(canPlaceOnPage(a, 3).confirm).toBe(''); // before the Plan page
+    expect(canPlaceOnPage(a, 8).ok).toBe(false);
+  });
+
+  it('prefers a detected approval page over a scan', () => {
+    const a = analyzeWorkbookPages([...pages.slice(0, 8), { text: 'Proposal Page H Council or District Approval Candidate’s Promise', fields: [] }, ...pages.slice(8)]);
+    expect(a.approvalPageIndices).toEqual([8]);
+    expect(a.defaultTargetPageIndex).toBe(8);
+    expect(approvalBanner(a)).toBe('');
+  });
+});
+
+describe('pdfPlan: Task 9.2, rotated pages (viewer <-> PDF user space)', () => {
+  const W = 792, H = 612; // unrotated page (landscape scan); viewer is 612 x 792 at 90 / 270
+  it('normalizes /Rotate and swaps the viewer size at 90 / 270', () => {
+    expect(normalizeRotation(90)).toBe(90);
+    expect(normalizeRotation(-90)).toBe(270);
+    expect(normalizeRotation(450)).toBe(90);
+    expect(normalizeRotation(undefined)).toBe(0);
+    expect(viewerSizeOf({ width: W, height: H }, 90)).toEqual({ width: 612, height: 792 });
+    expect(viewerSizeOf({ width: W, height: H }, 270)).toEqual({ width: 612, height: 792 });
+    expect(viewerSizeOf({ width: W, height: H }, 180)).toEqual({ width: 792, height: 612 });
+  });
+
+  it('maps a user-space point to the viewer for 0 / 90 / 180 / 270 (hand-computed)', () => {
+    const u = { x: 100, y: 50 };
+    const size = { width: W, height: H };
+    expect(userToViewerPoint(u, size, 0)).toEqual({ x: 100, y: 50 });
+    expect(userToViewerPoint(u, size, 90)).toEqual({ x: 50, y: 692 });
+    expect(userToViewerPoint(u, size, 180)).toEqual({ x: 692, y: 562 });
+    expect(userToViewerPoint(u, size, 270)).toEqual({ x: 562, y: 100 });
+  });
+
+  it('round-trips viewer <-> user for every rotation, also with a crop-box origin', () => {
+    const size = { width: W, height: H };
+    for (const rot of [0, 90, 180, 270]) {
+      for (const origin of [{ x: 0, y: 0 }, { x: 12, y: 7 }]) {
+        const vs = viewerSizeOf(size, rot);
+        for (const v of [{ x: 0, y: 0 }, { x: 33.5, y: 410 }, { x: vs.width, y: vs.height }]) {
+          const u = viewerToUserPoint(v, size, rot, origin);
+          const back = userToViewerPoint(u, size, rot, origin);
+          expect(back.x).toBeCloseTo(v.x, 9);
+          expect(back.y).toBeCloseTo(v.y, 9);
+        }
+      }
+    }
+  });
+
+  it('turns a viewer rectangle into the user-space rectangle it covers (width and height swap at 90 / 270)', () => {
+    const size = { width: W, height: H };
+    const r = { x: 50, y: 100, width: 200, height: 30 };
+    expect(viewerRectToUser(r, size, 0)).toEqual(r);
+    expect(viewerRectToUser(r, size, 90)).toEqual({ x: 662, y: 50, width: 30, height: 200 });
+    expect(viewerRectToUser(r, size, 270)).toEqual({ x: 100, y: 362, width: 30, height: 200 });
+    expect(viewerRectToUser(r, size, 180)).toEqual({ x: 542, y: 482, width: 200, height: 30 });
+    // and back
+    for (const rot of [0, 90, 180, 270]) {
+      const back = userRectToViewer(viewerRectToUser(r, size, rot), size, rot);
+      expect(back).toEqual(r);
+    }
+  });
+
+  it('gives the draw anchor (user point of the viewer bottom-left corner) and the counter-clockwise angle', () => {
+    const size = { width: W, height: H };
+    const r = { x: 50, y: 100, width: 200, height: 30 };
+    expect(markDrawSpec(r, size, 0)).toEqual({ x: 50, y: 100, angle: 0, width: 200, height: 30 });
+    expect(markDrawSpec(r, size, 90)).toEqual({ x: 692, y: 50, angle: 90, width: 200, height: 30 });
+    expect(markDrawSpec(r, size, 180)).toEqual({ x: 742, y: 512, angle: 180, width: 200, height: 30 });
+    expect(markDrawSpec(r, size, 270)).toEqual({ x: 100, y: 562, angle: 270, width: 200, height: 30 });
+    // text: baseline start 2 right and 8 up of the box corner, measured in the viewer
+    expect(textDrawSpec(r, { dx: 2, dy: 8 }, size, 90)).toEqual({ x: 684, y: 52, angle: 90 });
+  });
+
+  it('puts the workbook boxes of a rotated approval page where they are displayed', () => {
+    const viewer = { width: 612, height: 792 }; // what pdf.js reports for a 792 x 612 page with /Rotate 90
+    const user = { width: 792, height: 612 };
+    const it = defaultItem('date', '2023a', 0, 3, viewer, 'd', { rotation: 90 });
+    const box = defaultSignPlacement('2023a', 0, user).date;
+    const want = userRectToViewer(box, user, 90);
+    for (const k of ['x', 'y', 'width', 'height']) expect(it[k]).toBeCloseTo(want[k], 1);
+    expect(it.x + it.width).toBeLessThanOrEqual(612);
+    expect(it.y + it.height).toBeLessThanOrEqual(792);
+    expect(defaultItems('2023a', 0, 3, viewer, { rotation: 90 })).toHaveLength(3);
+  });
+});
+
+describe('pdfPlan: Task 9.2, signature images', () => {
+  it('finds the ink bounding box plus a margin, inside the image', () => {
+    const w = 10, h = 6;
+    const rgba = new Uint8ClampedArray(w * h * 4);
+    const ink = (x, y, a = 255) => { rgba[(y * w + x) * 4 + 3] = a; };
+    ink(3, 2); ink(5, 3);
+    expect(inkBoundingBox(rgba, w, h, { margin: 1 })).toEqual({ x: 2, y: 1, width: 5, height: 4 });
+    expect(inkBoundingBox(rgba, w, h, { margin: 0 })).toEqual({ x: 3, y: 2, width: 3, height: 2 });
+    expect(inkBoundingBox(rgba, w, h, { margin: 50 })).toEqual({ x: 0, y: 0, width: 10, height: 6 });
+    expect(inkBoundingBox(rgba, w, h)).toEqual({ x: 0, y: 0, width: 10, height: 6 }); // default margin 4 px
+  });
+  it('ignores near-transparent noise and returns null for an empty image', () => {
+    const w = 4, h = 4;
+    const rgba = new Uint8ClampedArray(w * h * 4);
+    expect(inkBoundingBox(rgba, w, h)).toBeNull();
+    rgba[3] = 5; // faint, below the threshold
+    expect(inkBoundingBox(rgba, w, h)).toBeNull();
+    expect(inkBoundingBox([], 0, 0)).toBeNull();
+  });
+
+  it('sizes a signature from its aspect ratio and the size factor', () => {
+    expect(SIGNATURE_BASE_WIDTH_PT).toBe(126);
+    expect(defaultItemSize('signature', 5, 1)).toEqual({ width: 126, height: 25.2 });
+    expect(defaultItemSize('signature', 5, 1.4)).toEqual({ width: 176.4, height: 35.3 });
+    expect(defaultItemSize('signature', 5, 9).width).toBe(176.4); // clamped to SIG_SCALE_MAX
+    expect(defaultItemSize('signature')).toEqual({ width: 126, height: 30 }); // no image yet
+    const it = newItemAtPoint('signature', 0, { x: 300, y: 400 }, { width: 612, height: 792 }, { aspect: 4, scale: 1 });
+    expect(it.width / it.height).toBeCloseTo(4, 1);
+    expect(it.x + it.width / 2).toBeCloseTo(300, 1);
+  });
+
+  it('keeps the aspect ratio when the corner is dragged (whichever axis moves more)', () => {
+    const page = { width: 612, height: 792 };
+    const box = { x: 100, y: 600, width: 100, height: 25 };
+    const a = resizeImageBoxInPage(box, 50, 0, page);
+    expect(a).toMatchObject({ x: 100, width: 150, height: 37.5, y: 587.5 });
+    const b = resizeImageBoxInPage(box, 0, 50, page);
+    expect(b.width / b.height).toBeCloseTo(4, 1);
+    expect(b.width).toBe(300);
+    expect(b.y + b.height).toBeCloseTo(625, 1); // top edge stays
+    const tiny = resizeImageBoxInPage(box, -500, 0, page);
+    expect(tiny.width).toBe(24);
+    const wide = resizeImageBoxInPage(box, 5000, 0, page);
+    expect(wide.x + wide.width).toBeLessThanOrEqual(612);
+    expect(wide.width / wide.height).toBeCloseTo(4, 1);
+  });
+
+  it('resizes an image to a new width around its center (the "Signature size" control)', () => {
+    const page = { width: 612, height: 792 };
+    const r = setImageItemWidth({ x: 100, y: 100, width: 100, height: 25 }, 200, page);
+    expect(r.width).toBe(200);
+    expect(r.height).toBe(50);
+    expect(r.x + r.width / 2).toBeCloseTo(150, 1);
+    expect(r.y + r.height / 2).toBeCloseTo(112.5, 1);
+  });
+
+  it('fits a signature of a given aspect inside the workbook box, centered', () => {
+    const it = defaultItem('signature', '2023a', 0, 3, { width: 612, height: 792 }, 's', { aspect: 6 });
+    expect(it.width / it.height).toBeCloseTo(6, 1);
+    const box = defaultSignPlacement('2023a', 0, { width: 612, height: 792 }).signature;
+    expect(it.x).toBeGreaterThanOrEqual(box.x - 0.1);
+    expect(it.x + it.width).toBeLessThanOrEqual(box.x + box.width + 0.1);
+    expect(it.y + it.height).toBeLessThanOrEqual(box.y + box.height + 0.1);
   });
 });

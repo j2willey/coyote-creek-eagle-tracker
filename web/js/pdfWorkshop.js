@@ -27,12 +27,18 @@ import {
   describeTargetPage,
   describePageRanges,
   approvalBanner,
+  approvalBannerIsInfo,
   checkPlacement,
   flattenPageIndices,
   newItemAtPoint,
+  clampItemToPage,
   defaultItem,
   fitTextFontSize,
   resizeBoxInPage,
+  resizeImageBoxInPage,
+  setImageItemWidth,
+  inkBoundingBox,
+  SIGNATURE_BASE_WIDTH_PT,
   hasTransparentPixel,
   STAMP_OPAQUE_WARNING
 } from './pdfPlan.js';
@@ -253,6 +259,69 @@ function saveSignatureToStorage(sig) {
 }
 
 /**
+ * A PNG data URL of `canvas` cropped to its ink (pixels that are not transparent) plus a small margin, so a signature
+ * carries no transparent padding: its box then hugs the ink, in the preview and in the PDF. An empty canvas is returned
+ * as is.
+ * @param {HTMLCanvasElement} canvas
+ * @returns {string}
+ */
+function canvasToTrimmedPngDataUrl(canvas) {
+  try {
+    const ctx = canvas.getContext('2d');
+    if (!ctx || !canvas.width || !canvas.height) return canvas.toDataURL('image/png');
+    const box = inkBoundingBox(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+    if (!box || (box.width === canvas.width && box.height === canvas.height)) return canvas.toDataURL('image/png');
+    const out = document.createElement('canvas');
+    out.width = box.width;
+    out.height = box.height;
+    const octx = out.getContext('2d');
+    if (!octx) return canvas.toDataURL('image/png');
+    octx.drawImage(canvas, box.x, box.y, box.width, box.height, 0, 0, box.width, box.height);
+    return out.toDataURL('image/png');
+  } catch {
+    return canvas.toDataURL('image/png');
+  }
+}
+
+/**
+ * Trim a PNG data URL (e.g. a signature saved by an earlier version) to its ink; resolves to the input on any problem.
+ * @param {string} dataUrl
+ * @returns {Promise<string>}
+ */
+function trimPngDataUrl(dataUrl) {
+  return new Promise(resolve => {
+    if (!dataUrl) { resolve(dataUrl); return; }
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, img.naturalWidth);
+      c.height = Math.max(1, img.naturalHeight);
+      const ctx = c.getContext('2d');
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0);
+      resolve(canvasToTrimmedPngDataUrl(c));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Natural aspect ratio (width / height) of a PNG data URL, 0 when empty or unreadable.
+ * @param {string} dataUrl
+ * @returns {Promise<number>}
+ */
+function pngAspect(dataUrl) {
+  return new Promise(resolve => {
+    if (!dataUrl) { resolve(0); return; }
+    const img = new Image();
+    img.onload = () => resolve(img.naturalWidth > 0 && img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : 0);
+    img.onerror = () => resolve(0);
+    img.src = dataUrl;
+  });
+}
+
+/**
  * Render a typed signature in the chosen script font at ~3x DPI onto a transparent PNG data URL.
  * @param {string} text
  * @param {string} [fontKey]
@@ -285,7 +354,7 @@ export function renderTypedSignaturePng(text, fontKey = 'dancing') {
   } else {
     ctx.fillText(clean, 24, canvas.height * 0.54);
   }
-  return canvas.toDataURL('image/png');
+  return canvasToTrimmedPngDataUrl(canvas);
 }
 
 /**
@@ -343,7 +412,7 @@ function imageFileToTransparentPng(file) {
         }
       }
       ctx.putImageData(imgData, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
+      resolve(canvasToTrimmedPngDataUrl(canvas));
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -421,7 +490,7 @@ function formatDisplayDate(ymd) {
 export async function openSignWorkshop(opts) {
   ensureGoogleScriptFonts();
   const { PDFLib, pdfjsLib } = await ensurePdfLibs();
-  const { pdfjsDoc, analysis, pageSizes } = await inspectPdfWithPdfJs(pdfjsLib, opts.pdfBytes);
+  const { pdfjsDoc, analysis, pageSizes, pageRotations } = await inspectPdfWithPdfJs(pdfjsLib, opts.pdfBytes);
 
   const signerIndex = Number(opts.signerIndex) || 0;
   const maxBytes = Number(opts.maxBytes) || MAX_BYTES;
@@ -429,14 +498,20 @@ export async function openSignWorkshop(opts) {
   const savedSig = loadSavedSignature(defaultName);
   if (savedSig.mode === 'type' && savedSig.typedText) {
     savedSig.pngDataUrl = await renderTypedSignaturePngAsync(savedSig.typedText, savedSig.fontKey);
+  } else if (savedSig.pngDataUrl) {
+    savedSig.pngDataUrl = await trimPngDataUrl(savedSig.pngDataUrl); // a signature saved before trimming existed
   }
+  let sigAspect = await pngAspect(savedSig.pngDataUrl);
 
   // Opens scrolled to the default target: the LAST approval page, else the last scan, else nothing is preselected
   // (-1: the page the member scrolls to is the "current" one; no ordinary Proposal page is ever picked for them).
   const defaultTarget = analysis.defaultTargetPageIndex;
   let currentPageIndex = defaultTarget >= 0 ? defaultTarget : 0;
   const totalPages = analysis.pages.length;
+  // Sizes and every placed mark are in VIEWER space (the page as displayed, /Rotate applied); the engine turns them
+  // back into the page's own space when it draws.
   const pageSizeOf = (/** @type {number} */ i) => pageSizes[i] || { width: 612, height: 792 };
+  const rotationOf = (/** @type {number} */ i) => pageRotations[i] || 0;
 
   /** @type {PlacedItem[]} */
   let items = [];
@@ -570,8 +645,8 @@ export async function openSignWorkshop(opts) {
                 <button type="button" class="ws-step-btn" id="wsSigSmallerBtn" title="Smaller signature">−</button>
                 <input type="range" id="wsSigScaleRange" min="${Math.round(SIG_SCALE_MIN * 100)}" max="${Math.round(SIG_SCALE_MAX * 100)}" step="5" value="100">
                 <button type="button" class="ws-step-btn" id="wsSigLargerBtn" title="Larger signature">+</button>
-                <span class="ws-size-val" id="wsSigScaleVal">100% (Fit)</span>
-                <button type="button" class="ws-linkbtn" id="wsSigFitBtn">Fit</button>
+                <span class="ws-size-val" id="wsSigScaleVal">100%</span>
+                <button type="button" class="ws-linkbtn" id="wsSigFitBtn" title="Back to 100% (1.75 in wide)">Reset</button>
               </div>
             </div>
 
@@ -687,7 +762,7 @@ export async function openSignWorkshop(opts) {
     function syncSizeControls() {
       const pct = Math.round(signatureScale * 100);
       sigScaleRange.value = String(pct);
-      sigScaleVal.textContent = pct === 100 ? '100% (Fit)' : `${pct}%`;
+      sigScaleVal.textContent = `${pct}%`;
 
       if (textFontSize <= 0) {
         textSizeRange.value = '10';
@@ -736,6 +811,8 @@ export async function openSignWorkshop(opts) {
     if (bannerText) {
       banner.hidden = false;
       banner.textContent = bannerText;
+      // A scanned page is the likely signature page: an info line, not a warning.
+      banner.className = approvalBannerIsInfo(analysis) ? 'ws-banner infobox' : 'ws-banner warnbox';
     }
 
     /** @type {HTMLButtonElement[]} */
@@ -806,10 +883,11 @@ export async function openSignWorkshop(opts) {
       const cur = currentPageIndex;
       const detected = analysis.approvalPageIndices.includes(cur);
       if (detected && canPlaceOnPage(analysis, cur).ok && !items.some(it => it.kind === kind && it.pageIndex === cur)) {
-        const it = defaultItem(kind, analysis.edition, signerIndex, cur, pageSizeOf(cur), newItemId());
+        const it = defaultItem(kind, analysis.edition, signerIndex, cur, pageSizeOf(cur), newItemId(), { rotation: rotationOf(cur), aspect: sigAspect });
         if (it) {
           disarm();
           items.push(it);
+          selectItem(it.id);
           itemsChanged([cur]);
           return;
         }
@@ -912,6 +990,35 @@ export async function openSignWorkshop(opts) {
     };
 
     // Called after items were added, moved in count or removed: redraw those pages, refresh the summary and checks.
+    // Selection: the mark the "Signature size" control acts on (a newly placed mark is selected)
+    let selectedId = '';
+    const selectedItem = () => items.find(it => it.id === selectedId) || null;
+    function selectItem(/** @type {string} */ id) {
+      selectedId = id;
+      modal.querySelectorAll('.ws-place-box').forEach(el => el.classList.toggle('selected', /** @type {HTMLElement} */ (el).dataset.id === id));
+      const it = selectedItem();
+      if (it && it.kind === 'signature') syncScaleFromItem(it);
+    }
+
+    // The signature image changed (typed, drawn, uploaded, cleared): re-measure its aspect ratio and re-fit the placed
+    // signature boxes to it (width and center kept), so the image always fills its box exactly.
+    async function signatureImageChanged() {
+      const src = savedSig.pngDataUrl;
+      const aspect = await pngAspect(src);
+      if (src !== savedSig.pngDataUrl) return; // a newer change is already on its way
+      sigAspect = aspect;
+      if (aspect > 0) {
+        for (const it of items) {
+          if (it.kind !== 'signature') continue;
+          const h = Math.round((it.width / aspect) * 10) / 10;
+          const cy = it.y + it.height / 2;
+          Object.assign(it, clampItemToPage({ ...it, y: cy - h / 2, height: h }, pageSizeOf(it.pageIndex)));
+        }
+      }
+      renderOverlayBoxes();
+      updateValidationState();
+    }
+
     function itemsChanged(/** @type {number[]} */ pagesTouched) {
       for (const i of pagesTouched) renderPageItems(i);
       refreshPageBar();
@@ -931,8 +1038,7 @@ export async function openSignWorkshop(opts) {
         savedSig.pngDataUrl = await renderTypedSignaturePngAsync(typedSigInput.value, fontSelect.value);
         typePreviewImg.src = savedSig.pngDataUrl || '';
       }
-      renderOverlayBoxes();
-      updateValidationState();
+      await signatureImageChanged();
     }
     tabBtns.forEach(b => {
       b.onclick = () => void setSigMode(/** @type {'type' | 'draw' | 'upload'} */ (b.dataset.mode || 'type'));
@@ -944,18 +1050,27 @@ export async function openSignWorkshop(opts) {
       applyFontSelectPreviewStyle();
       savedSig.pngDataUrl = await renderTypedSignaturePngAsync(savedSig.typedText, savedSig.fontKey);
       typePreviewImg.src = savedSig.pngDataUrl || '';
-      renderOverlayBoxes();
-      updateValidationState();
+      await signatureImageChanged();
     }
     typedSigInput.oninput = () => void updateTypedSig();
     fontSelect.onchange = () => void updateTypedSig();
 
-    // Signature size controls
+    // Signature size: sets the size of the next placed signature AND resizes the selected signature mark (aspect kept).
+    // There is no preview-only scaling: the box on the page is the size the signature is drawn at.
     function setSignatureScale(/** @type {number} */ nextScale) {
       signatureScale = Math.max(SIG_SCALE_MIN, Math.min(SIG_SCALE_MAX, Math.round(nextScale * 20) / 20));
       savedSig.signatureScale = signatureScale;
       syncSizeControls();
-      renderOverlayBoxes();
+      const sel = selectedItem();
+      if (sel && sel.kind === 'signature') {
+        Object.assign(sel, setImageItemWidth(sel, SIGNATURE_BASE_WIDTH_PT * signatureScale, pageSizeOf(sel.pageIndex)));
+        renderPageItems(sel.pageIndex);
+      }
+    }
+    /** Show the selected signature's current size on the control (without touching the item). */
+    function syncScaleFromItem(/** @type {PlacedItem} */ it) {
+      signatureScale = Math.max(SIG_SCALE_MIN, Math.min(SIG_SCALE_MAX, Math.round((it.width / SIGNATURE_BASE_WIDTH_PT) * 20) / 20));
+      syncSizeControls();
     }
     sigScaleRange.oninput = () => setSignatureScale(Number(sigScaleRange.value) / 100);
     sigSmallerBtn.onclick = () => setSignatureScale(signatureScale - 0.1);
@@ -1014,9 +1129,8 @@ export async function openSignWorkshop(opts) {
       if (!drawing) return;
       drawing = false;
       if (hasDrawnStrokes) {
-        savedSig.pngDataUrl = drawPad.toDataURL('image/png');
-        renderOverlayBoxes();
-        updateValidationState();
+        savedSig.pngDataUrl = canvasToTrimmedPngDataUrl(drawPad);
+        void signatureImageChanged();
       }
     };
     drawPad.addEventListener('pointerup', finishStroke);
@@ -1026,8 +1140,7 @@ export async function openSignWorkshop(opts) {
       padCtx.clearRect(0, 0, drawPad.width, drawPad.height);
       hasDrawnStrokes = false;
       savedSig.pngDataUrl = '';
-      renderOverlayBoxes();
-      updateValidationState();
+      void signatureImageChanged();
     };
 
     uploadSigInput.onchange = async () => {
@@ -1036,8 +1149,7 @@ export async function openSignWorkshop(opts) {
       try {
         savedSig.pngDataUrl = await imageFileToTransparentPng(f);
         uploadPreviewImg.src = savedSig.pngDataUrl;
-        renderOverlayBoxes();
-        updateValidationState();
+        await signatureImageChanged();
       } catch (e) {
         statusMsg.textContent = e instanceof Error ? e.message : String(e);
         statusMsg.className = 'hint err';
@@ -1138,7 +1250,10 @@ export async function openSignWorkshop(opts) {
         y: ps.height - ((ev.clientY - r.top) / Math.max(1, r.height)) * ps.height
       };
       const stampData = armed.stampId ? stampDataCache.get(armed.stampId) : undefined;
-      items.push(newItemAtPoint(armed.kind, i, point, ps, { id: newItemId(), stampId: armed.stampId, aspect: stampData ? stampData.aspect : 0 }));
+      const aspect = armed.kind === 'stamp' ? (stampData ? stampData.aspect : 0) : sigAspect;
+      const placed = newItemAtPoint(armed.kind, i, point, ps, { id: newItemId(), stampId: armed.stampId, aspect, scale: signatureScale });
+      items.push(placed);
+      selectItem(placed.id);
       disarm();
       itemsChanged([i]);
     }
@@ -1161,6 +1276,8 @@ export async function openSignWorkshop(opts) {
         const label = labels[box.kind];
         const elBox = document.createElement('div');
         elBox.className = `ws-place-box ws-place-${box.kind}`;
+        elBox.dataset.id = box.id;
+        if (box.id === selectedId) elBox.classList.add('selected');
         elBox.title = `Drag to move the ${label.toLowerCase()}, or drag the bottom-right corner to resize`;
 
         const applyBoxGeometry = () => {
@@ -1180,7 +1297,6 @@ export async function openSignWorkshop(opts) {
               const img = document.createElement('img');
               img.src = savedSig.pngDataUrl;
               img.alt = 'Signature';
-              img.style.transform = `scale(${signatureScale})`;
               contentSpan.appendChild(img);
             } else {
               contentSpan.textContent = 'Signature';
@@ -1218,6 +1334,7 @@ export async function openSignWorkshop(opts) {
         remove.addEventListener('click', ev => {
           ev.stopPropagation();
           items = items.filter(it => it !== box);
+          if (selectedId === box.id) selectedId = '';
           itemsChanged([pageIndex]);
         });
         elBox.appendChild(remove);
@@ -1230,6 +1347,7 @@ export async function openSignWorkshop(opts) {
         handle.addEventListener('pointerdown', ev => {
           ev.preventDefault();
           ev.stopPropagation();
+          selectItem(box.id);
           handle.setPointerCapture(ev.pointerId);
           const stageRect = pe.overlay.getBoundingClientRect();
           const startX = ev.clientX;
@@ -1238,16 +1356,18 @@ export async function openSignWorkshop(opts) {
           const onResizeMove = (/** @type {PointerEvent} */ mv) => {
             const dxPt = ((mv.clientX - startX) / Math.max(1, stageRect.width)) * ps.width;
             const dyPt = ((mv.clientY - startY) / Math.max(1, stageRect.height)) * ps.height;
-            const resized = resizeBoxInPage(origBox, dxPt, dyPt, ps, {
-              minWidth: box.kind === 'date' ? 36 : 54,
-              minHeight: box.kind === 'signature' ? 14 : 10
-            });
+            // Signature and stamp keep their aspect ratio (the image fills the box); name and date resize freely.
+            const isImage = box.kind === 'signature' || box.kind === 'stamp';
+            const resized = isImage
+              ? resizeImageBoxInPage(origBox, dxPt, dyPt, ps, { minWidth: 24 })
+              : resizeBoxInPage(origBox, dxPt, dyPt, ps, { minWidth: box.kind === 'date' ? 36 : 54, minHeight: 10 });
             box.x = resized.x;
             box.y = resized.y;
             box.width = resized.width;
             box.height = resized.height;
             applyBoxGeometry();
             applyContentStyle();
+            if (box.kind === 'signature') syncScaleFromItem(box);
           };
           const onResizeUp = () => {
             handle.removeEventListener('pointermove', onResizeMove);
@@ -1262,6 +1382,7 @@ export async function openSignWorkshop(opts) {
         elBox.addEventListener('pointerdown', ev => {
           if (ev.target === handle || ev.target === remove) return;
           ev.preventDefault();
+          selectItem(box.id);
           elBox.setPointerCapture(ev.pointerId);
           const stageRect = pe.overlay.getBoundingClientRect();
           const startX = ev.clientX;
@@ -1410,7 +1531,6 @@ export async function openSignWorkshop(opts) {
           signaturePngBytes: sigBytes,
           printedName: printedNameInput.value.trim(),
           dateStr: dateStrInput.value.trim(),
-          signatureScale,
           textFontSize,
           stampPngs,
           flattenEarlier

@@ -800,3 +800,137 @@ describe.runIf(fs.existsSync(WB_2026) && fs.existsSync(WB_2023A))(
     });
   }
 );
+
+describe('pdfEngine: Task 9.2, image-only and rotated pages (fictional fixtures)', () => {
+  const W = 792;
+  const H = 612;
+
+  /** A 792 x 612 page with /Rotate `rot`, NO text and no fields (an image-only scan stand-in), after 2 text pages. */
+  async function build(rot) {
+    const doc = await PDFLib.PDFDocument.create();
+    const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    for (let i = 0; i < 2; i++) doc.addPage([612, 792]).drawText(`Workbook Proposal Page ${'AB'[i]}`, { x: 40, y: 740, size: 10, font });
+    const scan = doc.addPage([W, H]);
+    scan.setRotation(PDFLib.degrees(rot));
+    return new Uint8Array(await doc.save());
+  }
+
+  /** Every decoded content stream of page `idx`, joined. */
+  async function contentOf(bytes, idx) {
+    const doc = await PDFLib.PDFDocument.load(bytes);
+    const node = doc.getPages()[idx].node;
+    const contents = node.Contents();
+    const streams = contents instanceof PDFLib.PDFArray
+      ? contents.asArray().map(r => doc.context.lookup(r))
+      : [contents];
+    return streams.map(st => {
+      const raw = Buffer.from(st.contents);
+      const filter = st.dict.get(PDFLib.PDFName.of('Filter'));
+      return (filter ? zlib.inflateSync(raw) : raw).toString('latin1');
+    }).join('\n');
+  }
+
+  const num = '(-?\\d+(?:\\.\\d+)?(?:e-?\\d+)?)';
+  const grab = (src, re, n) => {
+    const m = new RegExp(re).exec(src);
+    expect(m, `operator ${re} in content`).not.toBeNull();
+    return m.slice(1, n + 1).map(Number);
+  };
+
+  /** The current transformation matrix [a b c d e f] in force when the first image is painted (all cm ops of its q block composed). */
+  const imageCtm = (content) => {
+    const end = content.indexOf(' Do');
+    expect(end).toBeGreaterThan(0);
+    const block = content.slice(content.lastIndexOf('q', end), end);
+    const ops = [...block.matchAll(new RegExp(`${num} ${num} ${num} ${num} ${num} ${num} cm`, 'g'))].map(m => m.slice(1, 7).map(Number));
+    const mult = (A, B) => [
+      A[0] * B[0] + A[1] * B[2], A[0] * B[1] + A[1] * B[3],
+      A[2] * B[0] + A[3] * B[2], A[2] * B[1] + A[3] * B[3],
+      A[4] * B[0] + A[5] * B[2] + B[4], A[4] * B[1] + A[5] * B[3] + B[5]
+    ];
+    return ops.reduce((ctm, op) => (ctm ? mult(op, ctm) : op), null);
+  };
+
+  for (const rot of [0, 90, 180, 270]) {
+    it(`draws an image and text upright and exactly where they were placed on a /Rotate ${rot} page (checked against pdf.js)`, async () => {
+      const raw = await build(rot);
+      const { analysis, pageSizes, pageRotations } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+      expect(pageRotations[2]).toBe(rot);
+      const view = pageSizes[2]; // viewer size
+      expect(view).toEqual(rot === 90 || rot === 270 ? { width: H, height: W } : { width: W, height: H });
+      expect(analysis.scanCandidatePageIndices).toEqual([2]);
+
+      const sig = { id: 's', kind: 'signature', pageIndex: 2, x: 60, y: 110, width: 120, height: 30 };
+      const nm = { id: 'n', kind: 'name', pageIndex: 2, x: 60, y: 70, width: 170, height: 14 };
+      const out = await applyPlacedItemsAndFlatten(PDFLib, {
+        pdfBytes: raw, analysis, items: [sig, nm], signaturePngBytes: TINY_PNG, printedName: 'Pat Q', dateStr: ''
+      });
+      const content = await contentOf(out.pdfBytes, 2);
+
+      // pdf.js is the judge: where does it display what pdf-lib drew?
+      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(out.pdfBytes), verbosity: 0 }).promise;
+      const vp = (await doc.getPage(3)).getViewport({ scale: 1 });
+      const toViewer = (x, y) => { const [vx, vyTop] = vp.convertToViewportPoint(x, y); return { x: vx, y: vp.height - vyTop }; };
+
+      // image: cm = [a b c d e f]; the unit square maps to the drawn box
+      const [a, b, c, d, e, f] = imageCtm(content);
+      const at = (u, v) => toViewer(e + a * u + c * v, f + b * u + d * v);
+      const bl = at(0, 0), br = at(1, 0), tl = at(0, 1);
+      expect(bl.x).toBeCloseTo(sig.x, 1);
+      expect(bl.y).toBeCloseTo(sig.y, 1);
+      expect(br.x).toBeCloseTo(sig.x + sig.width, 1);   // wide edge runs left to right in the viewer
+      expect(br.y).toBeCloseTo(sig.y, 1);
+      expect(tl.x).toBeCloseTo(sig.x, 1);
+      expect(tl.y).toBeCloseTo(sig.y + sig.height, 1);  // and the image is upright (top above bottom)
+
+      // text: Tm = [a b c d e f]; origin = baseline start, (a, b) = writing direction
+      const [ta, tb, , , te, tf] = grab(content, `${num} ${num} ${num} ${num} ${num} ${num} Tm`, 6);
+      const o = toViewer(te, tf);
+      const dir = toViewer(te + ta * 10, tf + tb * 10);
+      expect(o.x).toBeCloseTo(nm.x + 2, 1);
+      expect(o.y).toBeGreaterThan(nm.y);
+      expect(o.y).toBeLessThan(nm.y + nm.height);
+      expect(dir.x - o.x).toBeCloseTo(10, 1);  // text runs left to right as displayed
+      expect(dir.y - o.y).toBeCloseTo(0, 1);   // and level
+    });
+  }
+
+  it('hits hand-computed numbers on a /Rotate 90 page (image anchor and angle in user space)', async () => {
+    const raw = await build(90);
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const sig = { id: 's', kind: 'signature', pageIndex: 2, x: 50, y: 100, width: 200, height: 30 };
+    const out = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, items: [sig], signaturePngBytes: TINY_PNG, printedName: '', dateStr: ''
+    });
+    const content = await contentOf(out.pdfBytes, 2);
+    const [a, b, c, d, e, f] = imageCtm(content);
+    // viewer bottom-left (50,100) on W=792 /Rotate 90 -> user (792-100, 50) = (692, 50); rotated 90 deg CCW
+    expect([e, f]).toEqual([692, 50]);
+    expect(a).toBeCloseTo(0, 6);
+    expect(b).toBeCloseTo(200, 6);
+    expect(c).toBeCloseTo(-30, 6);
+    expect(d).toBeCloseTo(0, 6);
+  });
+
+  it('fills the image into its box exactly (no centering offset, no scale factor)', async () => {
+    const raw = await build(0);
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const sig = { id: 's', kind: 'signature', pageIndex: 2, x: 100, y: 200, width: 90, height: 20 };
+    const out = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, items: [sig], signaturePngBytes: TINY_PNG, printedName: '', dateStr: '', signatureScale: 1.4
+    });
+    const [a, b, c, d, e, f] = imageCtm(await contentOf(out.pdfBytes, 2));
+    expect([a, b, c, d, e, f]).toEqual([90, 0, 0, 20, 100, 200]);
+  });
+
+  it('lets a scanned page take marks with no confirm, and keeps flattening to the marked page', async () => {
+    const raw = await build(90);
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    expect(canPlaceOnPage(analysis, 2)).toEqual({ ok: true, reason: '', confirm: '' });
+    const out = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, items: [{ id: 's', kind: 'signature', pageIndex: 2, x: 50, y: 100, width: 100, height: 25 }],
+      signaturePngBytes: TINY_PNG, printedName: '', dateStr: ''
+    });
+    expect(out.flattenedPages).toEqual([2]);
+  });
+});

@@ -72,7 +72,8 @@ export const TEXT_FONT_MAX_PT = 16;
  * @property {boolean} forbidden  true only when THIS page is identified as Project Plan / Fundraising Application / Project Report
  * @property {boolean} afterNotOurs  not locked itself, but it comes after the first locked page (placing there needs a confirm)
  * @property {string} notOursSection
- * @property {boolean} scanCandidate  no text and no form fields, inside the Proposal section: probably a scanned page
+ * @property {string} lockedLabel  for a locked page: what it looks like, e.g. "Project Plan Page A" (else '')
+ * @property {boolean} scanCandidate  no text and no form fields, anywhere in the file, not itself a Plan / Fundraising / Report page: probably a scanned signature page
  *
  * @typedef {Object} WorkbookAnalysis
  * @property {WorkbookEdition} edition
@@ -424,10 +425,26 @@ export function isProposalApprovalLandmark(text, fields) {
 }
 
 /**
+ * What a locked page looks like, for messages: the section name without its parenthesis, plus the page letter when the
+ * text shows one ("Project Plan Page A").
+ * @param {string} section
+ * @param {string} text
+ * @returns {string}
+ */
+function lockedPageLabel(section, text) {
+  const base = String(section || 'Project Plan').replace(/\s*\(.*\)\s*$/, '');
+  const re = /Project Report/.test(base) ? /\b[P3]ro[jM]ect\s+[R5]eport\s+[P3]age\s+([A-C])\b/i
+    : /Fundraising/.test(base) ? /\b[F)]undraising\s+[$A]pplication\s+[P3]age\s+([A-Z])\b/i
+      : /\b[P3]ro[jM]ect\s+[P3]lan\s+[P3]age\s+([A-F])\b/i;
+  const m = re.exec(str(text));
+  return m ? `${base} Page ${m[1].toUpperCase()}` : base;
+}
+
+/**
  * Analyze all pages of a workbook PDF to determine:
  * - `edition`: `'2026' | '2023a' | 'unknown'`
  * - `approvalPageIndices`: 0-based indices of Proposal Approval signature pages (Page H may follow Plan pages)
- * - `scanCandidatePageIndices`: pages with no text and no form fields before the first Not-Ours page (probably scans)
+ * - `scanCandidatePageIndices`: image-only pages (no text, no form fields) anywhere that are not Plan / Fundraising / Report pages (probably a scanned signature page)
  * - `defaultTargetPageIndex`: the LAST approval page, else the LAST scanned candidate, else -1 (no default)
  * - `firstNotOursPageIndex`: 0-based index of the first Project Plan / Fundraising / Project Report page (display and confirm only)
  * - `proposalEndPageIndex`: 0-based index of the last Proposal page (fields on `0..proposalEndPageIndex` get flattened)
@@ -485,8 +502,9 @@ export function analyzeWorkbookPages(pages) {
     const afterNotOurs = !forbidden && p.pageIndex > firstNotOursPageIndex;
     const isApproval = p.isApprovalLandmark && !forbidden;
     if (isApproval) approvalPageIndices.push(p.pageIndex);
-    // A page with no text and no form fields, before the first locked page, is probably a scan (a signed Page H).
-    const scanCandidate = !forbidden && !afterNotOurs && !isApproval && p.noContent;
+    // A page with no text and no form fields that is not itself a locked page is probably a scan (a signed Page H),
+    // wherever it sits in the file (a Scout may leave the blank Plan pages in front of it).
+    const scanCandidate = !forbidden && !isApproval && p.noContent;
     if (scanCandidate) scanCandidatePageIndices.push(p.pageIndex);
     /** @type {PageRole} */
     const role = isApproval ? 'approval' : forbidden ? 'forbidden' : 'proposal';
@@ -498,6 +516,7 @@ export function analyzeWorkbookPages(pages) {
       forbidden,
       afterNotOurs,
       notOursSection: p.notOursSection,
+      lockedLabel: forbidden ? lockedPageLabel(p.notOursSection, p.text) : '',
       scanCandidate
     };
   });
@@ -717,17 +736,25 @@ const ITEM_DEFAULT_SIZE = /** @type {Record<ItemKind, { width: number, height: n
   stamp: { width: STAMP_DEFAULT_WIDTH_PT, height: STAMP_DEFAULT_WIDTH_PT }
 });
 
+/** Width (PDF points) of a signature at 100% on the "Signature size" control. */
+export const SIGNATURE_BASE_WIDTH_PT = 126;
+
 /**
- * Default `{ width, height }` for a mark of this kind. A stamp keeps its image's aspect ratio (width / height).
+ * Default `{ width, height }` for a mark of this kind. An image (stamp or signature) keeps its aspect ratio
+ * (width / height): a stamp is 115 pt wide, a signature is `SIGNATURE_BASE_WIDTH_PT * scale` wide.
  * @param {ItemKind} kind
  * @param {number} [aspect]
+ * @param {number} [scale]  signature size factor (`SIG_SCALE_MIN`..`SIG_SCALE_MAX`)
  * @returns {{ width: number, height: number }}
  */
-export function defaultItemSize(kind, aspect = 0) {
+export function defaultItemSize(kind, aspect = 0, scale = 1) {
   const base = ITEM_DEFAULT_SIZE[kind] || ITEM_DEFAULT_SIZE.signature;
-  if (kind === 'stamp' && aspect > 0 && Number.isFinite(aspect)) {
-    const a = Math.max(0.1, Math.min(10, aspect));
-    return { width: base.width, height: Math.round((base.width / a) * 10) / 10 };
+  const hasAspect = aspect > 0 && Number.isFinite(aspect);
+  if ((kind === 'stamp' || kind === 'signature') && hasAspect) {
+    const a = Math.max(0.1, Math.min(20, aspect));
+    const f = kind === 'signature' ? Math.max(SIG_SCALE_MIN, Math.min(SIG_SCALE_MAX, Number(scale) || 1)) : 1;
+    const width = Math.round((kind === 'signature' ? SIGNATURE_BASE_WIDTH_PT : base.width) * f * 10) / 10;
+    return { width, height: Math.round((width / a) * 10) / 10 };
   }
   return { width: base.width, height: base.height };
 }
@@ -774,11 +801,11 @@ export function clampItemToPage(item, pageSize) {
  * @param {number} pageIndex
  * @param {{ x: number, y: number }} point
  * @param {{ width: number, height: number }} pageSize
- * @param {{ id?: string, aspect?: number, stampId?: string }} [opts]
+ * @param {{ id?: string, aspect?: number, scale?: number, stampId?: string }} [opts]
  * @returns {PlacedItem}
  */
 export function newItemAtPoint(kind, pageIndex, point, pageSize, opts = {}) {
-  const size = capImageSize(kind, defaultItemSize(kind, opts.aspect), pageSize);
+  const size = capImageSize(kind, defaultItemSize(kind, opts.aspect, opts.scale), pageSize);
   /** @type {PlacedItem} */
   const item = {
     id: opts.id || `${kind}-${pageIndex}-${Math.round(point.x)}-${Math.round(point.y)}`,
@@ -811,28 +838,45 @@ export function hitTestItems(items, pageIndex, point) {
 }
 
 /**
- * The workbook's own box for a signature / name / date on a detected approval page, as an item (Signer 1 uses the
- * Council/District boxes, later signers go below). Returns null for a stamp (it has no workbook box).
+ * The workbook's own box for a signature / name / date on a detected approval page, as an item in VIEWER coordinates
+ * (Signer 1 uses the Council/District boxes, later signers go below). Returns null for a stamp (no workbook box).
+ * `pageSize` is the viewer size (what pdf.js shows); `opts.rotation` is the page's `/Rotate`, so the workbook box
+ * (in PDF user space) lands where it is displayed. With `opts.aspect` a signature keeps its image's aspect ratio and
+ * sits centered inside the workbook box.
  * @param {ItemKind} kind
  * @param {WorkbookEdition} edition
  * @param {number} signerIndex
  * @param {number} pageIndex
  * @param {{ width: number, height: number }} pageSize
  * @param {string} [id]
+ * @param {{ rotation?: number, aspect?: number }} [opts]
  * @returns {PlacedItem | null}
  */
-export function defaultItem(kind, edition, signerIndex, pageIndex, pageSize, id) {
+export function defaultItem(kind, edition, signerIndex, pageIndex, pageSize, id, opts = {}) {
   if (kind === 'stamp') return null;
-  const dp = defaultSignPlacement(edition, signerIndex, pageSize);
+  const rot = normalizeRotation(opts.rotation);
+  const userSize = rot === 90 || rot === 270 ? { width: pageSize.height, height: pageSize.width } : pageSize;
+  const dp = defaultSignPlacement(edition, signerIndex, userSize);
   const box = kind === 'signature' ? dp.signature : kind === 'name' ? dp.printedName : dp.date;
+  const v = userRectToViewer(box, userSize, rot);
+  let { x, y, width, height } = v;
+  if (kind === 'signature' && opts.aspect && opts.aspect > 0) {
+    const f = Math.min(width / opts.aspect, height);
+    const w = Math.round(f * opts.aspect * 10) / 10;
+    const h = Math.round(f * 10) / 10;
+    x += (width - w) / 2;
+    y += (height - h) / 2;
+    width = w;
+    height = h;
+  }
   return {
     id: id || `${kind}-${pageIndex}-default`,
     kind,
     pageIndex,
-    x: box.x,
-    y: box.y,
-    width: box.width,
-    height: box.height
+    x: Math.round(x * 10) / 10,
+    y: Math.round(y * 10) / 10,
+    width: Math.round(width * 10) / 10,
+    height: Math.round(height * 10) / 10
   };
 }
 
@@ -841,13 +885,14 @@ export function defaultItem(kind, edition, signerIndex, pageIndex, pageSize, id)
  * @param {WorkbookEdition} edition
  * @param {number} signerIndex
  * @param {number} pageIndex
- * @param {{ width: number, height: number }} pageSize
+ * @param {{ width: number, height: number }} pageSize  viewer size
+ * @param {{ rotation?: number }} [opts]
  * @returns {PlacedItem[]}
  */
-export function defaultItems(edition, signerIndex, pageIndex, pageSize) {
+export function defaultItems(edition, signerIndex, pageIndex, pageSize, opts = {}) {
   return /** @type {PlacedItem[]} */ (
     /** @type {ItemKind[]} */ (['signature', 'name', 'date'])
-      .map(k => defaultItem(k, edition, signerIndex, pageIndex, pageSize))
+      .map(k => defaultItem(k, edition, signerIndex, pageIndex, pageSize, undefined, opts))
       .filter(Boolean)
   );
 }
@@ -874,32 +919,51 @@ export function canPlaceOnPage(analysis, pageIndex) {
       confirm: ''
     };
   }
+  // A confirm only for an ordinary page that comes after a locked page; never for an approval page or a scanned
+  // signature page. It names the nearest locked page before this one (often a blank template page left in).
   let confirm = '';
-  if (pg.afterNotOurs && pg.role !== 'approval') {
-    const first = analysis.pages[analysis.firstNotOursPageIndex];
-    const sec = String((first && first.notOursSection) || 'Project Plan').replace(/\s*\(.*\)\s*$/, '');
-    confirm = `This page comes after the ${sec}. Place here anyway?`;
+  if (pg.afterNotOurs && pg.role !== 'approval' && !pg.scanCandidate) {
+    let trig = null;
+    for (let i = pageIndex - 1; i >= 0; i--) {
+      if (analysis.pages[i] && analysis.pages[i].forbidden) { trig = analysis.pages[i]; break; }
+    }
+    if (trig) {
+      confirm = `Page ${trig.pageNumber} looks like ${trig.lockedLabel || trig.notOursSection || 'Project Plan'} (it may be a blank template page left in). Place on page ${pg.pageNumber} anyway?`;
+    }
   }
   return { ok: true, reason: '', confirm };
 }
 
 /**
- * Banner shown when no Proposal Approval page was found ('' when one was).
+ * Line shown above the pages when no Proposal Approval page was detected ('' when one was). With scanned pages it is
+ * an info line ("Page 10 looks like a scanned signature page"); with none it is the "Couldn't find" banner.
  * @param {WorkbookAnalysis} analysis
  * @returns {string}
  */
 export function approvalBanner(analysis) {
   if (!analysis || !Array.isArray(analysis.pages)) return '';
   if (analysis.approvalPageIndices.length > 0) return '';
-  const label = analysis.edition === '2026' ? 'Page 11' : 'Page H';
-  let msg = `Couldn't find the Proposal Approval page (${label}): scroll to it.`;
   const scans = analysis.scanCandidatePageIndices || [];
   if (scans.length > 0) {
     const nums = scans.map(i => i + 1);
-    const shown = nums.length > 6 ? `${nums.slice(0, 6).join(', ')}, …` : nums.join(', ');
-    msg += ` Page${nums.length > 1 ? 's' : ''} ${shown} ${nums.length > 1 ? 'look' : 'looks'} like ${nums.length > 1 ? 'scans' : 'a scan'} and may be it.`;
+    const shown = nums.length > 6 ? `${nums.slice(-6).join(', ')}` : nums.join(', ');
+    return nums.length === 1
+      ? `Page ${nums[0]} looks like a scanned signature page.`
+      : `Pages ${nums.length > 6 ? '… ' : ''}${shown} look like scanned signature pages (the last one is opened).`;
   }
-  return msg;
+  const label = analysis.edition === '2026' ? 'Page 11' : 'Page H';
+  return `Couldn't find the Proposal Approval page (${label}): scroll to it.`;
+}
+
+/**
+ * True when `approvalBanner` is only an info line (a scanned page is the likely signature page), false for the
+ * "Couldn't find" warning.
+ * @param {WorkbookAnalysis} analysis
+ * @returns {boolean}
+ */
+export function approvalBannerIsInfo(analysis) {
+  return !!analysis && Array.isArray(analysis.pages) && analysis.approvalPageIndices.length === 0 &&
+    (analysis.scanCandidatePageIndices || []).length > 0;
 }
 
 /**
@@ -990,4 +1054,236 @@ export function describePageRanges(indices) {
     i = j + 1;
   }
   return parts.join(', ');
+}
+
+// ---------------------------------------------------------------------------
+// Rotated pages (/Rotate 90 / 180 / 270)
+//
+// Two coordinate systems meet here:
+//  - VIEWER space: the page as pdf.js displays it (rotation applied), in points, origin bottom-left, y up. The Workshop
+//    keeps every placed item in this space, so what the member sees is what is stored.
+//  - USER space: the page's own unrotated space (where pdf-lib draws), origin at the crop box's lower-left corner.
+// `userSize` is the UNROTATED page size {width: W, height: H}; the viewer is W x H for 0/180 and H x W for 90/270.
+//   0:   v = (ux, uy)            u = (vx, vy)
+//   90:  v = (uy, W - ux)        u = (W - vy, vx)      (viewer rotated clockwise)
+//   180: v = (W - ux, H - uy)    u = (W - vx, H - vy)
+//   270: v = (H - uy, ux)        u = (vy, H - vx)
+// A mark that is upright in the viewer is drawn in user space rotated COUNTER-clockwise by the page rotation (pdf-lib
+// `rotate: degrees(rotation)`), anchored at the user-space point of the mark's viewer bottom-left corner.
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize a `/Rotate` value to 0, 90, 180 or 270.
+ * @param {unknown} r
+ * @returns {0 | 90 | 180 | 270}
+ */
+export function normalizeRotation(r) {
+  const n = Math.round((Number(r) || 0) / 90) * 90;
+  return /** @type {0 | 90 | 180 | 270} */ (((n % 360) + 360) % 360);
+}
+
+/**
+ * Size of the displayed page for an unrotated page size.
+ * @param {{ width: number, height: number }} userSize
+ * @param {unknown} rotation
+ * @returns {{ width: number, height: number }}
+ */
+export function viewerSizeOf(userSize, rotation) {
+  const r = normalizeRotation(rotation);
+  return r === 90 || r === 270
+    ? { width: userSize.height, height: userSize.width }
+    : { width: userSize.width, height: userSize.height };
+}
+
+/**
+ * Viewer point (bottom-left origin) to PDF user space.
+ * @param {{ x: number, y: number }} pt
+ * @param {{ width: number, height: number }} userSize  unrotated page size
+ * @param {unknown} rotation
+ * @param {{ x?: number, y?: number }} [origin]  crop box lower-left in user space (default 0,0)
+ * @returns {{ x: number, y: number }}
+ */
+export function viewerToUserPoint(pt, userSize, rotation, origin = {}) {
+  const W = userSize.width;
+  const H = userSize.height;
+  const r = normalizeRotation(rotation);
+  const ox = Number(origin.x) || 0;
+  const oy = Number(origin.y) || 0;
+  if (r === 90) return { x: W - pt.y + ox, y: pt.x + oy };
+  if (r === 180) return { x: W - pt.x + ox, y: H - pt.y + oy };
+  if (r === 270) return { x: pt.y + ox, y: H - pt.x + oy };
+  return { x: pt.x + ox, y: pt.y + oy };
+}
+
+/**
+ * PDF user-space point to viewer point (inverse of `viewerToUserPoint`).
+ * @param {{ x: number, y: number }} pt
+ * @param {{ width: number, height: number }} userSize
+ * @param {unknown} rotation
+ * @param {{ x?: number, y?: number }} [origin]
+ * @returns {{ x: number, y: number }}
+ */
+export function userToViewerPoint(pt, userSize, rotation, origin = {}) {
+  const W = userSize.width;
+  const H = userSize.height;
+  const r = normalizeRotation(rotation);
+  const x = pt.x - (Number(origin.x) || 0);
+  const y = pt.y - (Number(origin.y) || 0);
+  if (r === 90) return { x: y, y: W - x };
+  if (r === 180) return { x: W - x, y: H - y };
+  if (r === 270) return { x: H - y, y: x };
+  return { x, y };
+}
+
+/**
+ * @param {{ x: number, y: number, width: number, height: number }} rect
+ * @param {(p: { x: number, y: number }) => { x: number, y: number }} fn
+ */
+function mapRect(rect, fn) {
+  const a = fn({ x: rect.x, y: rect.y });
+  const b = fn({ x: rect.x + rect.width, y: rect.y + rect.height });
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.abs(b.x - a.x),
+    height: Math.abs(b.y - a.y)
+  };
+}
+
+/**
+ * A viewer-space rectangle as the (axis-aligned) rectangle it covers in user space.
+ * @param {{ x: number, y: number, width: number, height: number }} rect
+ * @param {{ width: number, height: number }} userSize
+ * @param {unknown} rotation
+ * @param {{ x?: number, y?: number }} [origin]
+ */
+export function viewerRectToUser(rect, userSize, rotation, origin = {}) {
+  return mapRect(rect, p => viewerToUserPoint(p, userSize, rotation, origin));
+}
+
+/**
+ * A user-space rectangle (e.g. a workbook field box) as the rectangle it covers in viewer space.
+ * @param {{ x: number, y: number, width: number, height: number }} rect
+ * @param {{ width: number, height: number }} userSize
+ * @param {unknown} rotation
+ * @param {{ x?: number, y?: number }} [origin]
+ */
+export function userRectToViewer(rect, userSize, rotation, origin = {}) {
+  return mapRect(rect, p => userToViewerPoint(p, userSize, rotation, origin));
+}
+
+/**
+ * Where and how pdf-lib must draw a mark so it is upright at `rect` (viewer space): the anchor `{ x, y }` in user
+ * space (the user-space point of the mark's viewer bottom-left corner) and the counter-clockwise `angle` in degrees
+ * (= the page rotation). `width` / `height` stay the viewer-space size.
+ * @param {{ x: number, y: number, width: number, height: number }} rect
+ * @param {{ width: number, height: number }} userSize
+ * @param {unknown} rotation
+ * @param {{ x?: number, y?: number }} [origin]
+ * @returns {{ x: number, y: number, angle: number, width: number, height: number }}
+ */
+export function markDrawSpec(rect, userSize, rotation, origin = {}) {
+  const p = viewerToUserPoint({ x: rect.x, y: rect.y }, userSize, rotation, origin);
+  return { x: p.x, y: p.y, angle: normalizeRotation(rotation), width: rect.width, height: rect.height };
+}
+
+/**
+ * Same as `markDrawSpec` for text: `offset` is measured in the viewer (right, up) from the box's bottom-left corner
+ * to the baseline start.
+ * @param {{ x: number, y: number, width: number, height: number }} rect
+ * @param {{ dx: number, dy: number }} offset
+ * @param {{ width: number, height: number }} userSize
+ * @param {unknown} rotation
+ * @param {{ x?: number, y?: number }} [origin]
+ * @returns {{ x: number, y: number, angle: number }}
+ */
+export function textDrawSpec(rect, offset, userSize, rotation, origin = {}) {
+  const p = viewerToUserPoint({ x: rect.x + offset.dx, y: rect.y + offset.dy }, userSize, rotation, origin);
+  return { x: p.x, y: p.y, angle: normalizeRotation(rotation) };
+}
+
+// ---------------------------------------------------------------------------
+// Signature images: trim, aspect-locked resize
+// ---------------------------------------------------------------------------
+
+/** Margin (px) kept around the ink when a signature PNG is trimmed. */
+export const SIG_TRIM_MARGIN_PX = 4;
+
+/**
+ * Bounding box of the "ink" (pixels with alpha above `alphaMin`) of RGBA image data, grown by `margin` px and kept
+ * inside the image. Returns null when nothing is inked (an empty image: leave it alone).
+ * @param {ArrayLike<number>} rgba  4 bytes per pixel, row by row
+ * @param {number} width
+ * @param {number} height
+ * @param {{ margin?: number, alphaMin?: number }} [opts]
+ * @returns {{ x: number, y: number, width: number, height: number } | null}
+ */
+export function inkBoundingBox(rgba, width, height, opts = {}) {
+  const margin = opts.margin == null ? SIG_TRIM_MARGIN_PX : opts.margin;
+  const alphaMin = opts.alphaMin == null ? 8 : opts.alphaMin;
+  const w = Math.floor(width);
+  const h = Math.floor(height);
+  if (!(w > 0 && h > 0) || !rgba || rgba.length < w * h * 4) return null;
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    for (let x = 0; x < w; x++) {
+      if (rgba[row + x * 4 + 3] > alphaMin) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return null;
+  const x0 = Math.max(0, minX - margin);
+  const y0 = Math.max(0, minY - margin);
+  const x1 = Math.min(w - 1, maxX + margin);
+  const y1 = Math.min(h - 1, maxY + margin);
+  return { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 };
+}
+
+/**
+ * Resize an IMAGE mark (signature or stamp) by its bottom-right corner handle, keeping its aspect ratio and its
+ * top-left corner. The drag `(dxPt, dyPt)` is in screen direction (dy > 0 = taller, downward); whichever axis the
+ * member pulled harder sets the scale.
+ * @template {{ x: number, y: number, width: number, height: number }} T
+ * @param {T} origBox
+ * @param {number} dxPt
+ * @param {number} dyPt
+ * @param {{ width: number, height: number }} pageSize  viewer size
+ * @param {{ minWidth?: number }} [limits]
+ * @returns {T}
+ */
+export function resizeImageBoxInPage(origBox, dxPt, dyPt, pageSize, limits = {}) {
+  const aspect = origBox.width / Math.max(0.01, origBox.height);
+  const minW = Number(limits.minWidth) || 24;
+  const topEdge = origBox.y + origBox.height;
+  const pw = Math.max(100, Number(pageSize && pageSize.width) || 612);
+  const s1 = (origBox.width + dxPt) / Math.max(0.01, origBox.width);
+  const s2 = (origBox.height + dyPt) / Math.max(0.01, origBox.height);
+  const s = Math.abs(s1 - 1) >= Math.abs(s2 - 1) ? s1 : s2;
+  const maxW = Math.max(minW, Math.min(pw - origBox.x, topEdge * aspect));
+  const width = Math.round(Math.max(minW, Math.min(maxW, origBox.width * s)) * 10) / 10;
+  const height = Math.round((width / aspect) * 10) / 10;
+  return { ...origBox, width, height, y: Math.max(0, Math.round((topEdge - height) * 10) / 10) };
+}
+
+/**
+ * Resize an image mark to a new width (aspect kept), keeping its center, inside the page.
+ * @template {{ x: number, y: number, width: number, height: number }} T
+ * @param {T} item
+ * @param {number} newWidth
+ * @param {{ width: number, height: number }} pageSize
+ * @returns {T}
+ */
+export function setImageItemWidth(item, newWidth, pageSize) {
+  const aspect = item.width / Math.max(0.01, item.height);
+  const width = Math.max(12, newWidth);
+  const height = width / aspect;
+  const cx = item.x + item.width / 2;
+  const cy = item.y + item.height / 2;
+  const out = { ...item, x: cx - width / 2, y: cy - height / 2, width: Math.round(width * 10) / 10, height: Math.round(height * 10) / 10 };
+  return clampItemToPage(out, pageSize);
 }

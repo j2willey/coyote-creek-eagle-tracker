@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.64.1';
+var API_VERSION = '0.64.2';
 
 var ACTIONS_ = {
   ping: function (req) {
