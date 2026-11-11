@@ -862,6 +862,8 @@ export async function openSignWorkshop(opts) {
         row.className = 'ws-stamp-row' + (st.id === last ? ' last' : '');
         const thumb = document.createElement('img');
         thumb.alt = '';
+        thumb.width = 52; thumb.height = 36;            // also sized without the stylesheet (a cached old CSS once showed it full size)
+        thumb.style.objectFit = 'contain';
         const nameEl = document.createElement('span');
         nameEl.textContent = stampLabel(st.name);
         row.append(thumb, nameEl);
