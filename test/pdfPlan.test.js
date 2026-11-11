@@ -18,7 +18,19 @@ import {
   TEXT_FONT_MAX_PT,
   fitSignatureDimensions,
   resizeBoxInPage,
-  defaultSignPlacement
+  defaultSignPlacement,
+  canPlaceOnPage,
+  approvalBanner,
+  defaultItemSize,
+  clampItemToPage,
+  newItemAtPoint,
+  hitTestItems,
+  defaultItem,
+  defaultItems,
+  flattenPageIndices,
+  checkPlacement,
+  hasTransparentPixel,
+  STAMP_DEFAULT_WIDTH_PT
 } from '../web/js/pdfPlan.js';
 
 describe('pdfPlan: classifyFile', () => {
@@ -236,5 +248,167 @@ describe('pdfPlan: Step 2 defaultSignPlacement for Signer 1 and Signer 2', () =>
     expect(s1_2023.printedName.fieldName).toBe('Proposal-BSAName');
     expect(s2_2023.printedName.fieldName).toBe('');
     expect(s2_2023.signature.y).toBeLessThan(s1_2023.printedName.y);
+  });
+});
+
+describe('pdfPlan: Task 9a, no silent fallback to an ordinary Proposal page', () => {
+  const proposal = { text: 'Proposal page', fields: ['Proposal-Title'] };
+  const scan = { text: '', fields: [] };
+  const planPage = { text: '13 PROJECT PLAN Completing the project plan is mandatory', fields: ['Comments from Proposal Review'] };
+  const approval = { text: '11 Proposal Approval Council or District Approval', fields: ['District or Council Approval Name'] };
+
+  it('has NO default target when there is no approval page and no scan: never the last Proposal page', () => {
+    const a = analyzeWorkbookPages([proposal, proposal, proposal, planPage]);
+    expect(a.approvalPageIndices).toEqual([]);
+    expect(a.scanCandidatePageIndices).toEqual([]);
+    expect(a.defaultTargetPageIndex).toBe(-1);
+    expect(describeTargetPage(a, a.defaultTargetPageIndex)).toBe('no page chosen yet');
+    expect(approvalBanner(a)).toBe("Couldn't find the Proposal Approval page (Page H): scroll to it.");
+  });
+
+  it('treats image-only pages inside the Proposal section as candidates and defaults to the last one', () => {
+    const a = analyzeWorkbookPages([proposal, scan, proposal, scan, planPage, scan]);
+    // the scan after the first Plan page is locked, not a candidate
+    expect(a.scanCandidatePageIndices).toEqual([1, 3]);
+    expect(a.defaultTargetPageIndex).toBe(3);
+    expect(a.pages[3].scanCandidate).toBe(true);
+    expect(a.pages[5].scanCandidate).toBe(false);
+    expect(describeTargetPage(a, 3)).toBe('Page 4 of 6 (a scanned page)');
+    expect(approvalBanner(a)).toMatch(/Couldn't find the Proposal Approval page.*Pages 2, 4 look like scans/);
+  });
+
+  it('prefers the last approval page over scans, and gives no banner when one was found', () => {
+    const a = analyzeWorkbookPages([proposal, approval, scan, approval, scan, planPage]);
+    expect(a.approvalPageIndices).toEqual([1, 3]);
+    expect(a.defaultTargetPageIndex).toBe(3);
+    expect(approvalBanner(a)).toBe('');
+  });
+
+  it('names the page 11 of the 2026 edition in the banner', () => {
+    const a = analyzeWorkbookPages([{ text: 'No. 512 - 927 October 2026', fields: [] }, proposal, planPage]);
+    expect(a.edition).toBe('2026');
+    expect(approvalBanner(a)).toMatch(/\(Page 11\)/);
+  });
+
+  it('keeps the Plan / Report guardrail a hard block for every mark, approval page or not', () => {
+    const a = analyzeWorkbookPages([proposal, approval, scan, planPage, scan]);
+    expect(canPlaceOnPage(a, 0).ok).toBe(true);   // any ordinary Proposal page may take a mark
+    expect(canPlaceOnPage(a, 2).ok).toBe(true);   // a scan
+    expect(canPlaceOnPage(a, 3).ok).toBe(false);  // Project Plan
+    expect(canPlaceOnPage(a, 3).reason).toMatch(/Page 4 belongs to the Project Plan/);
+    expect(canPlaceOnPage(a, 4).ok).toBe(false);  // after the first not-ours page
+    expect(canPlaceOnPage(a, 99).ok).toBe(false);
+  });
+});
+
+describe('pdfPlan: Task 9b, placed items', () => {
+  const page = { width: 612, height: 792 };
+
+  it('sizes each kind, keeping a stamp\'s aspect ratio at 1.6 in wide', () => {
+    expect(defaultItemSize('signature').width).toBeGreaterThan(defaultItemSize('date').width);
+    const st = defaultItemSize('stamp', 2);
+    expect(st.width).toBe(STAMP_DEFAULT_WIDTH_PT);
+    expect(st.height).toBeCloseTo(STAMP_DEFAULT_WIDTH_PT / 2, 1);
+    expect(defaultItemSize('stamp').height).toBe(STAMP_DEFAULT_WIDTH_PT);
+  });
+
+  it('drops an item centered on the click and clamps it to the page', () => {
+    const it = newItemAtPoint('signature', 4, { x: 300, y: 400 }, page, { id: 's1' });
+    expect(it).toMatchObject({ id: 's1', kind: 'signature', pageIndex: 4 });
+    expect(it.x + it.width / 2).toBeCloseTo(300, 0);
+    expect(it.y + it.height / 2).toBeCloseTo(400, 0);
+    const corner = newItemAtPoint('date', 0, { x: 2, y: 3 }, page);
+    expect(corner.x).toBe(0);
+    expect(corner.y).toBe(0);
+    const far = newItemAtPoint('name', 0, { x: 9999, y: 9999 }, page);
+    expect(far.x + far.width).toBeLessThanOrEqual(612);
+    expect(far.y + far.height).toBeLessThanOrEqual(792);
+    expect(newItemAtPoint('stamp', 1, { x: 100, y: 100 }, page, { stampId: 'st1', aspect: 1 }).stampId).toBe('st1');
+  });
+
+  it('shrinks an item bigger than the page and keeps a normal one where it is', () => {
+    expect(clampItemToPage({ x: -5, y: 10, width: 700, height: 20 }, page)).toMatchObject({ x: 0, width: 612 });
+    expect(clampItemToPage({ x: 50, y: 60, width: 70, height: 20 }, page)).toMatchObject({ x: 50, y: 60 });
+  });
+
+  it('hit-tests the topmost item on the right page only', () => {
+    const a = { id: 'a', kind: 'stamp', pageIndex: 2, x: 100, y: 100, width: 100, height: 100 };
+    const b = { id: 'b', kind: 'signature', pageIndex: 2, x: 150, y: 150, width: 100, height: 40 };
+    const c = { id: 'c', kind: 'date', pageIndex: 3, x: 100, y: 100, width: 50, height: 14 };
+    expect(hitTestItems([a, b, c], 2, { x: 160, y: 160 })?.id).toBe('b');
+    expect(hitTestItems([a, b, c], 2, { x: 110, y: 110 })?.id).toBe('a');
+    expect(hitTestItems([a, b, c], 2, { x: 500, y: 500 })).toBeNull();
+    expect(hitTestItems([a, b, c], 3, { x: 110, y: 105 })?.id).toBe('c');
+  });
+
+  it('starts from the workbook\'s own boxes (signer index as before); a stamp has none', () => {
+    const def = defaultSignPlacement('2026', 0, page);
+    const sig = defaultItem('signature', '2026', 0, 10, page);
+    expect(sig).toMatchObject({ kind: 'signature', pageIndex: 10, x: def.signature.x, y: def.signature.y, width: def.signature.width });
+    expect(defaultItem('stamp', '2026', 0, 10, page)).toBeNull();
+    const second = defaultItems('2026', 1, 10, page);
+    expect(second.map(i => i.kind)).toEqual(['signature', 'name', 'date']);
+    expect(second[0].y).toBeLessThan(sig.y);
+  });
+
+  it('requires a signature; a missing name or date only warns; forbidden pages are errors', () => {
+    const analysis = analyzeWorkbookPages([
+      { text: 'Proposal page', fields: ['Candidates Full Name'] },
+      { text: '', fields: [] },
+      { text: '13 PROJECT PLAN Completing the project plan is mandatory', fields: ['Comments from Proposal Review'] }
+    ]);
+    const sigOnly = [newItemAtPoint('signature', 1, { x: 200, y: 200 }, page)];
+    const ok = { signaturePresent: true, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026' };
+    expect(checkPlacement(analysis, sigOnly, ok)).toEqual({
+      errors: [],
+      warnings: ['No printed name placed.', 'No date placed.']
+    });
+    expect(checkPlacement(analysis, [], ok).errors[0]).toMatch(/Place your signature/);
+    expect(checkPlacement(analysis, [newItemAtPoint('date', 1, { x: 9, y: 9 }, page)], ok).errors[0]).toMatch(/Place your signature/);
+    expect(checkPlacement(analysis, sigOnly, { ...ok, signaturePresent: false }).errors[0]).toMatch(/Create or select your signature/);
+    const withName = [...sigOnly, newItemAtPoint('name', 1, { x: 200, y: 100 }, page)];
+    expect(checkPlacement(analysis, withName, { ...ok, printedName: ' ' }).errors[0]).toMatch(/printed name/);
+    const bad = [...sigOnly, newItemAtPoint('signature', 2, { x: 200, y: 200 }, page)];
+    expect(checkPlacement(analysis, bad, ok).errors.join(' ')).toMatch(/Page 3 belongs to the Project Plan/);
+  });
+});
+
+describe('pdfPlan: Task 9d, flatten range = Proposal pages + marked pages', () => {
+  const proposal = { text: 'Proposal page', fields: ['Candidates Full Name'] };
+  const approval = { text: '11 Proposal Approval Council or District Approval', fields: ['District or Council Approval Name'] };
+  const planPage = { text: '13 PROJECT PLAN Completing the project plan is mandatory', fields: ['Comments from Proposal Review'] };
+  const mk = (pageIndex) => ({ id: 'x' + pageIndex, kind: 'signature', pageIndex, x: 10, y: 10, width: 50, height: 20 });
+
+  it('is 0..proposalEnd when the marks are on the approval page (as today)', () => {
+    const a = analyzeWorkbookPages([proposal, proposal, approval, planPage, planPage]);
+    expect(flattenPageIndices(a, [mk(2)])).toEqual([0, 1, 2]);
+  });
+
+  it('adds a marked page after the last approval page (a scan appended later), not just max(page, end)', () => {
+    const a = analyzeWorkbookPages([proposal, approval, proposal, { text: '', fields: [] }, planPage]);
+    expect(a.proposalEndPageIndex).toBe(1);
+    expect(flattenPageIndices(a, [mk(1), mk(3)])).toEqual([0, 1, 3]);
+    // and the marks on page 3 do not drag page 2 in unless it is a Proposal page below the end (it is not)
+    expect(flattenPageIndices(a, [mk(1)])).toEqual([0, 1]);
+  });
+
+  it('with no approval page: the Proposal pages plus the marked page, never Plan / Report pages', () => {
+    const a = analyzeWorkbookPages([proposal, { text: '', fields: [] }, proposal, planPage, { text: '', fields: [] }]);
+    expect(a.defaultTargetPageIndex).toBe(1);
+    expect(flattenPageIndices(a, [mk(1)])).toEqual([0, 1, 2]);
+    // a mark on a not-ours page is ignored by the range (the guardrail rejects it separately)
+    expect(flattenPageIndices(a, [mk(1), mk(3), mk(4)])).toEqual([0, 1, 2]);
+  });
+});
+
+describe('pdfPlan: Task 9c, stamp transparency check', () => {
+  it('detects an opaque PNG (all alpha 255) versus one with a transparent pixel', () => {
+    const opaque = new Uint8ClampedArray([255, 255, 255, 255, 10, 10, 10, 255]);
+    const clear = new Uint8ClampedArray([255, 255, 255, 0, 10, 10, 10, 255]);
+    const soft = new Uint8ClampedArray([10, 10, 10, 254, 10, 10, 10, 255]);
+    expect(hasTransparentPixel(opaque)).toBe(false);
+    expect(hasTransparentPixel(clear)).toBe(true);
+    expect(hasTransparentPixel(soft)).toBe(true);
+    expect(hasTransparentPixel(new Uint8ClampedArray(0))).toBe(false);
   });
 });

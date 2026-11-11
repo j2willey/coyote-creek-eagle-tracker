@@ -71,12 +71,14 @@ export const TEXT_FONT_MAX_PT = 16;
  * @property {boolean} isApprovalLandmark
  * @property {boolean} forbidden
  * @property {string} notOursSection
+ * @property {boolean} scanCandidate  no text and no form fields, inside the Proposal section: probably a scanned page
  *
  * @typedef {Object} WorkbookAnalysis
  * @property {WorkbookEdition} edition
  * @property {AnalyzedPage[]} pages
  * @property {number[]} approvalPageIndices
- * @property {number} defaultTargetPageIndex
+ * @property {number[]} scanCandidatePageIndices
+ * @property {number} defaultTargetPageIndex  -1 when no approval page and no scanned candidate was found: nothing is preselected
  * @property {number} firstNotOursPageIndex
  * @property {number} proposalEndPageIndex
  * @property {number} insertBeforePageIndex
@@ -93,6 +95,19 @@ export const TEXT_FONT_MAX_PT = 16;
  * @property {BoxPlacement} signature
  * @property {BoxPlacement} date
  * @property {BoxPlacement} printedName
+ *
+ * @typedef {'signature' | 'name' | 'date' | 'stamp'} ItemKind
+ *
+ * One mark the member placed on a page, in PDF points (bottom-left origin).
+ * @typedef {Object} PlacedItem
+ * @property {string} id
+ * @property {ItemKind} kind
+ * @property {number} pageIndex
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ * @property {string} [stampId]
  */
 
 /**
@@ -397,7 +412,8 @@ export function isProposalApprovalLandmark(text, fields) {
  * Analyze all pages of a workbook PDF to determine:
  * - `edition`: `'2026' | '2023a' | 'unknown'`
  * - `approvalPageIndices`: 0-based indices of Proposal Approval signature pages (strictly before any Not-Ours page)
- * - `defaultTargetPageIndex`: when multiple approval pages exist, defaults to the LAST approval page
+ * - `scanCandidatePageIndices`: pages with no text and no form fields before the first Not-Ours page (probably scans)
+ * - `defaultTargetPageIndex`: the LAST approval page, else the LAST scanned candidate, else -1 (no default)
  * - `firstNotOursPageIndex`: 0-based index of the first Project Plan / Fundraising / Project Report page
  * - `proposalEndPageIndex`: 0-based index of the last Proposal page (fields on `0..proposalEndPageIndex` get flattened)
  * - `insertBeforePageIndex`: 0-based index right before the first Proposal Approval page (where supporting pages go)
@@ -433,6 +449,7 @@ export function analyzeWorkbookPages(pages) {
     }
     const isApprovalLandmark = !notOursSection && isProposalApprovalLandmark(text, fields);
     return {
+      noContent: !text && fields.length === 0,
       pageIndex: idx,
       pageNumber: idx + 1,
       text,
@@ -444,12 +461,17 @@ export function analyzeWorkbookPages(pages) {
 
   /** @type {number[]} */
   const approvalPageIndices = [];
+  /** @type {number[]} */
+  const scanCandidatePageIndices = [];
   /** @type {AnalyzedPage[]} */
   const analyzedPages = rawPages.map(p => {
     const afterBoundary = p.pageIndex >= firstNotOursPageIndex;
     const forbidden = Boolean(p.notOursSection) || afterBoundary;
     const isApproval = p.isApprovalLandmark && !forbidden;
     if (isApproval) approvalPageIndices.push(p.pageIndex);
+    // A page with no text and no form fields is probably a scan (a signed Page H photographed or scanned in).
+    const scanCandidate = !forbidden && !isApproval && p.noContent;
+    if (scanCandidate) scanCandidatePageIndices.push(p.pageIndex);
     /** @type {PageRole} */
     const role = isApproval ? 'approval' : forbidden ? 'forbidden' : 'proposal';
     return {
@@ -458,7 +480,8 @@ export function analyzeWorkbookPages(pages) {
       role,
       isApprovalLandmark: isApproval,
       forbidden,
-      notOursSection: p.notOursSection || (afterBoundary ? 'Post-Proposal section' : '')
+      notOursSection: p.notOursSection || (afterBoundary ? 'Post-Proposal section' : ''),
+      scanCandidate
     };
   });
 
@@ -471,15 +494,19 @@ export function analyzeWorkbookPages(pages) {
   const insertBeforePageIndex = approvalPageIndices.length > 0
     ? Math.min(...approvalPageIndices)
     : proposalEndPageIndex;
-  // When multiple Proposal Approval pages are present, target the LAST one by default.
+  // Default target: the LAST Proposal Approval page; else the LAST scanned candidate; else NO default (-1). Never an
+  // ordinary Proposal page: the member scrolls to the signature page and places the marks there.
   const defaultTargetPageIndex = approvalPageIndices.length > 0
     ? approvalPageIndices[approvalPageIndices.length - 1]
-    : proposalEndPageIndex;
+    : scanCandidatePageIndices.length > 0
+      ? scanCandidatePageIndices[scanCandidatePageIndices.length - 1]
+      : -1;
 
   return {
     edition,
     pages: analyzedPages,
     approvalPageIndices,
+    scanCandidatePageIndices,
     defaultTargetPageIndex,
     firstNotOursPageIndex,
     proposalEndPageIndex,
@@ -495,6 +522,7 @@ export function analyzeWorkbookPages(pages) {
  * @returns {string}
  */
 export function describeTargetPage(analysis, pageIndex) {
+  if (!(pageIndex >= 0)) return 'no page chosen yet';
   const total = analysis && Array.isArray(analysis.pages) ? analysis.pages.length : 0;
   const pNum = pageIndex + 1;
   const apps = (analysis && analysis.approvalPageIndices) || [];
@@ -513,6 +541,8 @@ export function describeTargetPage(analysis, pageIndex) {
   if (apps.length === 1 && apps[0] === pageIndex) {
     return `Page ${pNum} of ${total} (Proposal Approval)`;
   }
+  const pg = analysis && analysis.pages && analysis.pages[pageIndex];
+  if (pg && pg.scanCandidate) return `Page ${pNum} of ${total} (a scanned page)`;
   return `Page ${pNum} of ${total}`;
 }
 
@@ -690,3 +720,244 @@ export function defaultSignPlacement(edition = 'unknown', signerIndex = 0, pageS
     printedName: scaleBox({ x: 368, y: 302, width: 182, height: 12, fontSize: 9.5, fieldName: '' })
   };
 }
+
+// ---------------------------------------------------------------------------
+// Sign Workshop v2: the member PLACES marks (signature, printed name, date, stamps) on pages
+// ---------------------------------------------------------------------------
+
+/** Default stamp width (1.6 in); the height follows the image's aspect ratio. */
+export const STAMP_DEFAULT_WIDTH_PT = 115.2;
+
+/** Default sizes (PDF points) of a mark dropped with a click. */
+const ITEM_DEFAULT_SIZE = /** @type {Record<ItemKind, { width: number, height: number }>} */ ({
+  signature: { width: 126, height: 30 },
+  name: { width: 170, height: 14 },
+  date: { width: 70, height: 14 },
+  stamp: { width: STAMP_DEFAULT_WIDTH_PT, height: STAMP_DEFAULT_WIDTH_PT }
+});
+
+/**
+ * Default `{ width, height }` for a mark of this kind. A stamp keeps its image's aspect ratio (width / height).
+ * @param {ItemKind} kind
+ * @param {number} [aspect]
+ * @returns {{ width: number, height: number }}
+ */
+export function defaultItemSize(kind, aspect = 0) {
+  const base = ITEM_DEFAULT_SIZE[kind] || ITEM_DEFAULT_SIZE.signature;
+  if (kind === 'stamp' && aspect > 0 && Number.isFinite(aspect)) {
+    const a = Math.max(0.1, Math.min(10, aspect));
+    return { width: base.width, height: Math.round((base.width / a) * 10) / 10 };
+  }
+  return { width: base.width, height: base.height };
+}
+
+/**
+ * Keep an item's box inside the page (shrinking it only if it is bigger than the page).
+ * @template {{ x: number, y: number, width: number, height: number }} T
+ * @param {T} item
+ * @param {{ width: number, height: number }} pageSize
+ * @returns {T}
+ */
+export function clampItemToPage(item, pageSize) {
+  const pw = Math.max(1, Number(pageSize && pageSize.width) || 612);
+  const ph = Math.max(1, Number(pageSize && pageSize.height) || 792);
+  const width = Math.min(item.width, pw);
+  const height = Math.min(item.height, ph);
+  const x = Math.max(0, Math.min(pw - width, item.x));
+  const y = Math.max(0, Math.min(ph - height, item.y));
+  return { ...item, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, width, height };
+}
+
+/**
+ * A new mark centered on a click at `point` (PDF points, bottom-left origin), kept inside the page.
+ * @param {ItemKind} kind
+ * @param {number} pageIndex
+ * @param {{ x: number, y: number }} point
+ * @param {{ width: number, height: number }} pageSize
+ * @param {{ id?: string, aspect?: number, stampId?: string }} [opts]
+ * @returns {PlacedItem}
+ */
+export function newItemAtPoint(kind, pageIndex, point, pageSize, opts = {}) {
+  const size = defaultItemSize(kind, opts.aspect);
+  /** @type {PlacedItem} */
+  const item = {
+    id: opts.id || `${kind}-${pageIndex}-${Math.round(point.x)}-${Math.round(point.y)}`,
+    kind,
+    pageIndex,
+    x: point.x - size.width / 2,
+    y: point.y - size.height / 2,
+    width: size.width,
+    height: size.height
+  };
+  if (opts.stampId) item.stampId = opts.stampId;
+  return clampItemToPage(item, pageSize);
+}
+
+/**
+ * The topmost (last in the list) item on `pageIndex` whose box contains `point`, or null.
+ * @param {PlacedItem[]} items
+ * @param {number} pageIndex
+ * @param {{ x: number, y: number }} point
+ * @returns {PlacedItem | null}
+ */
+export function hitTestItems(items, pageIndex, point) {
+  const list = Array.isArray(items) ? items : [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const it = list[i];
+    if (it.pageIndex !== pageIndex) continue;
+    if (point.x >= it.x && point.x <= it.x + it.width && point.y >= it.y && point.y <= it.y + it.height) return it;
+  }
+  return null;
+}
+
+/**
+ * The workbook's own box for a signature / name / date on a detected approval page, as an item (Signer 1 uses the
+ * Council/District boxes, later signers go below). Returns null for a stamp (it has no workbook box).
+ * @param {ItemKind} kind
+ * @param {WorkbookEdition} edition
+ * @param {number} signerIndex
+ * @param {number} pageIndex
+ * @param {{ width: number, height: number }} pageSize
+ * @param {string} [id]
+ * @returns {PlacedItem | null}
+ */
+export function defaultItem(kind, edition, signerIndex, pageIndex, pageSize, id) {
+  if (kind === 'stamp') return null;
+  const dp = defaultSignPlacement(edition, signerIndex, pageSize);
+  const box = kind === 'signature' ? dp.signature : kind === 'name' ? dp.printedName : dp.date;
+  return {
+    id: id || `${kind}-${pageIndex}-default`,
+    kind,
+    pageIndex,
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height
+  };
+}
+
+/**
+ * Signature + name + date at the workbook's own boxes on one page.
+ * @param {WorkbookEdition} edition
+ * @param {number} signerIndex
+ * @param {number} pageIndex
+ * @param {{ width: number, height: number }} pageSize
+ * @returns {PlacedItem[]}
+ */
+export function defaultItems(edition, signerIndex, pageIndex, pageSize) {
+  return /** @type {PlacedItem[]} */ (
+    /** @type {ItemKind[]} */ (['signature', 'name', 'date'])
+      .map(k => defaultItem(k, edition, signerIndex, pageIndex, pageSize))
+      .filter(Boolean)
+  );
+}
+
+/**
+ * Hard guardrail for ONE page: only pages before the first Not-Ours page (Project Plan, Fundraising Application,
+ * Project Report) may receive marks. Any other Proposal page is allowed: the member decides where the marks go.
+ * @param {WorkbookAnalysis} analysis
+ * @param {number} pageIndex
+ * @returns {{ ok: boolean, reason: string }}
+ */
+export function canPlaceOnPage(analysis, pageIndex) {
+  if (!analysis || !Array.isArray(analysis.pages)) {
+    return { ok: false, reason: 'Workbook analysis is unavailable.' };
+  }
+  const pg = analysis.pages[pageIndex];
+  if (!pg) return { ok: false, reason: 'Page is out of range.' };
+  if (pg.forbidden || pageIndex >= analysis.firstNotOursPageIndex) {
+    const sec = pg.notOursSection || 'post-Proposal section';
+    return {
+      ok: false,
+      reason: `Page ${pg.pageNumber} belongs to the ${sec} and cannot be signed or marked during Proposal Review.`
+    };
+  }
+  return { ok: true, reason: '' };
+}
+
+/**
+ * Banner shown when no Proposal Approval page was found ('' when one was).
+ * @param {WorkbookAnalysis} analysis
+ * @returns {string}
+ */
+export function approvalBanner(analysis) {
+  if (!analysis || !Array.isArray(analysis.pages)) return '';
+  if (analysis.approvalPageIndices.length > 0) return '';
+  const label = analysis.edition === '2026' ? 'Page 11' : 'Page H';
+  let msg = `Couldn't find the Proposal Approval page (${label}): scroll to it.`;
+  const scans = analysis.scanCandidatePageIndices || [];
+  if (scans.length > 0) {
+    const nums = scans.map(i => i + 1);
+    const shown = nums.length > 6 ? `${nums.slice(0, 6).join(', ')}, …` : nums.join(', ');
+    msg += ` Page${nums.length > 1 ? 's' : ''} ${shown} ${nums.length > 1 ? 'look' : 'looks'} like ${nums.length > 1 ? 'scans' : 'a scan'} and may be it.`;
+  }
+  return msg;
+}
+
+/**
+ * Pages whose form fields get flattened: the Proposal pages (0..proposalEndPageIndex) plus every page that received
+ * a mark. Never a Not-Ours page (Project Plan, Fundraising Application, Project Report), whatever the marks say.
+ * @param {WorkbookAnalysis} analysis
+ * @param {PlacedItem[]} items
+ * @returns {number[]} sorted, unique, 0-based
+ */
+export function flattenPageIndices(analysis, items) {
+  const out = new Set();
+  const pages = (analysis && analysis.pages) || [];
+  const end = Math.max(-1, Number(analysis && analysis.proposalEndPageIndex));
+  for (let i = 0; i <= end && i < pages.length; i++) out.add(i);
+  for (const it of Array.isArray(items) ? items : []) out.add(it.pageIndex);
+  return [...out]
+    .filter(i => pages[i] && !pages[i].forbidden && i < analysis.firstNotOursPageIndex)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Check a list of placed marks before "Sign & Attach PDF". At least a signature is required; a missing printed name
+ * or date is only a warning.
+ * @param {WorkbookAnalysis} analysis
+ * @param {PlacedItem[]} items
+ * @param {{ signaturePresent: boolean, printedName: string, dateStr: string }} texts
+ * @returns {{ errors: string[], warnings: string[] }}
+ */
+export function checkPlacement(analysis, items, texts) {
+  /** @type {string[]} */
+  const errors = [];
+  /** @type {string[]} */
+  const warnings = [];
+  const list = Array.isArray(items) ? items : [];
+  const seen = new Set();
+  for (const it of list) {
+    const c = canPlaceOnPage(analysis, it.pageIndex);
+    if (!c.ok && !seen.has(c.reason)) { seen.add(c.reason); errors.push(c.reason); }
+  }
+  const has = (/** @type {ItemKind} */ k) => list.some(i => i.kind === k);
+  if (!has('signature')) {
+    errors.push('Place your signature on the page first: click ✍ Signature, then click where it goes.');
+  } else if (!texts || !texts.signaturePresent) {
+    errors.push('Create or select your signature in Section 1.');
+  }
+  if (has('name') && !String((texts && texts.printedName) || '').trim()) {
+    errors.push('Enter your printed name (or remove the Printed name box).');
+  }
+  if (has('date') && !String((texts && texts.dateStr) || '').trim()) {
+    errors.push('Enter the approval date (or remove the Date box).');
+  }
+  if (has('signature') && !has('name')) warnings.push('No printed name placed.');
+  if (has('signature') && !has('date')) warnings.push('No date placed.');
+  return { errors, warnings };
+}
+
+/**
+ * True when at least one pixel of RGBA image data is not fully opaque (a stamp with a real transparent background).
+ * @param {ArrayLike<number>} rgba  canvas `ImageData.data` (4 bytes per pixel)
+ * @returns {boolean}
+ */
+export function hasTransparentPixel(rgba) {
+  const n = rgba ? rgba.length : 0;
+  for (let i = 3; i < n; i += 4) if (rgba[i] < 255) return true;
+  return false;
+}
+
+/** Warning shown when a stamp PNG has no transparency. */
+export const STAMP_OPAQUE_WARNING = 'This stamp has a white background and will cover the page under it.';

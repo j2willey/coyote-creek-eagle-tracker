@@ -16,15 +16,19 @@
 import {
   analyzeWorkbookPages,
   canSignPage,
+  checkPlacement,
+  flattenPageIndices,
   fitTextFontSize,
   fitSignatureDimensions,
-  defaultSignPlacement
+  defaultSignPlacement,
+  defaultItems
 } from './pdfPlan.js';
 
 /**
  * @typedef {import('./pdfPlan.js').WorkbookAnalysis} WorkbookAnalysis
  * @typedef {import('./pdfPlan.js').SignPlacement} SignPlacement
  * @typedef {import('./pdfPlan.js').BoxPlacement} BoxPlacement
+ * @typedef {import('./pdfPlan.js').PlacedItem} PlacedItem
  */
 
 // ---------------------------------------------------------------------------
@@ -538,12 +542,18 @@ function fieldHasNonEmptyValue(PDFLib, field) {
  *   pages (`0..maxPageIndex`) and clears `/NeedAppearances`.
  * - If a valued field cannot be rendered safely by `pdf-lib` (e.g. unsupported glyph encoding), throws a plain message.
  *
+ * `pages` is either the last page index to flatten (`0..pages`) or an explicit list of 0-based page indices (the
+ * Proposal pages plus the pages that received marks; see `flattenPageIndices`). Widgets on other pages stay fillable.
+ *
  * @param {any} PDFLib
  * @param {any} pdfDoc
- * @param {number} maxPageIndex
+ * @param {number | number[]} pages
  * @param {any} [fallbackFont]
  */
-export function flattenPagesUpTo(PDFLib, pdfDoc, maxPageIndex, fallbackFont) {
+export function flattenPagesUpTo(PDFLib, pdfDoc, pages, fallbackFont) {
+  const flatSet = Array.isArray(pages) ? new Set(pages) : null;
+  const inRange = (/** @type {number | undefined} */ idx) =>
+    idx !== undefined && (flatSet ? flatSet.has(idx) : idx <= /** @type {number} */ (pages));
   const {
     pushGraphicsState,
     popGraphicsState,
@@ -556,9 +566,9 @@ export function flattenPagesUpTo(PDFLib, pdfDoc, maxPageIndex, fallbackFont) {
     PDFOptionList,
     PDFSignature
   } = PDFLib;
-  const pages = pdfDoc.getPages();
+  const docPages = pdfDoc.getPages();
   const pageIndexByRef = new Map();
-  pages.forEach((/** @type {any} */ p, /** @type {number} */ idx) => pageIndexByRef.set(p.ref, idx));
+  docPages.forEach((/** @type {any} */ p, /** @type {number} */ idx) => pageIndexByRef.set(p.ref, idx));
   const form = pdfDoc.getForm();
   const fields = form.getFields();
   const needAppearances = form.acroForm.dict.lookup(PDFName.of('NeedAppearances')) === PDFBool.True;
@@ -575,7 +585,7 @@ export function flattenPagesUpTo(PDFLib, pdfDoc, maxPageIndex, fallbackFont) {
       try {
         const pg = form.findWidgetPage(w);
         const pIdx = pageIndexByRef.get(pg.ref);
-        return pIdx !== undefined && pIdx <= maxPageIndex;
+        return inRange(pIdx);
       } catch {
         return false;
       }
@@ -622,7 +632,7 @@ export function flattenPagesUpTo(PDFLib, pdfDoc, maxPageIndex, fallbackFont) {
         continue;
       }
       const pIdx = pageIndexByRef.get(page.ref);
-      if (pIdx === undefined || pIdx > maxPageIndex) {
+      if (!inRange(pIdx)) {
         keptWidgets++;
         continue;
       }
@@ -720,11 +730,140 @@ function sameBoxSizeAndPos(a, b) {
 }
 
 /**
- * Apply the reviewer's signature PNG, printed name, and date to the selected Proposal Approval page, and flatten
- * form fields on all Proposal pages (`0..analysis.proposalEndPageIndex`).
+ * Apply the marks the member placed (signature, printed name, date, stamps) and flatten.
  *
- * Enforces the hard guardrail:
- * - `canSignPage(analysis, pageIndex)` must succeed (never signs a Project Plan, Fundraising, or Project Report page).
+ * - Every item's page must pass the hard guardrail (`canPlaceOnPage`: never a Project Plan, Fundraising Application or
+ *   Project Report page). At least one signature item is required; a name or date item needs its text.
+ * - Form fields are flattened FIRST on the Proposal pages (0..`proposalEndPageIndex`) plus every page that received a
+ *   mark (`flattenPageIndices`), then the marks are drawn on top (stamps first, so the text and signature sit on them).
+ * - Signer 1's printed name / date go into the workbook's own AcroForm field when the item sits at the default box on
+ *   a detected approval page whose field has exactly one widget; otherwise they are drawn as text.
+ *
+ * @param {any} PDFLib
+ * @param {{
+ *   pdfBytes: Uint8Array,
+ *   analysis: WorkbookAnalysis,
+ *   items: PlacedItem[],
+ *   signerIndex?: number,
+ *   signaturePngBytes: Uint8Array,
+ *   printedName: string,
+ *   dateStr: string,
+ *   signatureScale?: number,
+ *   textFontSize?: number,
+ *   stampPngs?: Record<string, Uint8Array>
+ * }} opts
+ * @returns {Promise<{ pdfBytes: Uint8Array, flattenedPages: number[] }>}
+ */
+export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
+  const {
+    pdfBytes,
+    analysis,
+    signerIndex = 0,
+    signaturePngBytes,
+    signatureScale = 1,
+    textFontSize = 0
+  } = opts;
+  const items = Array.isArray(opts.items) ? opts.items : [];
+  const stampPngs = opts.stampPngs || {};
+  const cleanName = String(opts.printedName || '').trim();
+  const cleanDate = String(opts.dateStr || '').trim();
+
+  const check = checkPlacement(analysis, items, {
+    signaturePresent: !!(signaturePngBytes && signaturePngBytes.byteLength),
+    printedName: cleanName,
+    dateStr: cleanDate
+  });
+  if (check.errors.length) throw new Error(check.errors[0]);
+  for (const it of items) {
+    if (it.kind === 'stamp' && !(it.stampId && stampPngs[it.stampId] && stampPngs[it.stampId].byteLength)) {
+      throw new Error('A stamp on the page has no image. Remove it and place it again.');
+    }
+  }
+
+  const pdfDoc = await loadPdfWithDecrypt(PDFLib, pdfBytes);
+  const pages = pdfDoc.getPages();
+  for (const it of items) {
+    if (!pages[it.pageIndex]) throw new Error('A mark is on a page that does not exist in this PDF.');
+  }
+
+  const { StandardFonts, rgb } = PDFLib;
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const form = pdfDoc.getForm();
+  const isFirstSigner = Number(signerIndex) === 0;
+  const hasCustomFontSize = Number(textFontSize) > 0;
+
+  // 1. Signer 1's name / date into the workbook's own field (only at the default box, on a detected approval page,
+  //    when the field has a single widget so no other approval page is filled by accident).
+  /** @type {Set<string>} */
+  const filled = new Set();
+  if (isFirstSigner && !hasCustomFontSize) {
+    for (const it of items) {
+      if ((it.kind !== 'name' && it.kind !== 'date') || !analysis.approvalPageIndices.includes(it.pageIndex)) continue;
+      const def = defaultSignPlacement(analysis.edition, signerIndex, pages[it.pageIndex].getSize());
+      const box = it.kind === 'name' ? def.printedName : def.date;
+      if (!box.fieldName || !sameBoxSizeAndPos(it, box) || filled.has(box.fieldName)) continue;
+      try {
+        const tf = form.getTextField(box.fieldName);
+        const widgets = tf.acroField.getWidgets();
+        if (widgets.length !== 1) continue;
+        tf.setText(it.kind === 'name' ? cleanName : cleanDate);
+        tf.defaultUpdateAppearances(helvetica);
+        filled.add(box.fieldName);
+        filled.add(it.id);
+      } catch {
+        /* no such field: drawn as text below */
+      }
+    }
+  }
+
+  // 2. Flatten the Proposal pages plus every marked page BEFORE drawing, so widget backgrounds never paint over marks.
+  const flattenedPages = flattenPageIndices(analysis, items);
+  flattenPagesUpTo(PDFLib, pdfDoc, flattenedPages, helvetica);
+
+  // 3. Draw: stamps first, then signature / name / date on top.
+  /** @type {Map<string, any>} */
+  const stampImages = new Map();
+  const ordered = [...items.filter(i => i.kind === 'stamp'), ...items.filter(i => i.kind !== 'stamp')];
+  /** @type {any} */
+  let sigImage = null;
+  for (const it of ordered) {
+    const page = pages[it.pageIndex];
+    if (it.kind === 'stamp') {
+      const sid = /** @type {string} */ (it.stampId);
+      if (!stampImages.has(sid)) stampImages.set(sid, await pdfDoc.embedPng(stampPngs[sid]));
+      const img = stampImages.get(sid);
+      const d = img.scale(1);
+      const fit = fitSignatureDimensions(d.width, d.height, it, 1);
+      page.drawImage(img, { x: fit.x, y: fit.y, width: fit.width, height: fit.height });
+    } else if (it.kind === 'signature') {
+      if (!sigImage) sigImage = await pdfDoc.embedPng(signaturePngBytes);
+      const d = sigImage.scale(1);
+      const fit = fitSignatureDimensions(d.width, d.height, it, signatureScale);
+      page.drawImage(sigImage, { x: fit.x, y: fit.y, width: fit.width, height: fit.height });
+    } else {
+      if (filled.has(it.id)) continue;
+      const text = it.kind === 'name' ? cleanName : cleanDate;
+      const fSize = fitTextFontSize(text, it.width, it.height, hasCustomFontSize ? textFontSize : 0);
+      page.drawText(text, {
+        x: it.x + 2,
+        y: it.y + Math.max(2, (it.height - fSize) / 2),
+        size: fSize,
+        font: helvetica,
+        color: rgb(0.05, 0.05, 0.1)
+      });
+    }
+  }
+
+  const saved = await pdfDoc.save({ updateFieldAppearances: false });
+  return {
+    pdfBytes: saved instanceof Uint8Array ? saved : new Uint8Array(saved),
+    flattenedPages
+  };
+}
+
+/**
+ * Compatibility wrapper (single page, workbook boxes or a `placement`): kept for callers and tests that sign ONE
+ * page with signature + name + date. New code uses `applyPlacedItemsAndFlatten`.
  *
  * @param {any} PDFLib
  * @param {{
@@ -742,133 +881,20 @@ function sameBoxSizeAndPos(a, b) {
  * @returns {Promise<{ pdfBytes: Uint8Array }>}
  */
 export async function applySignatureAndFlatten(PDFLib, opts) {
-  const {
-    pdfBytes,
-    analysis,
-    pageIndex,
-    signerIndex = 0,
-    signaturePngBytes,
-    printedName,
-    dateStr,
-    signatureScale = 1,
-    textFontSize = 0
-  } = opts;
-
-  const pageCheck = canSignPage(analysis, pageIndex);
-  if (!pageCheck.ok) {
-    throw new Error(pageCheck.reason);
-  }
-  if (!signaturePngBytes || !signaturePngBytes.byteLength) {
-    throw new Error('Create or select your signature first.');
-  }
-  const cleanName = String(printedName || '').trim();
-  const cleanDate = String(dateStr || '').trim();
-  if (!cleanName) {
-    throw new Error('Enter your printed name.');
-  }
-  if (!cleanDate) {
-    throw new Error('Enter the approval date.');
-  }
-
-  const pdfDoc = await loadPdfWithDecrypt(PDFLib, pdfBytes);
-  const pages = pdfDoc.getPages();
-  const page = pages[pageIndex];
-  if (!page) {
-    throw new Error('Selected page does not exist in this PDF.');
-  }
-
-  const pageSize = page.getSize();
-  const defPlacement = defaultSignPlacement(analysis.edition, signerIndex, pageSize);
-  const placement = opts.placement || defPlacement;
-
-  const { StandardFonts, rgb } = PDFLib;
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const pngImage = await pdfDoc.embedPng(signaturePngBytes);
-  const form = pdfDoc.getForm();
-  const isFirstSigner = Number(signerIndex) === 0;
-  const hasCustomFontSize = Number(textFontSize) > 0;
-
-  // 1. Fill AcroForm fields first (Signer 1 default path) before flattening
-  let filledNameField = false;
-  if (
-    isFirstSigner &&
-    !hasCustomFontSize &&
-    placement.printedName.fieldName &&
-    sameBoxSizeAndPos(placement.printedName, defPlacement.printedName)
-  ) {
-    try {
-      const tf = form.getTextField(placement.printedName.fieldName);
-      if (tf) {
-        tf.setText(cleanName);
-        tf.defaultUpdateAppearances(helvetica);
-        filledNameField = true;
-      }
-    } catch {
-      filledNameField = false;
-    }
-  }
-
-  let filledDateField = false;
-  if (
-    isFirstSigner &&
-    !hasCustomFontSize &&
-    placement.date.fieldName &&
-    sameBoxSizeAndPos(placement.date, defPlacement.date)
-  ) {
-    try {
-      const df = form.getTextField(placement.date.fieldName);
-      if (df) {
-        df.setText(cleanDate);
-        df.defaultUpdateAppearances(helvetica);
-        filledDateField = true;
-      }
-    } catch {
-      filledDateField = false;
-    }
-  }
-
-  // 2. Flatten ONLY the Proposal range (pages 0..proposalEndPageIndex), preserving post-Proposal fields.
-  //    Flattening runs BEFORE drawText/drawImage so widget backgrounds or borders never paint over the committee's marks.
-  const flattenEnd = Math.max(pageIndex, analysis.proposalEndPageIndex);
-  flattenPagesUpTo(PDFLib, pdfDoc, flattenEnd, helvetica);
-
-  // 3. Draw non-field Printed Name / Date and Signature PNG on top of the flattened page content
-  if (!filledNameField) {
-    const nb = placement.printedName;
-    const fSize = fitTextFontSize(cleanName, nb.width, nb.height, hasCustomFontSize ? textFontSize : 0);
-    page.drawText(cleanName, {
-      x: nb.x + 2,
-      y: nb.y + Math.max(2, (nb.height - fSize) / 2),
-      size: fSize,
-      font: helvetica,
-      color: rgb(0.05, 0.05, 0.1)
+  const pageCheck = canSignPage(opts.analysis, opts.pageIndex);
+  if (!pageCheck.ok) throw new Error(pageCheck.reason);
+  const pdfDoc = await loadPdfWithDecrypt(PDFLib, opts.pdfBytes);
+  const page = pdfDoc.getPages()[opts.pageIndex];
+  if (!page) throw new Error('Selected page does not exist in this PDF.');
+  const size = page.getSize();
+  let items = defaultItems(opts.analysis.edition, opts.signerIndex || 0, opts.pageIndex, size);
+  if (opts.placement) {
+    const pl = opts.placement;
+    items = items.map(it => {
+      const b = it.kind === 'signature' ? pl.signature : it.kind === 'name' ? pl.printedName : pl.date;
+      return { ...it, x: b.x, y: b.y, width: b.width, height: b.height };
     });
   }
-
-  if (!filledDateField) {
-    const db = placement.date;
-    const fSize = fitTextFontSize(cleanDate, db.width, db.height, hasCustomFontSize ? textFontSize : 0);
-    page.drawText(cleanDate, {
-      x: db.x + 2,
-      y: db.y + Math.max(2, (db.height - fSize) / 2),
-      size: fSize,
-      font: helvetica,
-      color: rgb(0.05, 0.05, 0.1)
-    });
-  }
-
-  const sb = placement.signature;
-  const imgDims = pngImage.scale(1);
-  const sigDraw = fitSignatureDimensions(imgDims.width, imgDims.height, sb, signatureScale);
-  page.drawImage(pngImage, {
-    x: sigDraw.x,
-    y: sigDraw.y,
-    width: sigDraw.width,
-    height: sigDraw.height
-  });
-
-  const saved = await pdfDoc.save({ updateFieldAppearances: false });
-  return {
-    pdfBytes: saved instanceof Uint8Array ? saved : new Uint8Array(saved)
-  };
+  const res = await applyPlacedItemsAndFlatten(PDFLib, { ...opts, items });
+  return { pdfBytes: res.pdfBytes };
 }

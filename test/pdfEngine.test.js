@@ -12,12 +12,15 @@ import {
   loadPdfWithDecrypt,
   flattenPagesUpTo,
   inspectPdfWithPdfJs,
-  applySignatureAndFlatten
+  applySignatureAndFlatten,
+  applyPlacedItemsAndFlatten
 } from '../web/js/pdfEngine.js';
 import {
   PDFLIB_VERSION,
   PDFJS_VERSION,
-  canSignPage
+  canSignPage,
+  defaultItems,
+  newItemAtPoint
 } from '../web/js/pdfPlan.js';
 import {
   PDFLIB_CDN,
@@ -474,6 +477,177 @@ describe('pdfEngine: synthetic workbook sign, per-page flatten, and second signe
     } finally {
       globalThis.localStorage = prevStorage;
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 9: placed items on several pages, flatten range, stamps with alpha
+// ---------------------------------------------------------------------------
+
+/** A 4x4 RGBA PNG: left half opaque dark, right half fully transparent (hand-built so the test needs no image lib). */
+function buildAlphaPng() {
+  const w = 4, h = 4;
+  const raw = Buffer.alloc((w * 4 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    const row = y * (w * 4 + 1);
+    raw[row] = 0;
+    for (let x = 0; x < w; x++) {
+      const o = row + 1 + x * 4;
+      raw[o] = 20; raw[o + 1] = 20; raw[o + 2] = 120; raw[o + 3] = x < 2 ? 255 : 0;
+    }
+  }
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf) => {
+    let c = 0xffffffff;
+    for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const c = Buffer.alloc(4); c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
+  return new Uint8Array(Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))
+  ]));
+}
+
+/** Pages: 0 cover (field), 1 approval, 2 more Proposal text field "Proposal-Notes" (value), 3 Plan, 4 Plan. */
+async function buildPlacedItemsPdf() {
+  const doc = await PDFLib.PDFDocument.create();
+  const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+  const pages = [0, 1, 2, 3, 4].map(() => doc.addPage([612, 792]));
+  pages[0].drawText('Eagle Scout Leadership Service Project Workbook, No. 512 - 927 October 2026', { x: 60, y: 740, size: 11, font });
+  pages[1].drawText('11 Proposal Approval - Council or District Approval', { x: 60, y: 740, size: 11, font });
+  pages[2].drawText('Supporting page', { x: 60, y: 740, size: 11, font });
+  pages[3].drawText('13 PROJECT PLAN - Completing the project plan is mandatory', { x: 60, y: 740, size: 11, font });
+  pages[4].drawText('Project Plan Reviews Input from Beneficiary Input from Scoutmaster', { x: 60, y: 740, size: 11, font });
+  const form = doc.getForm();
+  const nm = form.createTextField('District or Council Approval Name');
+  nm.addToPage(pages[1], { x: 360, y: 110, width: 197, height: 19 });
+  const dt = form.createTextField('District or Council Signature Date');
+  dt.addToPage(pages[1], { x: 484, y: 130, width: 73, height: 21 });
+  const notes = form.createTextField('Proposal-Notes');
+  notes.setText('Scout typed this');
+  notes.addToPage(pages[2], { x: 100, y: 600, width: 250, height: 30 });
+  const plan = form.createTextField('Comments from Proposal Review');
+  plan.setText('Plan text');
+  plan.addToPage(pages[3], { x: 100, y: 600, width: 250, height: 40 });
+  return new Uint8Array(await doc.save());
+}
+
+const widgetsOnPage = async (bytes, pageNo) => {
+  const { pdfjsDoc } = await inspectPdfWithPdfJs(pdfjsLib, bytes);
+  return (await (await pdfjsDoc.getPage(pageNo)).getAnnotations()).filter(a => a.subtype === 'Widget');
+};
+
+describe('pdfEngine: Task 9, placed items and the flatten range', () => {
+  const pageSize = { width: 612, height: 792 };
+
+  it('draws items on two pages and flattens the Proposal pages plus the marked page, never the Plan pages', async () => {
+    const raw = await buildPlacedItemsPdf();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    expect(analysis.approvalPageIndices).toEqual([1]);
+    expect(analysis.firstNotOursPageIndex).toBe(3);
+    expect(analysis.proposalEndPageIndex).toBe(1);
+
+    // Page 2 (index 1): the workbook's own boxes. Page 3 (index 2): a signature placed by click.
+    const items = [
+      ...defaultItems(analysis.edition, 0, 1, pageSize),
+      newItemAtPoint('signature', 2, { x: 300, y: 300 }, pageSize, { id: 'sig-p3' })
+    ];
+    const res = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, items, signerIndex: 0,
+      signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026'
+    });
+    expect(res.flattenedPages).toEqual([0, 1, 2]);
+
+    // The approval page's fields (name/date) and the Scout's Proposal-Notes field on the marked page are flattened...
+    expect(await widgetsOnPage(res.pdfBytes, 2)).toHaveLength(0);
+    expect(await widgetsOnPage(res.pdfBytes, 3)).toHaveLength(0);
+    // ...and Plan fields stay fillable.
+    const planW = await widgetsOnPage(res.pdfBytes, 4);
+    expect(planW).toHaveLength(1);
+    expect(planW[0].fieldName).toBe('Comments from Proposal Review');
+
+    const { pdfjsDoc } = await inspectPdfWithPdfJs(pdfjsLib, res.pdfBytes);
+    const p2 = (await (await pdfjsDoc.getPage(2)).getTextContent()).items.map(i => i.str).join(' ');
+    expect(p2).toContain('Pat Q. Reviewer');
+    expect(p2).toContain('11/11/2026');
+    const p3 = (await (await pdfjsDoc.getPage(3)).getTextContent()).items.map(i => i.str).join(' ');
+    expect(p3).toContain('Scout typed this');
+  });
+
+  it('leaves a Proposal page after the approval page fillable when no mark is on it (marked pages only widen the range)', async () => {
+    const raw = await buildPlacedItemsPdf();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const res = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, items: defaultItems(analysis.edition, 0, 1, pageSize), signerIndex: 0,
+      signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026'
+    });
+    expect(res.flattenedPages).toEqual([0, 1]);
+    const w = await widgetsOnPage(res.pdfBytes, 3);
+    expect(w).toHaveLength(1);
+    expect(w[0].fieldName).toBe('Proposal-Notes');
+  });
+
+  it('refuses a mark on a Plan page, a missing signature, and a missing stamp image, before touching the PDF', async () => {
+    const raw = await buildPlacedItemsPdf();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const base = { pdfBytes: raw, analysis, signerIndex: 0, signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026' };
+    const onPlan = [newItemAtPoint('signature', 3, { x: 200, y: 200 }, pageSize)];
+    await expect(applyPlacedItemsAndFlatten(PDFLib, { ...base, items: onPlan })).rejects.toThrow(/Page 4 belongs to the Project Plan/);
+    const noSig = [newItemAtPoint('date', 1, { x: 200, y: 200 }, pageSize)];
+    await expect(applyPlacedItemsAndFlatten(PDFLib, { ...base, items: noSig })).rejects.toThrow(/Place your signature/);
+    const noImg = [...defaultItems(analysis.edition, 0, 1, pageSize), newItemAtPoint('stamp', 1, { x: 200, y: 400 }, pageSize, { stampId: 'st1' })];
+    await expect(applyPlacedItemsAndFlatten(PDFLib, { ...base, items: noImg })).rejects.toThrow(/stamp.*no image/);
+  });
+
+  it('allows a signature alone (name and date are only warnings) and does not fill the field then', async () => {
+    const raw = await buildPlacedItemsPdf();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const res = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, signerIndex: 0,
+      items: [newItemAtPoint('signature', 1, { x: 400, y: 150 }, pageSize)],
+      signaturePngBytes: TINY_PNG, printedName: '', dateStr: ''
+    });
+    expect(res.pdfBytes.byteLength).toBeGreaterThan(1000);
+  });
+
+  it('embeds a stamp PNG with alpha (soft mask kept) and draws it under the signature', async () => {
+    const raw = await buildPlacedItemsPdf();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const stamp = buildAlphaPng();
+    const items = [
+      ...defaultItems(analysis.edition, 0, 1, pageSize),
+      newItemAtPoint('stamp', 1, { x: 400, y: 160 }, pageSize, { stampId: 'st1', aspect: 1 })
+    ];
+    const res = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, items, signerIndex: 0, stampPngs: { st1: stamp },
+      signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026'
+    });
+    const out = await PDFLib.PDFDocument.load(res.pdfBytes);
+    const images = [];
+    for (const [, obj] of out.context.enumerateIndirectObjects()) {
+      const dict = obj && obj.dict;
+      if (!dict || dict.get(PDFLib.PDFName.of('Subtype')) !== PDFLib.PDFName.of('Image')) continue;
+      images.push({
+        width: dict.get(PDFLib.PDFName.of('Width')).asNumber(),
+        smask: !!dict.get(PDFLib.PDFName.of('SMask'))
+      });
+    }
+    expect(images.length).toBeGreaterThanOrEqual(2); // the stamp and the signature
+    const stampImg = images.find(i => i.width === 4); // the hand-built 4x4 stamp
+    expect(stampImg).toBeTruthy();
+    expect(stampImg.smask).toBe(true);               // its alpha channel became a soft mask
   });
 });
 
