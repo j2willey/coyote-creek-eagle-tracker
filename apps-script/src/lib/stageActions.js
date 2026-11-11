@@ -61,14 +61,14 @@ var StageActions = (function () {
     { key: 'incomplete', label: 'Incomplete: ask for changes…', sections: PRE_INTAKE, to: 'proposal_incomplete', template: 'Proposal incomplete',
       email: 'note', past: 'Proposal incomplete: changes requested' },
     { key: 'resend_intake', label: 'Resend booking link', sections: ['intake_to_book'], booking: 'Intake', past: 'Pre-Review Call booking link resent' },
-    { key: 'book_intake', label: 'Book a Pre-Review Call (schedule)…', sections: ['intake_to_book'], page: '/committee/schedule' },
+    { key: 'book_intake', label: 'Book a Pre-Review Call (schedule)…', sections: ['intake_to_book'], page: '/committee/schedule', pageQuery: 'new=Intake' },
     // Outcome of the Pre-Review Call (or check of the update that followed it)
     { key: 'review_ok', label: 'Ready for in-person review', sections: AFTER_CALL, to: 'review_to_book', booking: 'ESSPPR',
       past: 'Ready for the in-person Proposal Review' },
     { key: 'intake_revisions', label: 'Changes needed before review…', sections: AFTER_CALL, to: 'intake_revisions',
       template: 'Revisions before review', email: 'note', past: 'Changes requested before the in-person review' },
     { key: 'resend_review', label: 'Resend booking info', sections: ['review_to_book'], booking: 'ESSPPR', past: 'Proposal Review booking info resent' },
-    { key: 'book_review', label: 'Book a Proposal Review (schedule)…', sections: ['review_to_book'], page: '/committee/schedule' },
+    { key: 'book_review', label: 'Book a Proposal Review (schedule)…', sections: ['review_to_book'], page: '/committee/schedule', pageQuery: 'new=ESSPPR' },
     // In-person Proposal Review
     { key: 'review_outcome', label: 'Record review outcome…', sections: ['review_booked', 'proposal_revisions'], page: '/committee/review' },
     // Before the in-person review: the project can't be approved
@@ -82,7 +82,7 @@ var StageActions = (function () {
       dateRole: 'verified', dateLabel: 'Date of Council\'s "verified" email', fillIfEmpty: 'submitted', past: 'Eagle application verified by Council',
       template: 'Book: Eagle Board of Review', toUnit: true, onSent: 'emailedEbor' },
     // Application Verified: the Scout books the EBoR (online later); until then a member books it on the schedule page
-    { key: 'book_ebor', label: 'Book an EBoR (schedule)…', sections: ['app_verified', 'ebor_paused'], page: '/committee/schedule' },
+    { key: 'book_ebor', label: 'Book an EBoR (schedule)…', sections: ['app_verified', 'ebor_paused'], page: '/committee/schedule', pageQuery: 'new=EBoR' },
     { key: 'resend_ebor', label: 'Resend EBoR next-steps email', sections: ['app_verified'], past: 'EBoR next-steps email drafted again',
       template: 'Book: Eagle Board of Review', toUnit: true, onSent: 'emailedEbor' },
     // EBoR outcome (the board's date: default the row's EBoR date)

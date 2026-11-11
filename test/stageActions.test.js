@@ -103,3 +103,13 @@ describe('StageActions', () => {
     expect(SA.logLine('10/23', 'AB', 'app_verified', '2026-10-22', 'via email')).toBe('10/23 [AB] Eagle application verified by Council (10/22/2026). Note: via email');
   });
 });
+
+describe('StageActions: schedule-page actions say which type to open (2026-11-11)', () => {
+  it('book actions carry new=<type> so the schedule page opens the dialog for that Scout', () => {
+    const find = (sec, key) => SA.forSection(sec).find(a => a.key === key);
+    expect(find('intake_to_book', 'book_intake')).toMatchObject({ page: '/committee/schedule', pageQuery: 'new=Intake' });
+    expect(find('review_to_book', 'book_review')).toMatchObject({ page: '/committee/schedule', pageQuery: 'new=ESSPPR' });
+    expect(find('app_verified', 'book_ebor')).toMatchObject({ page: '/committee/schedule', pageQuery: 'new=EBoR' });
+    expect(find('ebor_paused', 'book_ebor')).toMatchObject({ pageQuery: 'new=EBoR' });
+  });
+});

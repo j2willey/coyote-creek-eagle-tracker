@@ -676,19 +676,26 @@
     // schedule is in (not from the cached copy, so members and board are current).
     const wantSlot = new URLSearchParams(location.search).get('s');
     let wantDone = !wantSlot, otDone = false;
-    // ?r=<record id>&new=Followup (dashboard row action "Schedule a follow-up / consult…", 2026-11-11): open the new-session dialog
-    // for that Scout, type Follow-Up / Consult, date and time empty. Done once the fresh schedule (and Scout list) is in.
+    // ?r=<record id>&new=<type> (dashboard row actions "Book a Pre-Review Call / Proposal Review / EBoR (schedule)…" and
+    // "Schedule a follow-up / consult…"): open the new-session dialog for that Scout and type, date and time empty.
+    // Done once the fresh schedule (and Scout list) is in. (Before 2026-11-11 the book actions sent ?r= but it was never read.)
     const q0 = new URLSearchParams(location.search);
-    const wantScout = q0.get('new') === 'Followup' ? q0.get('r') : '';
+    const wantType = q0.get('new') || '';
+    const wantScout = wantType ? (q0.get('r') || '') : '';
     let scoutDone = !wantScout;
     function openWantedScout() {
       if (scoutDone) return;
       scoutDone = true;
       try { history.replaceState(null, '', location.pathname); } catch {}
-      if (!typeOf('Followup')) return;
-      const x = ((data.scouts && data.scouts.Followup) || []).find(s => s.recordId === wantScout);
-      if (!x) { $('meLine').textContent += ' · That Scout is not at a stage that takes a follow-up / consult (Eagle Earned, or the record is gone). Reload the dashboard.'; return; }
-      openForm({ type: 'Followup', date: '', time: '' });
+      if (!typeOf(wantType)) return;
+      const x = ((data.scouts && data.scouts[wantType]) || []).find(s => s.recordId === wantScout);
+      if (!x) {
+        $('meLine').textContent += wantType === 'Followup'
+          ? ' · That Scout is not at a stage that takes a follow-up / consult (Eagle Earned, or the record is gone). Reload the dashboard.'
+          : ' · That Scout is not at a stage that books this session type any more. Reload the dashboard.';
+        return;
+      }
+      openForm({ type: wantType, date: '', time: '' });
       $('fScout').value = x.recordId; scoutChanged();
     }
     function openWanted() {
