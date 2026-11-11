@@ -584,9 +584,11 @@ the Proposal without leaving the page; nothing leaves the browser until **Save**
 normal Approved path above.
 - **Placing the marks** (v2, 2026-11-11): the preview is a scrollable view of every page (pages render as they come into
   view); the page numbers above it jump. The Workshop opens scrolled to the **last Proposal Approval page** (2026
-  page 11, 2023a Page H; several copies = the last), else the last **scanned page** (no text, no form fields: a signed
-  Page H that was scanned in). If neither is found a banner says "Couldn't find the Proposal Approval page (Page H):
-  scroll to it" and **no page is preselected**; it never falls back to an ordinary Proposal page. Toolbar: **✍
+  page 11, 2023a Page H; several copies = the last), else the last **scanned page**: an image-only page (no text, no
+  form fields) **anywhere in the file**, even after a blank Plan page the Scout left in, that is not itself a Plan /
+  Fundraising / Report page. With only a scan found the info line says "Page 10 looks like a scanned signature page",
+  and placing on it never asks a confirm. If neither is found a banner says "Couldn't find the Proposal Approval page
+  (Page H): scroll to it" and **no page is preselected**; it never falls back to an ordinary Proposal page. Toolbar: **✍
   Signature**, **Printed name**, **Date**, **🔖 Stamp ▾**. Click a button, then click on a page: the mark drops there,
   centered on the click (Esc cancels). On a detected approval page a button without a click drops the workbook's own
   box (signer 2 and later go below signer 1's line); a second press of the same button on that page waits for a click.
@@ -595,7 +597,8 @@ normal Approved path above.
 - **Guardrail (per page):** a page is locked only if **it** is identified as Project Plan, Fundraising Application or
   Project Report (`canPlaceOnPage`); locked pages are striped and refuse marks, with the reason shown as a toast next to
   the click as well as in the side panel. Any other page takes marks; one that sits after a locked page (and is not an
-  approval page) asks "Place here anyway?" once. **Page H wins:** a page with the "Proposal Page H" footer, or the
+  approval page or a scan) asks once, naming the page that triggered it ("Page 9 looks like Project Plan Page A (it may
+  be a blank template page left in). Place on page 12 anyway?"). **Page H wins:** a page with the "Proposal Page H" footer, or the
   "Council or District Approval" heading with "Candidate's Promise", is an approval page even when it follows Plan
   pages and carries a Candidate's Promise date field (that field alone no longer marks a Plan Reviews page).
 - **Stamps:** PNG files (up to 2 MB, transparent background) in one Drive folder named by the Settings key
@@ -604,8 +607,18 @@ normal Approved path above.
   resizable afterwards), drawn under the
   signature, name and date so they can sit on its lines; a PNG with no transparency warns that it covers the page under
   it. Actions `stampList` / `stampFetch` (committee only). No stamp images are kept in the repo.
+- **Rotated pages** (task 9.2): a page with `/Rotate` 90 / 180 / 270 (typically a scan: a landscape page shown
+  upright) is handled in two coordinate systems. Marks are placed and kept in **viewer space** (the page as pdf.js
+  shows it); `pdfEngine.js` reads each page's `/Rotate` and crop box and converts to PDF user space (`viewerToUserPoint`
+  and friends in `pdfPlan.js`), drawing images and text with pdf-lib `rotate: degrees(rotation)` from the matching
+  corner, so they appear upright and exactly where they were placed. Tests check the result against pdf.js's own
+  viewport for 0 / 90 / 180 / 270. Flattening is unchanged.
 - **Signature:** typed (10 OFL script fonts from Google Fonts, loaded when the Workshop opens), drawn, or an uploaded
-  image; size control and drag/resize on the page; printed name and date go into the workbook's own fields for the
+  image; typed, drawn and uploaded PNGs are **trimmed** to their ink (plus about 4 px) so the box hugs the signature.
+  An image mark (signature or stamp) **keeps its aspect ratio**: dragging the corner scales it proportionally, and the
+  image fills its box exactly, in the preview and in the PDF (no centering, no CSS scaling). The **Signature size**
+  control (100% = 1.75 in wide) sets the size of the next signature and resizes the selected one (a mark you just
+  placed or clicked is selected); printed name and date go into the workbook's own fields for the
   first signer when the marks sit at the workbook's boxes on an approval page whose field has a single widget (else
   drawn as text). "Remember my signature" keeps it in this browser's local storage.
 - **Result:** the marks are drawn as images/text, and form fields are flattened **only on the page(s) that received a
