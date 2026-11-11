@@ -8,9 +8,9 @@
  * 2. Transparently decrypt official BSA workbooks (2023a and 2026) that use PDF 2.0 / ISO 32000-2 empty-user-password
  *    permissions encryption (`/V 5 /R 6 /CFM /AESV3`) so `pdf-lib` can load, edit, and save them as standard vector PDFs.
  * 3. Fill Council/District Printed Name & Date AcroForm fields where present (or draw vector text with `drawText`),
- *    stamp the high-DPI PNG signature onto our Proposal Approval page, and flatten form fields ONLY on the Proposal
- *    pages (`0..proposalEndPageIndex`), leaving Project Plan, Fundraising Application, and Project Report fields
- *    completely untouched and fillable.
+ *    stamp the high-DPI PNG signature onto our Proposal Approval page, and flatten form fields only on the page(s)
+ *    that received a mark (optionally the Proposal pages before it), leaving Project Plan, Fundraising Application,
+ *    and Project Report fields completely untouched and fillable.
  */
 
 import {
@@ -732,8 +732,8 @@ function sameBoxSizeAndPos(a, b) {
  *
  * - Every item's page must pass the hard guardrail (`canPlaceOnPage`: never a Project Plan, Fundraising Application or
  *   Project Report page). At least one signature item is required; a name or date item needs its text.
- * - Form fields are flattened FIRST on the Proposal pages (0..`proposalEndPageIndex`) plus every page that received a
- *   mark (`flattenPageIndices`), then the marks are drawn on top (stamps first, so the text and signature sit on them).
+ * - Form fields are flattened FIRST on the pages that received a mark (plus, with `flattenEarlier`, the Proposal pages
+ *   before the first marked page; see `flattenPageIndices`), then the marks are drawn on top (stamps first, so the text and signature sit on them).
  * - Signer 1's printed name / date go into the workbook's own AcroForm field when the item sits at the default box on
  *   a detected approval page whose field has exactly one widget; otherwise they are drawn as text.
  *
@@ -748,7 +748,8 @@ function sameBoxSizeAndPos(a, b) {
  *   dateStr: string,
  *   signatureScale?: number,
  *   textFontSize?: number,
- *   stampPngs?: Record<string, Uint8Array>
+ *   stampPngs?: Record<string, Uint8Array>,
+ *   flattenEarlier?: boolean
  * }} opts
  * @returns {Promise<{ pdfBytes: Uint8Array, flattenedPages: number[] }>}
  */
@@ -814,8 +815,8 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
     }
   }
 
-  // 2. Flatten the Proposal pages plus every marked page BEFORE drawing, so widget backgrounds never paint over marks.
-  const flattenedPages = flattenPageIndices(analysis, items);
+  // 2. Flatten the marked pages (and the earlier Proposal pages when asked) BEFORE drawing, so widget backgrounds never paint over marks.
+  const flattenedPages = flattenPageIndices(analysis, items, { includeEarlier: !!opts.flattenEarlier });
   flattenPagesUpTo(PDFLib, pdfDoc, flattenedPages, helvetica);
 
   // 3. Draw: stamps first, then signature / name / date on top.

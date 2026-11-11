@@ -27,6 +27,8 @@ import {
   defaultItem,
   defaultItems,
   flattenPageIndices,
+  capImageSize,
+  isProposalPageHText,
   checkPlacement,
   hasTransparentPixel,
   describePageRanges,
@@ -142,8 +144,8 @@ describe('pdfPlan: Step 2 Our vs. Not-Ours page landmarks and hard ordering rule
       { text: '13 PROJECT PLAN Completing the project plan is mandatory', fields: ['Comments from Proposal Review'] },
       { text: '18 Project Plan Reviews Input from Beneficiary Input from Scoutmaster', fields: ['Candidate’s Promise Date'] },
       { text: '22 Certification of Completion ACCEPTANCE OF THE WORK', fields: ['Certification of Completion Signature'] },
-      // Even if a page matching an approval landmark were somehow placed at the end of the PDF after Report, it is forbidden:
-      { text: '11 Proposal Approval Council or District Approval', fields: ['District or Council Approval Name'] }
+      // An ordinary page after the Plan pages is not locked itself, but asks for a confirm:
+      { text: 'Some extra page', fields: [] }
     ];
     const analysis = analyzeWorkbookPages(pages);
     expect(analysis.edition).toBe('2026');
@@ -161,7 +163,10 @@ describe('pdfPlan: Step 2 Our vs. Not-Ours page landmarks and hard ordering rule
     expect(canPlaceOnPage(analysis, 3).ok).toBe(false); // Project Plan
     expect(canPlaceOnPage(analysis, 4).ok).toBe(false); // Project Plan Reviews
     expect(canPlaceOnPage(analysis, 5).ok).toBe(false); // Certification of Completion
-    expect(canPlaceOnPage(analysis, 6).ok).toBe(false); // after firstNotOursPageIndex
+    // Per page, not "everything after": an unidentified page after the Plan is allowed, with a one-time confirm
+    expect(canPlaceOnPage(analysis, 6).ok).toBe(true);
+    expect(canPlaceOnPage(analysis, 6).confirm).toBe('This page comes after the Project Plan. Place here anyway?');
+    expect(canPlaceOnPage(analysis, 0).confirm).toBe('');
   });
 
   it('targets the last approval page by default and formats clear multi-approval-page descriptions', () => {
@@ -290,13 +295,15 @@ describe('pdfPlan: Task 9a, no silent fallback to an ordinary Proposal page', ()
     expect(approvalBanner(a)).toMatch(/\(Page 11\)/);
   });
 
-  it('keeps the Plan / Report guardrail a hard block for every mark, approval page or not', () => {
+  it('keeps the Plan / Report guardrail a hard block for every page identified as one, approval page or not', () => {
     const a = analyzeWorkbookPages([proposal, approval, scan, planPage, scan]);
     expect(canPlaceOnPage(a, 0).ok).toBe(true);   // any ordinary Proposal page may take a mark
     expect(canPlaceOnPage(a, 2).ok).toBe(true);   // a scan
     expect(canPlaceOnPage(a, 3).ok).toBe(false);  // Project Plan
     expect(canPlaceOnPage(a, 3).reason).toMatch(/Page 4 belongs to the Project Plan/);
-    expect(canPlaceOnPage(a, 4).ok).toBe(false);  // after the first not-ours page
+    expect(a.pages[4].scanCandidate).toBe(false);
+    expect(canPlaceOnPage(a, 4).ok).toBe(true);   // not identified as Plan / Report itself: allowed, but with a confirm
+    expect(canPlaceOnPage(a, 4).confirm).toMatch(/after the Project Plan/);
     expect(canPlaceOnPage(a, 99).ok).toBe(false);
   });
 });
@@ -373,51 +380,102 @@ describe('pdfPlan: Task 9b, placed items', () => {
   });
 });
 
-describe('pdfPlan: Task 9d, flatten range = Proposal pages + marked pages', () => {
+describe('pdfPlan: Task 9.1, flatten range = marked pages (+ earlier Proposal pages on request)', () => {
   const proposal = { text: 'Proposal page', fields: ['Candidates Full Name'] };
   const approval = { text: '11 Proposal Approval Council or District Approval', fields: ['District or Council Approval Name'] };
   const planPage = { text: '13 PROJECT PLAN Completing the project plan is mandatory', fields: ['Comments from Proposal Review'] };
   const mk = (pageIndex) => ({ id: 'x' + pageIndex, kind: 'signature', pageIndex, x: 10, y: 10, width: 50, height: 20 });
 
-  it('is 0..proposalEnd when the marks are on the approval page (as today)', () => {
+  it('by default is only the marked page(s)', () => {
     const a = analyzeWorkbookPages([proposal, proposal, approval, planPage, planPage]);
-    expect(flattenPageIndices(a, [mk(2)])).toEqual([0, 1, 2]);
+    expect(flattenPageIndices(a, [mk(2)])).toEqual([2]);
+    expect(flattenPageIndices(a, [mk(2), mk(1)])).toEqual([1, 2]);
+    expect(flattenPageIndices(a, [])).toEqual([]);
   });
 
-  it('adds a marked page after the last approval page (a scan appended later), not just max(page, end)', () => {
+  it('with includeEarlier adds the Proposal pages before the first marked page, not the ones after it', () => {
     const a = analyzeWorkbookPages([proposal, approval, proposal, { text: '', fields: [] }, planPage]);
-    expect(a.proposalEndPageIndex).toBe(1);
-    expect(flattenPageIndices(a, [mk(1), mk(3)])).toEqual([0, 1, 3]);
-    // and the marks on page 3 do not drag page 2 in unless it is a Proposal page below the end (it is not)
-    expect(flattenPageIndices(a, [mk(1)])).toEqual([0, 1]);
+    expect(flattenPageIndices(a, [mk(1)], { includeEarlier: true })).toEqual([0, 1]);
+    expect(flattenPageIndices(a, [mk(1), mk(3)], { includeEarlier: true })).toEqual([0, 1, 3]);
   });
 
-  it('with no approval page: the Proposal pages plus the marked page, never Plan / Report pages', () => {
-    const a = analyzeWorkbookPages([proposal, { text: '', fields: [] }, proposal, planPage, { text: '', fields: [] }]);
-    expect(a.defaultTargetPageIndex).toBe(1);
-    expect(flattenPageIndices(a, [mk(1)])).toEqual([0, 1, 2]);
-    // a mark on a not-ours page is ignored by the range (the guardrail rejects it separately)
-    expect(flattenPageIndices(a, [mk(1), mk(3), mk(4)])).toEqual([0, 1, 2]);
+  it('never includes a page identified as Plan / Report, even earlier than the signature page (Plan before Page H)', () => {
+    const a = analyzeWorkbookPages([proposal, proposal, planPage, approval, planPage]);
+    expect(flattenPageIndices(a, [mk(3)], { includeEarlier: true })).toEqual([0, 1, 3]);
+    // a mark on a locked page is ignored by the range (the guardrail rejects it separately)
+    expect(flattenPageIndices(a, [mk(3), mk(2), mk(4)])).toEqual([3]);
   });
 });
 
-describe('pdfPlan: Task 9c, stamp transparency check', () => {
-  it('detects an opaque PNG (all alpha 255) versus one with a transparent pixel', () => {
-    const opaque = new Uint8ClampedArray([255, 255, 255, 255, 10, 10, 10, 255]);
-    const clear = new Uint8ClampedArray([255, 255, 255, 0, 10, 10, 10, 255]);
-    const soft = new Uint8ClampedArray([10, 10, 10, 254, 10, 10, 10, 255]);
-    expect(hasTransparentPixel(opaque)).toBe(false);
-    expect(hasTransparentPixel(clear)).toBe(true);
-    expect(hasTransparentPixel(soft)).toBe(true);
-    expect(hasTransparentPixel(new Uint8ClampedArray(0))).toBe(false);
+describe('pdfPlan: Task 9.1, Proposal Page H after Plan Page A (2023a, instruction pages removed)', () => {
+  // Fictional descriptor fixture reproducing the pattern: pages 0-7 ordinary Proposal pages, Plan Page A at index 8,
+  // Proposal Page H at index 9 carrying a Candidate's Promise date field, then Plan / Report pages.
+  const ord = (i) => ({ text: `Eagle Scout Service Project Workbook Proposal Page ${'ABCDEFG'[i % 7]}`, fields: ['Proposal-Notes' + i] });
+  const pages = [
+    ...Array.from({ length: 8 }, (_, i) => ord(i)),
+    { text: 'Project Plan Page A Planned start date', fields: ['Plan-Summary'] },
+    { text: 'Proposal Page H Council or District Approval Candidate’s Promise', fields: ['Proposal-BSAName', 'Candidate’s Promise Date'] },
+    { text: 'Project Plan Reviews Input from Beneficiary Input from Scoutmaster', fields: ['Input from Beneficiary'] },
+    { text: 'Project Report Page A', fields: ['Report-Hours'] }
+  ];
+
+  it('finds Page H as the approval page at 9, default target 9, page 9 placeable, Plan page 8 locked', () => {
+    const a = analyzeWorkbookPages(pages);
+    expect(a.edition).toBe('2023a');
+    expect(a.approvalPageIndices).toEqual([9]);
+    expect(a.defaultTargetPageIndex).toBe(9);
+    expect(a.firstNotOursPageIndex).toBe(8);
+    expect(a.pages[9].role).toBe('approval');
+    expect(a.pages[9].forbidden).toBe(false);
+    expect(canPlaceOnPage(a, 9)).toEqual({ ok: true, reason: '', confirm: '' });
+    expect(canPlaceOnPage(a, 8).ok).toBe(false);
+    expect(canPlaceOnPage(a, 8).reason).toMatch(/Page 9 belongs to the Project Plan/);
+    expect(canPlaceOnPage(a, 10).ok).toBe(false);
+    expect(canPlaceOnPage(a, 11).ok).toBe(false);
+    expect(canPlaceOnPage(a, 0).ok).toBe(true);
+    expect(approvalBanner(a)).toBe('');
+  });
+
+  it('wins even with only the footer text and the Candidate’s Promise date field (subset-font glyphs too)', () => {
+    expect(isProposalApprovalLandmark('Proposal Page H', ['Candidate’s Promise Date'])).toBe(true);
+    expect(detectNotOursSection('Proposal Page H', ['Candidate’s Promise Date'])).toBe('');
+    expect(detectNotOursSection('3roposal 3age H', ["Candidate's Promise Date"])).toBe('');
+    expect(isProposalApprovalLandmark('&ouncil or \'istrict $pproval ... &andidate s 3romise', ['Candidate’s Promise Date'])).toBe(true);
+  });
+
+  it('does not let a Candidate’s Promise date field alone make a page Project Plan (Plan Reviews)', () => {
+    expect(detectNotOursSection('some page', ['Candidate’s Promise Date'])).toBe('');
+    expect(detectNotOursSection("some page", ["Candidate's Promise Date"])).toBe('');
+    // the Plan Reviews landmarks still do
+    expect(detectNotOursSection('Project Plan Reviews', ['Candidate’s Promise Date'])).toMatch(/Plan Reviews/);
+    expect(detectNotOursSection('x', ['Input from Beneficiary', 'Candidate’s Promise Date'])).toMatch(/Plan Reviews/);
+  });
+
+  it('has the confirm only on non-approval pages after a locked page', () => {
+    const a = analyzeWorkbookPages([...pages, { text: 'Extra notes', fields: [] }]);
+    expect(canPlaceOnPage(a, 12).ok).toBe(true);
+    expect(canPlaceOnPage(a, 12).confirm).toMatch(/after the Project Plan/);
+    expect(canPlaceOnPage(a, 9).confirm).toBe('');
   });
 });
 
-describe('pdfPlan: describePageRanges', () => {
-  it('joins consecutive pages into ranges, 1-based', () => {
-    expect(describePageRanges([0, 1, 2, 4])).toBe('1–3, 5');
-    expect(describePageRanges([10])).toBe('11');
-    expect(describePageRanges([3, 1, 2, 2, 9, 11])).toBe('2–4, 10, 12');
-    expect(describePageRanges([])).toBe('');
+describe('pdfPlan: Task 9.1, image size on placement', () => {
+  const page = { width: 612, height: 792 };
+  it('places a stamp 115 pt wide (1.6 in) keeping its aspect, centered on the click', () => {
+    expect(STAMP_DEFAULT_WIDTH_PT).toBe(115);
+    const it = newItemAtPoint('stamp', 0, { x: 300, y: 400 }, page, { stampId: 's', aspect: 2.5 });
+    expect(it.width).toBe(115);
+    expect(it.height).toBeCloseTo(46, 1);
+    expect(it.x + it.width / 2).toBeCloseTo(300, 1);
+    expect(it.y + it.height / 2).toBeCloseTo(400, 1);
+  });
+  it('caps an image at 40% of the page width (aspect kept) on a small page, but not text marks', () => {
+    const small = { width: 200, height: 260 };
+    const st = newItemAtPoint('stamp', 0, { x: 100, y: 130 }, small, { stampId: 's', aspect: 2 });
+    expect(st.width).toBe(80);
+    expect(st.height).toBe(40);
+    expect(newItemAtPoint('signature', 0, { x: 100, y: 130 }, small).width).toBe(80);
+    expect(newItemAtPoint('name', 0, { x: 100, y: 130 }, small).width).toBe(170);
+    expect(capImageSize('stamp', { width: 100, height: 50 }, page)).toEqual({ width: 100, height: 50 });
   });
 });

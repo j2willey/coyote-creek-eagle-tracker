@@ -38,6 +38,7 @@ const TINY_PNG = Uint8Array.from(
 
 /** One page, workbook boxes (signature + name + date) for signer `signerIndex`: what the Workshop does on an approval page. */
 const applySignatureAndFlatten = (lib, o) => applyPlacedItemsAndFlatten(lib, {
+  flattenEarlier: true, // these tests check the "also flatten the pages before the signature page" mode
   ...o,
   items: defaultItems(o.analysis.edition, o.signerIndex || 0, o.pageIndex, { width: 612, height: 792 })
 });
@@ -570,7 +571,7 @@ describe('pdfEngine: Task 9, placed items and the flatten range', () => {
       newItemAtPoint('signature', 2, { x: 300, y: 300 }, pageSize, { id: 'sig-p3' })
     ];
     const res = await applyPlacedItemsAndFlatten(PDFLib, {
-      pdfBytes: raw, analysis, items, signerIndex: 0,
+      pdfBytes: raw, analysis, items, signerIndex: 0, flattenEarlier: true,
       signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026'
     });
     expect(res.flattenedPages).toEqual([0, 1, 2]);
@@ -591,11 +592,25 @@ describe('pdfEngine: Task 9, placed items and the flatten range', () => {
     expect(p3).toContain('Scout typed this');
   });
 
-  it('leaves a Proposal page after the approval page fillable when no mark is on it (marked pages only widen the range)', async () => {
+  it('by default flattens ONLY the marked page; the earlier pages stay fillable', async () => {
     const raw = await buildPlacedItemsPdf();
     const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
     const res = await applyPlacedItemsAndFlatten(PDFLib, {
       pdfBytes: raw, analysis, items: defaultItems(analysis.edition, 0, 1, pageSize), signerIndex: 0,
+      signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026'
+    });
+    expect(res.flattenedPages).toEqual([1]);
+    expect(await widgetsOnPage(res.pdfBytes, 2)).toHaveLength(0);
+    // the cover page (index 0) has no field in this fixture; the page after the approval page keeps its field
+    const w3 = await widgetsOnPage(res.pdfBytes, 3);
+    expect(w3.map(w => w.fieldName)).toEqual(['Proposal-Notes']);
+  });
+
+  it('with flattenEarlier also flattens the Proposal pages before the marked page, still not the page after it', async () => {
+    const raw = await buildPlacedItemsPdf();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const res = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, items: defaultItems(analysis.edition, 0, 1, pageSize), signerIndex: 0, flattenEarlier: true,
       signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026'
     });
     expect(res.flattenedPages).toEqual([0, 1]);
@@ -653,6 +668,54 @@ describe('pdfEngine: Task 9, placed items and the flatten range', () => {
     const stampImg = images.find(i => i.width === 4); // the hand-built 4x4 stamp
     expect(stampImg).toBeTruthy();
     expect(stampImg.smask).toBe(true);               // its alpha channel became a soft mask
+  });
+});
+
+describe('pdfEngine: Task 9.1, Proposal Page H after Plan Page A (fictional fixture)', () => {
+  const pageSize = { width: 612, height: 792 };
+  async function build() {
+    const doc = await PDFLib.PDFDocument.create();
+    const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    const pages = Array.from({ length: 12 }, () => doc.addPage([612, 792]));
+    const form = doc.getForm();
+    pages.forEach((pg, i) => {
+      let t = `Eagle Scout Service Project Workbook Proposal Page ${'ABCDEFG'[i % 7]}`;
+      if (i === 8) t = 'Project Plan Page A Planned start date';
+      if (i === 9) t = 'Proposal Page H Council or District Approval Candidate Promise';
+      if (i === 10) t = 'Project Plan Reviews Input from Beneficiary Input from Scoutmaster';
+      if (i === 11) t = 'Project Report Page A';
+      pg.drawText(t, { x: 40, y: 740, size: 10, font });
+    });
+    form.createTextField('Proposal-Notes').addToPage(pages[3], { x: 100, y: 600, width: 200, height: 20 });
+    form.createTextField('Plan-Summary').addToPage(pages[8], { x: 100, y: 600, width: 200, height: 20 });
+    form.createTextField('Proposal-BSAName').addToPage(pages[9], { x: 368, y: 364, width: 182, height: 12 });
+    form.createTextField('Candidate’s Promise Date').addToPage(pages[9], { x: 100, y: 200, width: 80, height: 14 });
+    form.createTextField('Input from Beneficiary').addToPage(pages[10], { x: 100, y: 600, width: 200, height: 20 });
+    return new Uint8Array(await doc.save());
+  }
+
+  it('detects Page H at index 9 as approval, locks Plan page 8, signs on 9 and flattens only 9 by default', async () => {
+    const raw = await build();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    expect(analysis.approvalPageIndices).toEqual([9]);
+    expect(analysis.defaultTargetPageIndex).toBe(9);
+    expect(canPlaceOnPage(analysis, 9).ok).toBe(true);
+    expect(canPlaceOnPage(analysis, 8).ok).toBe(false);
+
+    const base = { pdfBytes: raw, analysis, signerIndex: 0, signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/11/2026' };
+    await expect(applyPlacedItemsAndFlatten(PDFLib, { ...base, items: defaultItems(analysis.edition, 0, 8, pageSize) }))
+      .rejects.toThrow(/Page 9 belongs to the Project Plan/);
+
+    const res = await applyPlacedItemsAndFlatten(PDFLib, { ...base, items: defaultItems(analysis.edition, 0, 9, pageSize) });
+    expect(res.flattenedPages).toEqual([9]);
+    expect(await widgetsOnPage(res.pdfBytes, 10)).toHaveLength(0);
+    expect(await widgetsOnPage(res.pdfBytes, 4)).toHaveLength(1);   // Scout's Proposal page stays fillable
+    expect(await widgetsOnPage(res.pdfBytes, 9)).toHaveLength(1);   // Plan page stays fillable
+
+    const withEarlier = await applyPlacedItemsAndFlatten(PDFLib, { ...base, items: defaultItems(analysis.edition, 0, 9, pageSize), flattenEarlier: true });
+    expect(withEarlier.flattenedPages).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 9]);   // never Plan Page A (index 8)
+    expect(await widgetsOnPage(withEarlier.pdfBytes, 9)).toHaveLength(1);
+    expect(await widgetsOnPage(withEarlier.pdfBytes, 4)).toHaveLength(0);
   });
 });
 

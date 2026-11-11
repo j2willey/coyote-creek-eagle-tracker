@@ -69,7 +69,8 @@ export const TEXT_FONT_MAX_PT = 16;
  * @property {number} pageNumber
  * @property {PageRole} role
  * @property {boolean} isApprovalLandmark
- * @property {boolean} forbidden
+ * @property {boolean} forbidden  true only when THIS page is identified as Project Plan / Fundraising Application / Project Report
+ * @property {boolean} afterNotOurs  not locked itself, but it comes after the first locked page (placing there needs a confirm)
  * @property {string} notOursSection
  * @property {boolean} scanCandidate  no text and no form fields, inside the Proposal section: probably a scanned page
  *
@@ -79,7 +80,7 @@ export const TEXT_FONT_MAX_PT = 16;
  * @property {number[]} approvalPageIndices
  * @property {number[]} scanCandidatePageIndices
  * @property {number} defaultTargetPageIndex  -1 when no approval page and no scanned candidate was found: nothing is preselected
- * @property {number} firstNotOursPageIndex
+ * @property {number} firstNotOursPageIndex  index of the first locked page (pages.length when none); display / confirm only
  * @property {number} proposalEndPageIndex
  * @property {number} insertBeforePageIndex
  *
@@ -275,8 +276,6 @@ const NOT_OURS_FIELDS_2026 = new Set([
   'Project Plan Eagle Scout Hours',
   'Input from Beneficiary',
   'Input from Scoutmaster',
-  'Candidate’s Promise Date',
-  "Candidate's Promise Date",
   'Certification of Completion Signature',
   'Beneficiary’s Signature',
   "Beneficiary's Signature",
@@ -284,6 +283,21 @@ const NOT_OURS_FIELDS_2026 = new Set([
   'Scoutmaster’s Final Signature',
   "Scoutmaster's Final Signature"
 ]);
+
+/**
+ * Text landmarks of Proposal Page H (the approval page): the "Proposal Page H" footer, or the "Council or District
+ * Approval" heading together with "Candidate's Promise". Handles the 2023a subset-font glyph mapping (P->3, C->&,
+ * D->', A->$). Checked BEFORE the not-ours rules: Page H has a Candidate's Promise date field and may follow Plan
+ * pages, but it is ours.
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function isProposalPageHText(text) {
+  const t = str(text);
+  if (/\b[P3]roposal\s+[P3]age\s+H\b/i.test(t)) return true;
+  // (?<![A-Za-z0-9]) instead of \b: the subset-font glyph "&" is not a word character, so \b would fail before it.
+  return /(?<![A-Za-z0-9])[C&]ouncil\s+or\s+[D']istrict\s+[A$]pproval\b/i.test(t) && /(?<![A-Za-z0-9])[C&]andidate.?s\s+[P3]romise\b/i.test(t);
+}
 
 /**
  * Detect whether a single page matches a forbidden post-Proposal section (Project Plan, Fundraising Application, or
@@ -296,6 +310,9 @@ const NOT_OURS_FIELDS_2026 = new Set([
 export function detectNotOursSection(text, fields) {
   const t = str(text);
   const fl = Array.isArray(fields) ? fields : [];
+
+  // Page H wins over every not-ours rule.
+  if (isProposalPageHText(t)) return '';
 
   // 0. If the page has explicit Proposal-only AcroForm fields, it is part of the Proposal
   for (const raw of fl) {
@@ -328,12 +345,9 @@ export function detectNotOursSection(text, fields) {
     ) {
       return 'Project Report (Certification of Completion)';
     }
-    if (
-      f === 'Input from Beneficiary' ||
-      f === 'Input from Scoutmaster' ||
-      f === 'Candidate’s Promise Date' ||
-      f === "Candidate's Promise Date"
-    ) {
+    // NOTE: a "Candidate's Promise Date" field alone does NOT identify the Plan Reviews page: the 2023a Proposal Page H
+    // has one too. Plan Reviews needs its own landmarks (these fields, or the text landmarks below).
+    if (f === 'Input from Beneficiary' || f === 'Input from Scoutmaster') {
       return 'Project Plan (Plan Reviews)';
     }
     if (NOT_OURS_FIELDS_2026.has(f)) {
@@ -385,6 +399,7 @@ export function detectNotOursSection(text, fields) {
  * @returns {boolean}
  */
 export function isProposalApprovalLandmark(text, fields) {
+  if (isProposalPageHText(text)) return true;
   if (detectNotOursSection(text, fields)) return false;
   const t = str(text);
   const fl = Array.isArray(fields) ? fields : [];
@@ -411,10 +426,10 @@ export function isProposalApprovalLandmark(text, fields) {
 /**
  * Analyze all pages of a workbook PDF to determine:
  * - `edition`: `'2026' | '2023a' | 'unknown'`
- * - `approvalPageIndices`: 0-based indices of Proposal Approval signature pages (strictly before any Not-Ours page)
+ * - `approvalPageIndices`: 0-based indices of Proposal Approval signature pages (Page H may follow Plan pages)
  * - `scanCandidatePageIndices`: pages with no text and no form fields before the first Not-Ours page (probably scans)
  * - `defaultTargetPageIndex`: the LAST approval page, else the LAST scanned candidate, else -1 (no default)
- * - `firstNotOursPageIndex`: 0-based index of the first Project Plan / Fundraising / Project Report page
+ * - `firstNotOursPageIndex`: 0-based index of the first Project Plan / Fundraising / Project Report page (display and confirm only)
  * - `proposalEndPageIndex`: 0-based index of the last Proposal page (fields on `0..proposalEndPageIndex` get flattened)
  * - `insertBeforePageIndex`: 0-based index right before the first Proposal Approval page (where supporting pages go)
  *
@@ -465,12 +480,13 @@ export function analyzeWorkbookPages(pages) {
   const scanCandidatePageIndices = [];
   /** @type {AnalyzedPage[]} */
   const analyzedPages = rawPages.map(p => {
-    const afterBoundary = p.pageIndex >= firstNotOursPageIndex;
-    const forbidden = Boolean(p.notOursSection) || afterBoundary;
+    // Locked is decided per page: only a page identified as Project Plan / Fundraising / Report is forbidden.
+    const forbidden = Boolean(p.notOursSection);
+    const afterNotOurs = !forbidden && p.pageIndex > firstNotOursPageIndex;
     const isApproval = p.isApprovalLandmark && !forbidden;
     if (isApproval) approvalPageIndices.push(p.pageIndex);
-    // A page with no text and no form fields is probably a scan (a signed Page H photographed or scanned in).
-    const scanCandidate = !forbidden && !isApproval && p.noContent;
+    // A page with no text and no form fields, before the first locked page, is probably a scan (a signed Page H).
+    const scanCandidate = !forbidden && !afterNotOurs && !isApproval && p.noContent;
     if (scanCandidate) scanCandidatePageIndices.push(p.pageIndex);
     /** @type {PageRole} */
     const role = isApproval ? 'approval' : forbidden ? 'forbidden' : 'proposal';
@@ -480,7 +496,8 @@ export function analyzeWorkbookPages(pages) {
       role,
       isApprovalLandmark: isApproval,
       forbidden,
-      notOursSection: p.notOursSection || (afterBoundary ? 'Post-Proposal section' : ''),
+      afterNotOurs,
+      notOursSection: p.notOursSection,
       scanCandidate
     };
   });
@@ -690,7 +707,7 @@ export function defaultSignPlacement(edition = 'unknown', signerIndex = 0, pageS
 // ---------------------------------------------------------------------------
 
 /** Default stamp width (1.6 in); the height follows the image's aspect ratio. */
-export const STAMP_DEFAULT_WIDTH_PT = 115.2;
+export const STAMP_DEFAULT_WIDTH_PT = 115;
 
 /** Default sizes (PDF points) of a mark dropped with a click. */
 const ITEM_DEFAULT_SIZE = /** @type {Record<ItemKind, { width: number, height: number }>} */ ({
@@ -713,6 +730,25 @@ export function defaultItemSize(kind, aspect = 0) {
     return { width: base.width, height: Math.round((base.width / a) * 10) / 10 };
   }
   return { width: base.width, height: base.height };
+}
+
+/** A placed image (signature or stamp) is at most this fraction of the page width when it is dropped. */
+export const IMAGE_MAX_PAGE_FRACTION = 0.4;
+
+/**
+ * Cap an image mark's width at 40% of the page width (aspect kept); text marks are returned unchanged.
+ * @param {ItemKind} kind
+ * @param {{ width: number, height: number }} size
+ * @param {{ width: number, height: number }} pageSize
+ * @returns {{ width: number, height: number }}
+ */
+export function capImageSize(kind, size, pageSize) {
+  if (kind !== 'signature' && kind !== 'stamp') return size;
+  const pw = Math.max(1, Number(pageSize && pageSize.width) || 612);
+  const max = pw * IMAGE_MAX_PAGE_FRACTION;
+  if (size.width <= max) return size;
+  const f = max / size.width;
+  return { width: Math.round(max * 10) / 10, height: Math.round(size.height * f * 10) / 10 };
 }
 
 /**
@@ -742,7 +778,7 @@ export function clampItemToPage(item, pageSize) {
  * @returns {PlacedItem}
  */
 export function newItemAtPoint(kind, pageIndex, point, pageSize, opts = {}) {
-  const size = defaultItemSize(kind, opts.aspect);
+  const size = capImageSize(kind, defaultItemSize(kind, opts.aspect), pageSize);
   /** @type {PlacedItem} */
   const item = {
     id: opts.id || `${kind}-${pageIndex}-${Math.round(point.x)}-${Math.round(point.y)}`,
@@ -817,26 +853,34 @@ export function defaultItems(edition, signerIndex, pageIndex, pageSize) {
 }
 
 /**
- * Hard guardrail for ONE page: only pages before the first Not-Ours page (Project Plan, Fundraising Application,
- * Project Report) may receive marks. Any other Proposal page is allowed: the member decides where the marks go.
+ * Hard guardrail for ONE page: a page is locked only if IT is identified as Project Plan, Fundraising Application or
+ * Project Report. Any other page may take marks; one that comes after a locked page (and is not a Proposal Approval
+ * page) carries a `confirm` text the UI asks about once.
  * @param {WorkbookAnalysis} analysis
  * @param {number} pageIndex
- * @returns {{ ok: boolean, reason: string }}
+ * @returns {{ ok: boolean, reason: string, confirm: string }}
  */
 export function canPlaceOnPage(analysis, pageIndex) {
   if (!analysis || !Array.isArray(analysis.pages)) {
-    return { ok: false, reason: 'Workbook analysis is unavailable.' };
+    return { ok: false, reason: 'Workbook analysis is unavailable.', confirm: '' };
   }
   const pg = analysis.pages[pageIndex];
-  if (!pg) return { ok: false, reason: 'Page is out of range.' };
-  if (pg.forbidden || pageIndex >= analysis.firstNotOursPageIndex) {
-    const sec = pg.notOursSection || 'post-Proposal section';
+  if (!pg) return { ok: false, reason: 'Page is out of range.', confirm: '' };
+  if (pg.forbidden) {
+    const sec = pg.notOursSection || 'Project Plan / Report';
     return {
       ok: false,
-      reason: `Page ${pg.pageNumber} belongs to the ${sec} and cannot be signed or marked during Proposal Review.`
+      reason: `Page ${pg.pageNumber} belongs to the ${sec} and cannot be signed or marked during Proposal Review.`,
+      confirm: ''
     };
   }
-  return { ok: true, reason: '' };
+  let confirm = '';
+  if (pg.afterNotOurs && pg.role !== 'approval') {
+    const first = analysis.pages[analysis.firstNotOursPageIndex];
+    const sec = String((first && first.notOursSection) || 'Project Plan').replace(/\s*\(.*\)\s*$/, '');
+    confirm = `This page comes after the ${sec}. Place here anyway?`;
+  }
+  return { ok: true, reason: '', confirm };
 }
 
 /**
@@ -859,21 +903,24 @@ export function approvalBanner(analysis) {
 }
 
 /**
- * Pages whose form fields get flattened: the Proposal pages (0..proposalEndPageIndex) plus every page that received
- * a mark. Never a Not-Ours page (Project Plan, Fundraising Application, Project Report), whatever the marks say.
+ * Pages whose form fields get flattened: by default ONLY the pages that received a mark (the signature page). With
+ * `includeEarlier`, also the Proposal pages before the first marked page. Never a page identified as Project Plan /
+ * Fundraising Application / Project Report, whatever the marks say.
  * @param {WorkbookAnalysis} analysis
  * @param {PlacedItem[]} items
+ * @param {{ includeEarlier?: boolean }} [opts]
  * @returns {number[]} sorted, unique, 0-based
  */
-export function flattenPageIndices(analysis, items) {
+export function flattenPageIndices(analysis, items, opts = {}) {
   const out = new Set();
   const pages = (analysis && analysis.pages) || [];
-  const end = Math.max(-1, Number(analysis && analysis.proposalEndPageIndex));
-  for (let i = 0; i <= end && i < pages.length; i++) out.add(i);
-  for (const it of Array.isArray(items) ? items : []) out.add(it.pageIndex);
-  return [...out]
-    .filter(i => pages[i] && !pages[i].forbidden && i < analysis.firstNotOursPageIndex)
-    .sort((a, b) => a - b);
+  const marked = (Array.isArray(items) ? items : []).map(it => it.pageIndex);
+  for (const i of marked) out.add(i);
+  if (opts.includeEarlier && marked.length) {
+    const first = Math.min(...marked);
+    for (let i = 0; i < first && i < pages.length; i++) out.add(i);
+  }
+  return [...out].filter(i => pages[i] && !pages[i].forbidden).sort((a, b) => a - b);
 }
 
 /**
