@@ -31,7 +31,9 @@ import {
   newItemAtPoint,
   defaultItem,
   fitTextFontSize,
-  resizeBoxInPage
+  resizeBoxInPage,
+  hasTransparentPixel,
+  STAMP_OPAQUE_WARNING
 } from './pdfPlan.js';
 
 import { CDN_SCRIPTS } from './cdnIntegrity.js';
@@ -68,6 +70,17 @@ import {
  * @property {number} [signerIndex]
  * @property {string[]} [existingSignedBy]
  * @property {number} [maxBytes]
+ * @property {StampApi} [stampApi]  stamps from the Drive folder (Task 9c); absent or `enabled: false` = no Stamp button
+ *
+ * @typedef {Object} StampApi
+ * @property {() => Promise<{ enabled: boolean, stamps: Array<{ id: string, name: string, bytes: number }>, skipped?: Array<{ name: string, bytes: number }> }>} list
+ * @property {(id: string) => Promise<{ name: string, mime: string, data: string }>} fetch
+ *
+ * @typedef {Object} StampData
+ * @property {Uint8Array} bytes
+ * @property {string} dataUrl
+ * @property {number} aspect  width / height
+ * @property {boolean} opaque  true when no pixel is transparent (a white-background stamp)
  *
  * @typedef {Object} WorkshopResult
  * @property {File} file
@@ -86,6 +99,9 @@ export const GOOGLE_SCRIPT_FONTS_URL =
   '&display=swap';
 
 const SIG_STORAGE_KEY = 'ccacSignature_v1';
+const STAMP_STORAGE_KEY = 'ccacStampId_v1';   // the last stamp chosen: its Drive file id only
+/** Stamp images fetched this page session (id -> data), so reopening the Workshop does not fetch them again. */
+const stampDataCache = /** @type {Map<string, StampData>} */ (new Map());
 const VALID_FONT_KEYS = new Set(SCRIPT_FONTS.map(f => f.key));
 
 /** @type {Promise<{ PDFLib: any, pdfjsLib: any }> | null} */
@@ -352,6 +368,38 @@ function dataUrlToBytes(dataUrl) {
 }
 
 /**
+ * Decode a fetched stamp (base64 PNG) and measure its aspect ratio and whether it has any transparency.
+ * @param {string} base64
+ * @returns {Promise<StampData>}
+ */
+function decodeStamp(base64) {
+  const dataUrl = `data:image/png;base64,${base64}`;
+  const bytes = dataUrlToBytes(dataUrl);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = Math.max(1, img.naturalWidth);
+      const h = Math.max(1, img.naturalHeight);
+      let opaque = false;
+      try {
+        const scale = Math.min(1, 256 / Math.max(w, h));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          opaque = !hasTransparentPixel(ctx.getImageData(0, 0, canvas.width, canvas.height).data);
+        }
+      } catch { /* cannot read pixels: do not warn */ }
+      resolve({ bytes, dataUrl, aspect: w / h, opaque });
+    };
+    img.onerror = () => reject(new Error('That stamp is not a readable PNG image.'));
+    img.src = dataUrl;
+  });
+}
+
+/**
  * Format `YYYY-MM-DD` as `MM/DD/YYYY` for the workbook's Date box if it matches `YYYY-MM-DD`.
  * @param {string} ymd
  * @returns {string}
@@ -393,8 +441,11 @@ export async function openSignWorkshop(opts) {
   let items = [];
   let nextItemId = 1;
   const newItemId = () => `m${nextItemId++}`;
-  /** @type {{ kind: ItemKind } | null} */
+  /** @type {{ kind: ItemKind, stampId?: string } | null} */
   let armed = null;
+  const stampApi = opts.stampApi || null;
+  /** @type {Array<{ id: string, name: string, bytes: number }>} */
+  let stampList = [];
 
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
@@ -444,6 +495,11 @@ export async function openSignWorkshop(opts) {
             <button type="button" class="ws-place-btn" data-kind="signature">✍ Signature</button>
             <button type="button" class="ws-place-btn" data-kind="name">Printed name</button>
             <button type="button" class="ws-place-btn" data-kind="date">Date</button>
+            <span class="ws-split" id="wsStampWrap" hidden>
+              <button type="button" class="ws-place-btn" id="wsStampBtn" data-kind="stamp" title="Place the last stamp you used (or pick one)">🔖 Stamp</button><button type="button" class="ws-place-btn ws-split-more" id="wsStampMore" aria-haspopup="true" aria-label="Choose a stamp">▾</button>
+            </span>
+            <span class="hint" id="wsStampNote"></span>
+            <div class="ws-stamp-menu" id="wsStampMenu" hidden></div>
           </div>
           <div class="ws-pagebar" id="wsPageBar"></div>
           <div class="ws-canvas-wrap" id="wsCanvasWrap">
@@ -559,6 +615,11 @@ export async function openSignWorkshop(opts) {
     const pageBar = q('#wsPageBar');
     const banner = q('#wsBanner');
     const toolbar = q('#wsToolbar');
+    const stampWrap = q('#wsStampWrap');
+    const stampBtn = /** @type {HTMLButtonElement} */ (q('#wsStampBtn'));
+    const stampMore = /** @type {HTMLButtonElement} */ (q('#wsStampMore'));
+    const stampMenu = q('#wsStampMenu');
+    const stampNote = q('#wsStampNote');
     const docWrap = q('#wsCanvasWrap');
     const docEl = q('#wsDoc');
     const flattenSummaryEl = q('#wsFlattenSummary');
@@ -630,6 +691,10 @@ export async function openSignWorkshop(opts) {
     /** @type {IntersectionObserver | null} */
     let currentObserver = null;
     const onKeyDown = (/** @type {KeyboardEvent} */ ev) => {
+      if (ev.key === 'Escape' && !stampMenu.hidden) {
+        stampMenu.hidden = true;
+        return;
+      }
       if (ev.key === 'Escape' && armed) {
         ev.stopPropagation();
         disarm();
@@ -641,6 +706,7 @@ export async function openSignWorkshop(opts) {
       if (closed) return;
       closed = true;
       document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('click', onDocClick);
       if (renderObserver) renderObserver.disconnect();
       if (currentObserver) currentObserver.disconnect();
       backdrop.remove();
@@ -737,8 +803,91 @@ export async function openSignWorkshop(opts) {
       arm(kind);
     }
     placeBtns.forEach(b => {
-      b.onclick = () => onPlaceButton(/** @type {ItemKind} */ (b.dataset.kind));
+      if (b.dataset.kind && b.dataset.kind !== 'stamp') b.onclick = () => onPlaceButton(/** @type {ItemKind} */ (b.dataset.kind));
     });
+
+    // Stamps (Task 9c): a Drive folder of PNGs; the button places the last one used, the arrow lists them
+    const stampLabel = (/** @type {string} */ name) => String(name || '').replace(/\.png$/i, '');
+    async function loadStamp(/** @type {string} */ id) {
+      let data = stampDataCache.get(id);
+      if (!data) {
+        if (!stampApi) throw new Error('Stamps are not available.');
+        const r = await stampApi.fetch(id);
+        data = await decodeStamp(r.data);
+        stampDataCache.set(id, data);
+      }
+      return data;
+    }
+    function rememberedStampId() {
+      try { return localStorage.getItem(STAMP_STORAGE_KEY) || ''; } catch { return ''; }
+    }
+    async function armStamp(/** @type {string} */ id) {
+      stampMenu.hidden = true;
+      try { localStorage.setItem(STAMP_STORAGE_KEY, id); } catch { /* ignore */ }
+      const name = stampLabel((stampList.find(x => x.id === id) || { name: 'stamp' }).name);
+      setStatus(`Loading ${name}…`, 'hint');
+      try {
+        const data = await loadStamp(id);
+        armed = { kind: 'stamp', stampId: id };
+        refreshToolbar();
+        setStatus(
+          (data.opaque ? `${name}: ${STAMP_OPAQUE_WARNING} ` : '') + `Click on the page where the stamp goes (Esc cancels).`,
+          data.opaque ? 'hint err' : 'hint'
+        );
+      } catch (e) {
+        setStatus(e instanceof Error ? e.message : String(e), 'hint err');
+      }
+    }
+    async function openStampMenu() {
+      if (!stampMenu.hidden) { stampMenu.hidden = true; return; }
+      stampMenu.replaceChildren();
+      const last = rememberedStampId();
+      for (const st of stampList) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'ws-stamp-row' + (st.id === last ? ' last' : '');
+        const thumb = document.createElement('img');
+        thumb.alt = '';
+        const nameEl = document.createElement('span');
+        nameEl.textContent = stampLabel(st.name);
+        row.append(thumb, nameEl);
+        row.onclick = () => void armStamp(st.id);
+        stampMenu.appendChild(row);
+        const cached = stampDataCache.get(st.id);
+        if (cached) thumb.src = cached.dataUrl;
+        else void loadStamp(st.id).then(d => { thumb.src = d.dataUrl; }).catch(() => { nameEl.textContent += ' (could not load)'; });
+      }
+      stampMenu.hidden = false;
+    }
+    stampBtn.onclick = () => {
+      if (armed && armed.kind === 'stamp') { disarm(); updateValidationState(); return; }
+      const last = rememberedStampId();
+      if (last && stampList.some(x => x.id === last)) void armStamp(last); else void openStampMenu();
+    };
+    stampMore.onclick = () => void openStampMenu();
+    const onDocClick = (/** @type {MouseEvent} */ ev) => {
+      if (!stampMenu.hidden && !stampWrap.contains(/** @type {Node} */ (ev.target)) && !stampMenu.contains(/** @type {Node} */ (ev.target))) stampMenu.hidden = true;
+    };
+    document.addEventListener('click', onDocClick);
+    async function initStamps() {
+      if (!stampApi) return;
+      try {
+        const r = await stampApi.list();
+        if (!r || !r.enabled) return;
+        stampList = r.stamps || [];
+        stampWrap.hidden = false;
+        if (!stampList.length) {
+          stampNote.textContent = 'No stamp PNGs in the stamps folder yet.';
+          stampBtn.disabled = true;
+          stampMore.disabled = true;
+        } else if (r.skipped && r.skipped.length) {
+          stampNote.textContent = `${r.skipped.length} stamp file(s) over 2 MB were skipped.`;
+        }
+      } catch (e) {
+        stampNote.textContent = `Stamps unavailable: ${e instanceof Error ? e.message : String(e)}`;
+        stampNote.className = 'hint err';
+      }
+    }
     clearMarksBtn.onclick = () => {
       const pagesTouched = [...new Set(items.map(it => it.pageIndex))];
       items = [];
@@ -953,7 +1102,8 @@ export async function openSignWorkshop(opts) {
         x: ((ev.clientX - r.left) / Math.max(1, r.width)) * ps.width,
         y: ps.height - ((ev.clientY - r.top) / Math.max(1, r.height)) * ps.height
       };
-      items.push(newItemAtPoint(armed.kind, i, point, ps, { id: newItemId() }));
+      const stampData = armed.stampId ? stampDataCache.get(armed.stampId) : undefined;
+      items.push(newItemAtPoint(armed.kind, i, point, ps, { id: newItemId(), stampId: armed.stampId, aspect: stampData ? stampData.aspect : 0 }));
       disarm();
       itemsChanged([i]);
     }
@@ -999,6 +1149,17 @@ export async function openSignWorkshop(opts) {
               contentSpan.appendChild(img);
             } else {
               contentSpan.textContent = 'Signature';
+            }
+          } else if (box.kind === 'stamp') {
+            contentSpan.replaceChildren();
+            const sd = box.stampId ? stampDataCache.get(box.stampId) : undefined;
+            if (sd) {
+              const img = document.createElement('img');
+              img.src = sd.dataUrl;
+              img.alt = 'Stamp';
+              contentSpan.appendChild(img);
+            } else {
+              contentSpan.textContent = 'Stamp';
             }
           } else if (box.kind === 'name' || box.kind === 'date') {
             const txt = box.kind === 'date'
@@ -1166,10 +1327,15 @@ export async function openSignWorkshop(opts) {
       applyBtn.disabled = false;
       if (armed) return;
       const pagesMarked = [...new Set(items.map(it => it.pageIndex))].sort((a, b) => a - b);
+      const warnings = [...check.warnings];
+      const opaqueNames = [...new Set(items
+        .filter(it => it.kind === 'stamp' && it.stampId && (stampDataCache.get(it.stampId) || { opaque: false }).opaque)
+        .map(it => stampLabel((stampList.find(x => x.id === it.stampId) || { name: 'A stamp' }).name)))];
+      for (const n of opaqueNames) warnings.push(`${n}: ${STAMP_OPAQUE_WARNING}`);
       setStatus(
         `Ready: ${items.length} mark${items.length === 1 ? '' : 's'} on page${pagesMarked.length === 1 ? '' : 's'} ${describePageRanges(pagesMarked)}.` +
-          (check.warnings.length ? ' ' + check.warnings.join(' ') : ''),
-        check.warnings.length ? 'hint' : 'hint ok'
+          (warnings.length ? ' ' + warnings.join(' ') : ''),
+        warnings.length ? 'hint' : 'hint ok'
       );
     }
 
@@ -1196,6 +1362,11 @@ export async function openSignWorkshop(opts) {
         }
 
         const sigBytes = dataUrlToBytes(savedSig.pngDataUrl);
+        /** @type {Record<string, Uint8Array>} */
+        const stampPngs = {};
+        for (const it of items) {
+          if (it.kind === 'stamp' && it.stampId && !stampPngs[it.stampId]) stampPngs[it.stampId] = (await loadStamp(it.stampId)).bytes;
+        }
         const res = await applyPlacedItemsAndFlatten(PDFLib, {
           pdfBytes: opts.pdfBytes,
           analysis,
@@ -1205,7 +1376,8 @@ export async function openSignWorkshop(opts) {
           printedName: printedNameInput.value.trim(),
           dateStr: dateStrInput.value.trim(),
           signatureScale,
-          textFontSize
+          textFontSize,
+          stampPngs
         });
 
         if (res.pdfBytes.byteLength > maxBytes) {
@@ -1230,6 +1402,7 @@ export async function openSignWorkshop(opts) {
     // Initialize UI
     renderPageBar();
     refreshToolbar();
+    void initStamps();
     if (savedSig.mode === 'upload' && savedSig.pngDataUrl) {
       uploadPreviewImg.src = savedSig.pngDataUrl;
     }

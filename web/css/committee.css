@@ -303,6 +303,15 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .ws-place-btn { font-size: .88rem; padding: .25rem .7rem; border-radius: 6px; border: 1px solid #1e4b8f; background: var(--bg); color: #1e4b8f; cursor: pointer; font-weight: 600; }
 .ws-place-btn.active { background: #1e4b8f; color: #fff; }
 .ws-banner { margin: 0; }
+.ws-toolbar { position: relative; }
+.ws-split { display: inline-flex; }
+.ws-split .ws-place-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ws-split .ws-split-more { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-width: 0; padding-left: .45rem; padding-right: .45rem; }
+.ws-stamp-menu { position: absolute; left: 0; top: 100%; z-index: 20; margin-top: .2rem; min-width: 14rem; max-height: 16rem; overflow: auto; background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); padding: .25rem; }
+.ws-stamp-row { display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left; padding: .25rem .4rem; border: 0; border-radius: 6px; background: transparent; color: var(--fg); cursor: pointer; font-size: .86rem; }
+.ws-stamp-row:hover { background: color-mix(in srgb, var(--fg) 8%, var(--card)); }
+.ws-stamp-row.last { font-weight: 700; }
+.ws-stamp-row img { width: 3.2rem; height: 2.2rem; object-fit: contain; background: repeating-conic-gradient(#ddd 0 25%, #fff 0 50%) 0 0 / 10px 10px; border: 1px solid var(--line); border-radius: 4px; flex: none; }
 .ws-item-x { position: absolute; right: -9px; top: -9px; width: 17px; height: 17px; padding: 0; border-radius: 50%; border: 1.5px solid #fff; background: #b3261e; color: #fff; font-size: .62rem; line-height: 1; cursor: pointer; pointer-events: auto; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
 .ws-place-box { position: absolute; pointer-events: auto; cursor: grab; border: 1.5px dashed #1e4b8f; background: rgba(30, 75, 143, .10); color: #0f296b; font-size: .72rem; font-weight: 600; display: flex; align-items: center; justify-content: flex-start; padding: 0 3px; border-radius: 3px; overflow: visible; white-space: nowrap; touch-action: none; }
 .ws-place-box:active { cursor: grabbing; background: rgba(30, 75, 143, .20); }

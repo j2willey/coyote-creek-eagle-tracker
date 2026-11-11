@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.63.0';
+var API_VERSION = '0.64.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -73,6 +73,9 @@ var ACTIONS_ = {
   committeeUploadFinish: function (req) { return actionCommitteeUploadFinish_(req); },
   scoutReviewFiles: function (req) { return actionScoutReviewFiles_(req); },
   fetchScoutFile: function (req) { return actionFetchScoutFile_(req); },
+  // Sign Workshop stamps (stampActions.js)
+  stampList: function (req) { return actionStampList_(req); },
+  stampFetch: function (req) { return actionStampFetch_(req); },
   // Dashboard row actions (rowActions.js)
   rowAction: function (req) { return actionRowAction_(req); },
   uploadRowFile: function (req) { return actionUploadRowFile_(req); },

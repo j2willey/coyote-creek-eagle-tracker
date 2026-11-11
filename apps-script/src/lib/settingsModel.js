@@ -30,6 +30,7 @@ var SettingsModel = (function () {
     intakeConfirmDays: 7,         // confirmation link lifetime
     intakePurgeDays: 14,          // unconfirmed submissions purged after this
     maxUploadMB: 20,
+    stampsFolderId: '',           // Drive folder holding the Sign Workshop's stamp PNGs (<= 2 MB each); blank = no Stamp button
     calendarId: 'primary',        // invites are created on the deploying account's calendar (M5)
     // Booking cutoffs (hours before the slot; Scouts' online booking only, committee "Book a slot" ignores them):
     bookingLeadHours: 48,         // Scouts can't book a Pre-Review Call sooner than this

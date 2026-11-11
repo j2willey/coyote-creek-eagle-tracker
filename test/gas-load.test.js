@@ -24,7 +24,7 @@ describe('Apps Script bundle', () => {
       'menuPromoteQueueRow', 'actionMyRecord_', 'actionStartUpdate_', 'actionUploadUpdateFile_', 'actionFinishUpdate_',
       'attachFiles_', 'storeUpload_', 'attachQueueToRecord_',
       'actionSlots_', 'actionBook_', 'actionCancelBooking_', 'bookSlot_', 'cancelBooking_', 'syncInvites_', 'syncInvitesHourly', 'menuSyncInvites', 'upcomingBooking_', 'onScheduleEdit', 'eborMail_', 'actionUnitEbors_', 'actionSaveBoard_', 'ensureSectionRows_', 'ensureSettingsSections_', 'seedUnitInfo_', 'actionSaveCc_', 'menuIntakeOk', 'menuResendBookingLink', 'menuBookOnBehalf', 'menuCancelBooking', 'seedCommittee_', 'menuKeySlots',
-      'onTrackingEdit', 'onTrackingChange', 'menuInstallTriggers', 'postNote_', 'menuStartLogs', 'logFor_', 'refreshActionDropdowns_', 'menuFolderReport', 'menuFolderApply', 'folderForRecord_', 'protectHidden_', 'ensureHelpTab_', 'menuMarkQueueSpam', 'menuPurgeIntake', 'ensureIntakeFolders_', 'digestHourly', 'runDigest_', 'recordActivity_', 'menuSendDigestNow', 'digestStatus_', 'ensureSettingKeys_', 'ensureParentEmailColumn_', 'onlineType_', 'notOnlineMsg_', 'councilAccountOk_', 'handleQueueAction_', 'handleResendLink_', 'queueActionDropdown_', 'promoteQueueChecked_', 'markQueueSpam_', 'handleScheduleNameEdit_', 'syncSectionHeaders_', 'menuMakeMockFolders', 'actionCommitteeSchedule_', 'actionSaveSlot_', 'actionDeleteSlot_', 'actionSaveReps_', 'actionCancelSlotBooking_', 'actionSaveSlots_', 'actionOpenTimesChoices_', 'actionOpenTimesDraft_', 'insertSlotRow_', 'syncBookedRow_', 'menuAnonymizeStaging', 'anonymizeStaging_', 'unlinkColumns_', 'mailFromTemplate_', 'menuTemplatesDoc', 'templatesStatus_', 'ensureTemplateDoc_', 'queueOutbox_', 'actionOutboxList_', 'actionOutboxSend_', 'actionOutboxSentByMe_', 'actionOutboxDiscard_', 'menuScheduleCheck', 'scheduleCheck_', 'actionOutboxAttachment_', 'actionCommitteeHome_', 'actionReviewChoices_', 'actionReviewStart_', 'actionUploadReviewFile_', 'actionReviewFinish_', 'queueBuiltIn_', 'raisePending_', 'clearPending_', 'pendingWaiting_', 'ensurePendingFormat_', 'menuFlagPending', 'handleChecked_', 'boardRecords_', 'actionRowAction_', 'applyOnSent_', 'stageColumns_', 'actionScoutDetail_', 'actionScoutSave_', 'actionScoutMove_', 'detailFields_', 'actionUploadRowFile_', 'actionRowFinish_', 'rowExecute_', 'placeFolder_', 'placeFolderQuietly_', 'menuPlaceFolders', 'paintCell_', 'lastEborSlot_', 'menuNumberTemplateTabs', 'menuTemplatesCatalog', 'rebuildTemplateCatalog_', 'ensureCatalogTab_', 'actionOutboxSchedule_', 'actionOutboxUnschedule_', 'outboxSendDue_', 'runReminders_', 'draftEborReminder_', 'digestHourly', 'actionChangeBooking_', 'saveRequest_', 'unitScouts_', 'actionUnitCalendar_', 'actionAdminData_', 'actionAdminIntake_', 'actionAdminArchive_', 'actionAdminRequestDone_', 'actionHostRequest_', 'openUnitRequests_', 'runNudges_', 'digestAwaiting_', 'healthCheck_', 'stageDays_', 'sortEborBooked_', 'menuSortEborBooked', 'actionTemplateList_', 'actionTemplatePreview_', 'actionStats_', 'statsRecords_', 'addStatsYear_', 'seedStatsHistory_', 'femaleColumn_', 'actionSaveUnitBoard_', 'sortSettingsKeys_', 'actionOutboxRestore_', 'actionOutboxCopy_', 'actionEmailChoices_', 'actionEmailDraft_', 'buildEmail_', 'nextSlot_', 'statusOrBookingEmail_', 'draftPleaseBook_', 'draftBoardMissing_', 'sendBriefing_', 'draftOne_', 'actionEmailBulkList_', 'actionEmailBulkDraft_', 'actionUnitDirectory_', 'actionUnitContactsGet_', 'actionUnitContactSave_', 'actionUnitContactDelete_', 'unitAccess_', 'sortUnitContacts_', 'actionBroadcastPreview_', 'actionBroadcastSend_', 'actionShadowList_', 'actionShadowInvite_', 'actionScoutLog_', 'actionScoutLogAdd_', 'actionScoutLogEdit_', 'existingLog_', 'runCouncilApps_', 'fileCouncilApp_', 'menuCouncilApps', 'councilRow_', 'councilAppsToCheck_', 'ensureCouncilTab_', 'actionSignStart_', 'signFinish_', 'signCheck_', 'sendSignRequest_', 'ensureSigningColumn_', 'currentSignedFile_', 'scoutStatusOf_', 'activeMembers_', 'stagingDrive_', 'fetchCouncilLinks_', 'menuCouncilFetchLinks', 'councilFetchLinks_', 'actionCommitteeUploadStart_', 'actionCommitteeUploadFile_', 'actionCommitteeUploadFinish_', 'insideStaging_', 'stagingFolderFor_', 'actionScoutReviewFiles_', 'actionFetchScoutFile_', 'actionClosing_', 'closeSuggestions_', 'closedRecords_', 'closedArchiveReport_', 'actionAdminClosedArchive_', 'eagleArchiveTabName_', 'eagleArchiveHead_', 'createEagleArchiveTab_', 'eagleArchivePlan_', 'eagleArchiveWrite_']) {
+      'onTrackingEdit', 'onTrackingChange', 'menuInstallTriggers', 'postNote_', 'menuStartLogs', 'logFor_', 'refreshActionDropdowns_', 'menuFolderReport', 'menuFolderApply', 'folderForRecord_', 'protectHidden_', 'ensureHelpTab_', 'menuMarkQueueSpam', 'menuPurgeIntake', 'ensureIntakeFolders_', 'digestHourly', 'runDigest_', 'recordActivity_', 'menuSendDigestNow', 'digestStatus_', 'ensureSettingKeys_', 'ensureParentEmailColumn_', 'onlineType_', 'notOnlineMsg_', 'councilAccountOk_', 'handleQueueAction_', 'handleResendLink_', 'queueActionDropdown_', 'promoteQueueChecked_', 'markQueueSpam_', 'handleScheduleNameEdit_', 'syncSectionHeaders_', 'menuMakeMockFolders', 'actionCommitteeSchedule_', 'actionSaveSlot_', 'actionDeleteSlot_', 'actionSaveReps_', 'actionCancelSlotBooking_', 'actionSaveSlots_', 'actionOpenTimesChoices_', 'actionOpenTimesDraft_', 'insertSlotRow_', 'syncBookedRow_', 'menuAnonymizeStaging', 'anonymizeStaging_', 'unlinkColumns_', 'mailFromTemplate_', 'menuTemplatesDoc', 'templatesStatus_', 'ensureTemplateDoc_', 'queueOutbox_', 'actionOutboxList_', 'actionOutboxSend_', 'actionOutboxSentByMe_', 'actionOutboxDiscard_', 'menuScheduleCheck', 'scheduleCheck_', 'actionOutboxAttachment_', 'actionCommitteeHome_', 'actionReviewChoices_', 'actionReviewStart_', 'actionUploadReviewFile_', 'actionReviewFinish_', 'queueBuiltIn_', 'raisePending_', 'clearPending_', 'pendingWaiting_', 'ensurePendingFormat_', 'menuFlagPending', 'handleChecked_', 'boardRecords_', 'actionRowAction_', 'applyOnSent_', 'stageColumns_', 'actionScoutDetail_', 'actionScoutSave_', 'actionScoutMove_', 'detailFields_', 'actionUploadRowFile_', 'actionRowFinish_', 'rowExecute_', 'placeFolder_', 'placeFolderQuietly_', 'menuPlaceFolders', 'paintCell_', 'lastEborSlot_', 'menuNumberTemplateTabs', 'menuTemplatesCatalog', 'rebuildTemplateCatalog_', 'ensureCatalogTab_', 'actionOutboxSchedule_', 'actionOutboxUnschedule_', 'outboxSendDue_', 'runReminders_', 'draftEborReminder_', 'digestHourly', 'actionChangeBooking_', 'saveRequest_', 'unitScouts_', 'actionUnitCalendar_', 'actionAdminData_', 'actionAdminIntake_', 'actionAdminArchive_', 'actionAdminRequestDone_', 'actionHostRequest_', 'openUnitRequests_', 'runNudges_', 'digestAwaiting_', 'healthCheck_', 'stageDays_', 'sortEborBooked_', 'menuSortEborBooked', 'actionTemplateList_', 'actionTemplatePreview_', 'actionStats_', 'statsRecords_', 'addStatsYear_', 'seedStatsHistory_', 'femaleColumn_', 'actionSaveUnitBoard_', 'sortSettingsKeys_', 'actionOutboxRestore_', 'actionOutboxCopy_', 'actionEmailChoices_', 'actionEmailDraft_', 'buildEmail_', 'nextSlot_', 'statusOrBookingEmail_', 'draftPleaseBook_', 'draftBoardMissing_', 'sendBriefing_', 'draftOne_', 'actionEmailBulkList_', 'actionEmailBulkDraft_', 'actionUnitDirectory_', 'actionUnitContactsGet_', 'actionUnitContactSave_', 'actionUnitContactDelete_', 'unitAccess_', 'sortUnitContacts_', 'actionBroadcastPreview_', 'actionBroadcastSend_', 'actionShadowList_', 'actionShadowInvite_', 'actionScoutLog_', 'actionScoutLogAdd_', 'actionScoutLogEdit_', 'existingLog_', 'runCouncilApps_', 'fileCouncilApp_', 'menuCouncilApps', 'councilRow_', 'councilAppsToCheck_', 'ensureCouncilTab_', 'actionSignStart_', 'signFinish_', 'signCheck_', 'sendSignRequest_', 'ensureSigningColumn_', 'currentSignedFile_', 'scoutStatusOf_', 'activeMembers_', 'stagingDrive_', 'fetchCouncilLinks_', 'menuCouncilFetchLinks', 'councilFetchLinks_', 'actionCommitteeUploadStart_', 'actionCommitteeUploadFile_', 'actionCommitteeUploadFinish_', 'insideStaging_', 'stagingFolderFor_', 'actionScoutReviewFiles_', 'actionFetchScoutFile_', 'actionStampList_', 'actionStampFetch_', 'actionClosing_', 'closeSuggestions_', 'closedRecords_', 'closedArchiveReport_', 'actionAdminClosedArchive_', 'eagleArchiveTabName_', 'eagleArchiveHead_', 'createEagleArchiveTab_', 'eagleArchivePlan_', 'eagleArchiveWrite_']) {
       expect(typeof ctx[fn], fn).toBe('function');
     }
   });
@@ -125,5 +125,56 @@ describe('Apps Script bundle', () => {
     const outsideFetch = vm.runInContext("dispatch_({action:'fetchScoutFile', session:'s', recordId:'R-1', fileId:'OUTSIDE-ID'})", ctx);
     expect(outsideFetch.ok).toBe(false);
     expect(outsideFetch.error).toMatch(/not in Pat Q's folder/);
+  });
+
+  it('stampList / stampFetch: blank folder = no stamps; only listed PNGs are served; bad bytes are refused', () => {
+    const png = [-119, 80, 78, 71, 13, 10, 26, 10, 1, 2];
+    const mk = (id, name, mime, size, bytes) => ({
+      getId: () => id, getName: () => name, getMimeType: () => mime, getSize: () => size,
+      getLastUpdated: () => new Date(2026, 10, 9),
+      getBlob: () => ({ getContentType: () => mime, getBytes: () => bytes })
+    });
+    const files = [
+      mk('S-OK', 'Approved.png', 'image/png', 10, png),
+      mk('S-BAD', 'Fake.png', 'image/png', 10, [37, 80, 68, 70, 45, 49, 46, 52]),
+      mk('S-BIG', 'Big.png', 'image/png', 5 * 1024 * 1024, png),
+      mk('S-PDF', 'notes.pdf', 'application/pdf', 10, [37, 80, 68, 70])
+    ];
+    const folder = { getId: () => 'STAMPS', getFiles: () => { let i = 0; return { hasNext: () => i < files.length, next: () => files[i++] }; } };
+    const cacheStore = {};
+    ctx.CacheService = { getScriptCache: () => ({ get: k => cacheStore[k] || null, put: (k, v) => { cacheStore[k] = v; }, remove: k => { delete cacheStore[k]; } }) };
+    ctx.committeeMe_ = () => ({ email: 'ab@example.org', me: { name: 'Pat Reviewer', initials: 'AB' }, committee: [] });
+    ctx.Utilities = { base64Encode: (b) => Buffer.from(b.map(x => x & 255)).toString('base64') };
+    ctx.DriveApp = {
+      getFolderById: id => { if (id !== 'STAMPS') throw new Error('nope'); return folder; },
+      getFileById: id => files.find(f => f.getId() === id)
+    };
+
+    ctx.getSettings_ = () => ({ stampsFolderId: '' });
+    const off = vm.runInContext("dispatch_({action:'stampList', session:'s'})", ctx);
+    expect(off).toMatchObject({ ok: true, enabled: false, stamps: [] });
+
+    ctx.getSettings_ = () => ({ stampsFolderId: 'MISSING' });
+    const bad = vm.runInContext("dispatch_({action:'stampList', session:'s'})", ctx);
+    expect(bad.ok).toBe(false);
+    expect(bad.error).toMatch(/stamps folder could not be opened/);
+
+    ctx.getSettings_ = () => ({ stampsFolderId: 'STAMPS' });
+    const list = vm.runInContext("dispatch_({action:'stampList', session:'s'})", ctx);
+    expect(list.ok).toBe(true);
+    expect(list.enabled).toBe(true);
+    expect(list.stamps.map(s => s.id)).toEqual(['S-OK', 'S-BAD']);   // PNG-named files up to 2 MB, by name (Approved, Fake)
+    expect(list.skipped.map(s => s.name)).toEqual(['Big.png']);
+
+    const ok = vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-OK'})", ctx);
+    expect(ok).toMatchObject({ ok: true, name: 'Approved.png', mime: 'image/png' });
+    expect(ok.data).toBe(Buffer.from(png.map(x => x & 255)).toString('base64'));
+    const again = vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-OK'})", ctx);
+    expect(again.data).toBe(ok.data);    // served from the cache the second time
+
+    expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-BAD'})", ctx).error).toMatch(/not a valid PNG/);
+    expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-BIG'})", ctx).error).toMatch(/not in the stamps folder/);
+    expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-PDF'})", ctx).error).toMatch(/not in the stamps folder/);
+    expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:''})", ctx).error).toMatch(/Pick a stamp/);
   });
 });
