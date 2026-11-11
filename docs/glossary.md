@@ -246,7 +246,7 @@ The tab holding past years' numbers for the Stats page; the current year is comp
 ### Tool terms (added 2026-11-10)
 
 **Sign Workshop**:
-The Review page's in-browser signing dialog: the member signs the Proposal Approval page (typed, drawn or uploaded signature, printed name, date) and the Proposal pages' form fields are flattened; Plan, Fundraising and Report pages are never signed and stay fillable. Nothing leaves the browser until Save. The signature is an image on the page, as with the committee's earlier practice, not a certified digital signature.
+The Review page's in-browser signing dialog: the member places a signature (typed, drawn or uploaded), printed name, date and optional stamps (PNGs from a Drive folder) on the Proposal Approval page, or on a scanned one, and the Proposal pages and every marked page are flattened; Plan, Fundraising and Report pages never take marks and stay fillable. Nothing leaves the browser until Save. The signature is an image on the page, as with the committee's earlier practice, not a certified digital signature.
 
 **Signatures pending**:
 A Proposal approved by one member while more committee signatures are to come. The copy signed so far is filed and passed to the next signer; the Scout's page says "committee signatures in progress"; the approval email is drafted after the last signer. Shown as a **Signing** tag on the dashboard.

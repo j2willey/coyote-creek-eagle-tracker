@@ -279,6 +279,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `parentsSignIn` | FALSE | TRUE lets parent/guardian addresses sign in to the Scout's record |
 | `digestHours`, `digestTo` | 6 PM, | Committee digest schedule and recipients |
 | `intakeConfirmDays`, `intakePurgeDays`, `maxUploadMB` | 7, 14, 20 | Intake |
+| `stampsFolderId` | | Drive folder of stamp PNGs for the Sign Workshop (blank = no Stamp button) |
 | `councilDomain`, `allowProduction` | (blank), FALSE | Menu items need a Council account; migration guard |
 | `approvalRep*` | | Council/District Project Approval Representative (proposal precheck, later) |
 | `*DateColumn`, `*WhoColumn`, `calendarId` | | Tracking columns filled on booking; calendar |
@@ -581,18 +582,31 @@ primary file. **Open** shows a file in a new tab (up to `maxUploadMB`, 20 MB: la
 **Sign Workshop** (**Sign in browser…** on a PDF in that list, or on a PDF chosen from the computer): the member signs
 the Proposal without leaving the page; nothing leaves the browser until **Save**, which uploads the result through the
 normal Approved path above.
-- **Which page:** the 2026 and 2023a BSA workbooks are recognized by form-field names and page text. Only a
-  **Proposal Approval** page can be signed; Project Plan, Fundraising Application and Project Report pages (and
-  everything after the first of them) never can (`canSignPage`). With several approval pages (partly signed copies)
-  the **last** one is the default; the member can switch to another approval page.
+- **Placing the marks** (v2, 2026-11-11): the preview is a scrollable view of every page (pages render as they come into
+  view); the page numbers above it jump. The Workshop opens scrolled to the **last Proposal Approval page** (2026
+  page 11, 2023a Page H; several copies = the last), else the last **scanned page** (no text, no form fields: a signed
+  Page H that was scanned in). If neither is found a banner says "Couldn't find the Proposal Approval page (Page H):
+  scroll to it" and **no page is preselected**; it never falls back to an ordinary Proposal page. Toolbar: **✍
+  Signature**, **Printed name**, **Date**, **🔖 Stamp ▾**. Click a button, then click on a page: the mark drops there,
+  centered on the click (Esc cancels). On a detected approval page a button without a click drops the workbook's own
+  box (signer 2 and later go below signer 1's line); a second press of the same button on that page waits for a click.
+  Marks can be dragged, resized from the corner and removed with ✕, on any Proposal page. **Nothing is applied until
+  Sign & Attach PDF**; a signature is required, a missing printed name or date only warns.
+- **Guardrail:** Project Plan, Fundraising Application and Project Report pages, and every page after the first of them,
+  refuse marks (`canPlaceOnPage`); they are striped on screen.
+- **Stamps:** PNG files (up to 2 MB, transparent background) in one Drive folder named by the Settings key
+  `stampsFolderId` (blank = no Stamp button; Setup adds the key). The button places the last stamp used (its Drive file
+  id is remembered in this browser), the arrow lists them with thumbnails. A stamp is 1.6 in wide, drawn under the
+  signature, name and date so they can sit on its lines; a PNG with no transparency warns that it covers the page under
+  it. Actions `stampList` / `stampFetch` (committee only). No stamp images are kept in the repo.
 - **Signature:** typed (10 OFL script fonts from Google Fonts, loaded when the Workshop opens), drawn, or an uploaded
-  image; size control and drag/resize on the page preview; printed name and date go into the workbook's own fields
-  for the first signer when it has them (else drawn as text). The second and later signers sign below the first
-  signer's line. "Remember my signature" keeps it in this browser's local storage.
-- **Result:** the signature is stamped as an image, and the **Proposal pages' form fields are flattened**; Plan,
-  Fundraising and Report fields stay fillable for the Scout. The BSA workbooks' permissions encryption (empty user
-  password, AES-256) is removed in the browser so pdf-lib can edit them (the committee's existing practice also
-  inserts pages and flattens; Jim W. 2026-11-09).
+  image; size control and drag/resize on the page; printed name and date go into the workbook's own fields for the
+  first signer when the marks sit at the workbook's boxes on an approval page whose field has a single widget (else
+  drawn as text). "Remember my signature" keeps it in this browser's local storage.
+- **Result:** the marks are drawn as images/text, and form fields are flattened on the **Proposal pages and on every
+  page that received a mark**, never on Plan, Fundraising or Report pages (they stay fillable for the Scout). The BSA
+  workbooks' permissions encryption (empty user password, AES-256) is removed in the browser so pdf-lib can edit them
+  (the committee's existing practice also inserts pages and flattens; Jim W. 2026-11-09).
 - **Libraries:** pdf-lib 1.17.1 and pdf.js 3.11.174 from jsDelivr, loaded only when the Workshop opens; the exact
   versions are pinned in `package.json` (dev dependencies, used by the tests) and `pdfPlan.js`, and a test keeps them in
   step. Each script is loaded with a Subresource Integrity hash (`web/js/cdnIntegrity.js`; a test checks pdf-lib and
