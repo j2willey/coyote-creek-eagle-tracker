@@ -90,8 +90,9 @@
       </section>
       <section class="admsec" data-tab="settings">
         <h2>Settings</h2>
-        <p class="hint">Every setting the tool reads from the Settings tab, grouped, with what it does. <b>Read-only for now</b>: change a value on
-          the spreadsheet's Settings tab (it takes effect within 5 minutes). Editing here comes group by group. Values that differ from the
+        <p class="hint">Every setting the tool reads from the Settings tab, grouped, with what it does. District details and Scheduling can be edited
+          here (each change is logged on the Activity tab); the rest are read-only for now: change them on the spreadsheet's Settings tab
+          (it takes effect within 5 minutes). Values that differ from the
           built-in default are marked.</p>
         <div id="setView"><p class="muted">Loading…</p></div>
       </section>
@@ -450,9 +451,56 @@
 
     // ---------- Settings (read-only; Admin role) ----------
     async function loadSettings() {
-      try {
-        const v = await api('adminSettings', { session });
+      try { renderSettings(await api('adminSettings', { session })); }
+      catch (e) { settingsLoaded = false; $('setView').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
+    }
+    /** An editable group (District details, Scheduling): inputs + Save; the server checks nothing changed in between. */
+    function settingsForm(g) {
+      const inputs = {};
+      const rows = g.items.map(i => {
+        let input;
+        if (i.type === 'boolean') { input = el('input', { type: 'checkbox', checked: i.value === 'TRUE' }); }
+        else if (i.type === 'enum') {
+          input = el('select', {}, ...['Off', 'See', 'Assign'].map(o => el('option', { value: o, textContent: o })));
+          input.value = i.value || 'Off';
+        } else {
+          input = el('input', { type: i.type === 'number' ? 'number' : i.type === 'email' ? 'email' : 'text', value: i.value });
+          if (i.type === 'number') input.min = '0';
+        }
+        input.setAttribute('aria-label', i.key);
+        inputs[i.key] = { input, was: i.value, type: i.type };
+        return el('tr', { className: i.isDefault ? '' : 'setchanged' },
+          el('td', {}, el('code', { textContent: i.key })),
+          el('td', {}, input, ...(i.isDefault ? [] : [el('div', { className: 'muted', textContent: 'default: ' + (i.def || '(blank)') })])),
+          el('td', { className: 'muted', textContent: i.help }));
+      });
+      const msg = el('p', { role: 'status' });
+      const save = el('button', { type: 'button', className: 'primary', textContent: 'Save ' + g.label });
+      save.onclick = async () => {
+        const values = {}, was = {};
+        Object.entries(inputs).forEach(([k, x]) => {
+          const v = x.type === 'boolean' ? x.input.checked : x.input.value;
+          if (String(x.type === 'boolean' ? (v ? 'TRUE' : 'FALSE') : v).trim() !== x.was) { values[k] = v; was[k] = x.was; }
+        });
+        if (!Object.keys(values).length) { msg.textContent = 'Nothing changed.'; msg.className = 'muted'; return; }
+        if (!confirm('Save ' + Object.keys(values).length + ' change(s) to ' + g.label + '?\n\n' +
+          Object.keys(values).map(k => k + ': "' + was[k] + '" → "' + values[k] + '"').join('\n') + '\n\nIt takes effect at once and is logged on the Activity tab.')) return;
+        save.disabled = true; msg.textContent = 'Saving…'; msg.className = 'muted';
+        try {
+          const r = await api('adminSettingsSave', { session, group: g.id, values, was });
+          renderSettings(r.view);
+          flash(r.message);
+        } catch (e) { msg.textContent = e.message; msg.className = 'err'; save.disabled = false; }
+      };
+      return [el('div', { className: 'boardwrap' }, el('table', { className: 'admtable settable' }, el('tbody', {}, ...rows))),
+        el('div', { className: 'actions' }, save), msg];
+    }
+    function renderSettings(v) {
+      {
         const cards = v.groups.map(g => {
+          if (g.editable) return el('details', { className: 'admcard setgroup', open: true },
+            el('summary', {}, el('b', { textContent: g.label }), el('span', { className: 'muted', textContent: ' · edits: ' + g.who + ' · editable here' })),
+            ...settingsForm(g));
           const rows = g.items.map(i => el('tr', { className: i.isDefault ? '' : 'setchanged' },
             el('td', {}, el('code', { textContent: i.key })),
             el('td', {}, i.link ? el('a', { href: i.link, target: '_blank', rel: 'noopener', textContent: i.value || '(blank)' })
@@ -468,7 +516,7 @@
         cards.push(el('details', { className: 'admcard setgroup' }, el('summary', {}, el('b', { textContent: 'Stages' }), el('span', { className: 'muted', textContent: ' · label and what the Scout sees (Settings tab, columns D–G)' })),
           el('div', { className: 'boardwrap' }, el('table', { className: 'admtable settable' }, el('tbody', {}, ...secRows)))));
         $('setView').replaceChildren(...cards);
-      } catch (e) { settingsLoaded = false; $('setView').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
+      }
     }
 
     async function load() {

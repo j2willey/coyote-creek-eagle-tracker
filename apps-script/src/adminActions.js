@@ -7,7 +7,8 @@
  *   adminArchive {session, year, confirm}               -> {needsConfirm, names, ...} | {message, url}   (eagleArchiveActions.js)
  *   adminClosedArchive {session, confirm}               -> {needsConfirm, rows, folder} | {message}   (closingActions.js)
  *   adminRequestDone {session, id}                       -> {message}   unit host-a-board request handled
- *   adminSettings {session}                              -> {groups, sections}   Admin role only, read-only for now (lib/settingsView.js)
+ *   adminSettings {session}                              -> {groups, sections}   Admin role only (lib/settingsView.js)
+ *   adminSettingsSave {session, group, values, was}      -> {message, view}   Admin role; editable groups only; logged on Activity
  */
 function adminRecords_() {
   var eCol = getSettings_().eborDateColumn || 'ebor_date';
@@ -56,6 +57,29 @@ function actionAdminData_(req) {
 function actionAdminSettings_(req) {
   adminMe_(req.session);
   return SettingsView.view(readSettingsTab_(false), SettingsModel.DEFAULT_VALUES);
+}
+
+/**
+ * Admin → Settings: save one group's edits (Admin role; District details and Scheduling for now). Checked against
+ * what the page showed (`was`), validated, written to the Settings tab, each change logged on Activity.
+ */
+function actionAdminSettingsSave_(req) {
+  var c = adminMe_(req.session);
+  var group = String(req.group || '');
+  var done = withLock_(function () {
+    var cur = readSettingsTab_(false);
+    var r = SettingsView.validate(group, req.values || {}, req.was || {}, cur, SettingsModel.DEFAULT_VALUES);
+    if (r.errors.length) throw userError_(r.errors.map(function (e) { return e.message; }).join(' '));
+    r.changes.forEach(function (x) {
+      // Text goes in as text (a leading ' keeps "7:00 PM" or a ZIP from turning into a time or a number).
+      setSetting_(x.key, typeof x.to === 'string' && x.to ? "'" + x.to : x.to);
+    });
+    return r.changes;
+  });
+  clearSettingsCache_();
+  done.forEach(function (x) { adminLog_('Settings: ' + x.key + ': "' + x.from + '" → "' + x.to + '"', c.email); });
+  return { message: done.length ? 'Saved ' + done.length + ' change' + (done.length > 1 ? 's' : '') + ': ' + done.map(function (x) { return x.key; }).join(', ') + '.'
+    : 'Nothing changed.', view: SettingsView.view(readSettingsTab_(false), SettingsModel.DEFAULT_VALUES) };
 }
 
 /** Dashboard strip: items on the Admin page that need a person (held web submissions, open unit requests). */

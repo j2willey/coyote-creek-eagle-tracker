@@ -955,10 +955,15 @@ System tabs: vault `admin-ui-plan.md`.
 adminEmail always has it too. Admin-only tabs are hidden for others and every Admin-only action checks the role on the
 server (`adminMe_`, `SettingsView.isAdmin`).
 
-**Settings** (Admin role; read-only for now, `lib/settingsView.js`, `adminSettings`): every setting grouped (District
+**Settings** (Admin role; `lib/settingsView.js`, `adminSettings`, `adminSettingsSave`): every setting grouped (District
 details, Scheduling, Reminders and email, Web submissions, Sign-in and security, Test mode, Internal wiring), with a help
 line, the default when the value differs, and links for folder / Doc / sheet IDs; keys not in a group show under
 "Other"; the stage table (Settings D–G) at the end. A test keeps every default key in exactly one group.
+**District details** and **Scheduling** are editable (2026-11-12): inputs by type, Save per group with a confirm
+listing old → new; the server rejects a value someone changed since the page loaded, validates (numbers ≥ 0, minutes
+5–600, emails, a time like 7:00 PM, onlineBooking via `Booking.parseOnline`, reservedForUnits Off | See | Assign),
+writes text with a leading `'` (so "7:00 PM" or a ZIP stays text) and logs each change on Activity. Other groups stay
+read-only until their turn (plan step 5).
 
 - **Web submissions that need a person** (Intake Queue): never confirmed (link expired), possible duplicates, errors,
   stuck. Attach to an existing Scout (likely matches first), add as a new Scout, resend the confirmation link,

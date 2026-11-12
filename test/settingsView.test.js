@@ -27,4 +27,25 @@ describe('SettingsView (Admin → Settings)', () => {
     expect(V.isAdmin({ role: '' }, 'b@example.org', { adminEmail: 'a@example.org' })).toBe(false);
     expect(V.isAdmin(null, '', { adminEmail: '' })).toBe(false);
   });
+
+  describe('editing (District details, Scheduling)', () => {
+    const cur = { ...M.DEFAULT_VALUES, eborMinutes: 90, defaultStartTime: '7:00 PM', onlineBooking: 'Pre-Review Call' };
+    it('normalizes and reports only real changes', () => {
+      const r = V.validate('scheduling', { eborMinutes: '75', defaultStartTime: '19:30', reservedForUnits: 'off', onlineBooking: 'all' },
+        { eborMinutes: '90' }, cur, M.DEFAULT_VALUES);
+      expect(r.errors).toEqual([]);
+      expect(r.changes).toEqual([
+        { key: 'eborMinutes', from: '90', to: 75 }, { key: 'defaultStartTime', from: '7:00 PM', to: '7:30 PM' },
+        { key: 'onlineBooking', from: 'Pre-Review Call', to: 'all' }]);
+    });
+    it('refuses bad values, other groups, and someone else\'s change in between', () => {
+      const bad = V.validate('scheduling', { eborMinutes: 'x', defaultStartTime: 'soon', reservedForUnits: 'Maybe', onlineBooking: 'Lunch' }, {}, cur, M.DEFAULT_VALUES);
+      expect(bad.errors.map(e => e.key)).toEqual(['eborMinutes', 'defaultStartTime', 'reservedForUnits', 'onlineBooking']);
+      expect(bad.changes).toEqual([]);
+      expect(V.validate('district', { councilEaglesEmail: 'not-an-email' }, {}, cur, M.DEFAULT_VALUES).errors).toHaveLength(1);
+      expect(V.validate('district', { eborMinutes: '60' }, {}, cur, M.DEFAULT_VALUES).errors[0].message).toMatch(/not in District details/);
+      expect(V.validate('test', { testMode: false }, {}, cur, M.DEFAULT_VALUES).errors[0].message).toMatch(/can't be edited/);
+      expect(V.validate('scheduling', { eborMinutes: '60' }, { eborMinutes: '120' }, cur, M.DEFAULT_VALUES).errors[0].message).toMatch(/someone else/);
+    });
+  });
 });

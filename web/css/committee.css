@@ -423,3 +423,5 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .settable td { vertical-align: top; }
 .settable td:first-child { white-space: nowrap; }
 .settable tr.setchanged td:nth-child(2) { font-weight: 600; }
+.settable input[type=text], .settable input[type=email] { min-width: 16rem; }
+.settable input[type=number] { width: 7rem; }
