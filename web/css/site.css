@@ -1,9 +1,9 @@
 :root {
   --bg: #f7f5f0; --fg: #1d1d1b; --muted: #6b6b66; --card: #fff; --line: #ddd8cc;
-  --ok: #1f6f3a; --err: #a12b2b; --link: #1a5fb4; --link-visited: #6a3d9a;
+  --ok: #1f6f3a; --err: #a12b2b; --link: #1a5fb4; --link-visited: #6a3d9a; --head: #8a5a00;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #161614; --fg: #ecebe6; --muted: #a3a29b; --card: #22221f; --line: #3a3934; --ok: #6fcf8f; --err: #f08b8b; --link: #8ab4f8; --link-visited: #c58af9; }
+  :root { --bg: #161614; --fg: #ecebe6; --muted: #a3a29b; --card: #22221f; --line: #3a3934; --ok: #6fcf8f; --err: #f08b8b; --link: #8ab4f8; --link-visited: #c58af9; --head: #f2c14e; }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -105,3 +105,16 @@ table.board td.age.a2 { background: #f6cdc8; color: #1d1d1b; }
 .uchead { margin: 1rem 0 .2rem; }
 .ucaddr { grid-column: 1 / -1; display: grid; grid-template-columns: 3fr 2fr 1fr 1fr; gap: .4rem; }
 @media (max-width: 40rem) { .ucaddr { grid-template-columns: 1fr 1fr; } }
+
+/* Landing page (option A, 2026-11-12): role headings in --head, one link per row, no panels */
+.home section { margin: 1.6rem 0; }
+.home h2 { margin: 0 0 .15rem; font-size: 1rem; }
+.home h2.role { display: flex; align-items: center; gap: .6rem; font-size: 1.2rem; color: var(--head); }
+.home section p { margin: .3rem 0 0; }
+.home a.row, .home a.row:visited { display: flex; align-items: center; gap: .6rem; min-height: 2.9rem; padding: .45rem 0;
+  border-bottom: 1px solid var(--line); color: var(--link); text-decoration: none; }
+.home a.row > span { flex: 1; }
+.home a.row .lbl { font-weight: 600; }
+.home a.row small { display: block; font-size: .85rem; color: var(--muted); }
+.home a.row:hover .lbl { text-decoration: underline; }
+.home a.row .go { flex: none; }
