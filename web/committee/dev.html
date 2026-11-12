@@ -28,12 +28,21 @@
         <p class="hint">At the Board of Review: sign the Verified Eagle Application and the Advancement Report on one device, file both in the
           Scout's folder and draft the email to Council. <a href="/committee/ebor-paperwork">Open the EBoR paperwork page</a>.</p>
       </section>
+      <section class="admsec">
+        <h2>Old-way bookings: send calendar invitations <span class="muted">(being retired)</span></h2>
+        <p class="hint">Sessions booked on the old sign-up sheet are on the schedule as "shadow" (no invitation). From tomorrow on,
+          this sends each ticked one a Google Calendar invitation, as if it had been booked here: the Scout, the parent and the
+          committee members on the slot (EBoR: also the Unit Board Members and others to invite). After that the invitation
+          follows member changes and moves like any other booking. No other email is sent.</p>
+        <div id="shList"><p class="muted">Loading…</p></div>
+      </section>
+      <p id="flash" class="ok" hidden></p>
     </div>
   </main>
 
   <script type="module">
     import { api } from '/js/api.js';
-    import { $, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
     const meLine = renderNav($('cnav'), 'dev');
     if (!session) needSignIn($('msg'));
     else {
@@ -43,7 +52,38 @@
         try { const c = JSON.parse(localStorage.getItem('ccacHome') || 'null'); testMode = !!(c && c.session === session && c.d.testMode); } catch {}
         meLine.textContent = meText({ name: me.committee.name, initials: me.committee.initials, email: me.email }, testMode);
         $('msg').hidden = true; $('app').hidden = false;
+        loadShadow();
       }).catch(e => { if (isSignedOut(e)) needSignIn($('msg'), e.message); else { $('msg').textContent = e.message; $('msg').className = 'err'; } });
+    }
+
+    // Old-way (shadow) bookings → calendar invitations (moved from Admin 2026-11-12; retire once none are left).
+    async function loadShadow() {
+      try {
+        const r = await api('shadowList', { session });
+        if (!r.sessions.length) { $('shList').replaceChildren(el('p', { className: 'muted', textContent: 'No old-way bookings from tomorrow on.' })); return; }
+        const rows = r.sessions.map(x => el('label', { className: 'choice shrow' },
+          el('input', { type: 'checkbox', value: x.key, checked: !x.problem, disabled: !!x.problem }),
+          el('span', {}, el('b', { textContent: x.when + ' · ' + x.label }), ' ', x.scout + (x.unit ? ' (' + x.unit + ')' : ''),
+            el('span', { className: 'muted', textContent: ' · ' + (x.who || 'no members') + (x.board ? ' + ' + x.board + ' unit' : '') + (x.place ? ' · ' + x.place : '') +
+              (x.unknown && x.unknown.length ? ' · unknown initials ' + x.unknown.join(', ') + ' (not invited)' : '') }),
+            ...(x.problem ? [el('span', { className: 'err', textContent: ' · ' + x.problem })] : []))));
+        const go = el('button', { type: 'button', className: 'primary', textContent: 'Send invitations for the ticked sessions' });
+        go.onclick = async () => {
+          const keys = rows.map(l => l.querySelector('input')).filter(c => c.checked).map(c => c.value);
+          if (!keys.length) return;
+          if (!confirm('Send ' + keys.length + ' calendar invitation' + (keys.length > 1 ? 's' : '') + '? Google emails each one to the Scout, the parent and the members ' +
+            '(EBoR: and the Unit Board Members). This can\'t be undone, but a booking can still be changed or cancelled as usual.')) return;
+          go.disabled = true;
+          try {
+            const res = await api('shadowInvite', { session, keys });
+            const ok = res.results.filter(x => x.ok).length, bad = res.results.filter(x => !x.ok);
+            $('flash').textContent = ok + ' invitation' + (ok === 1 ? '' : 's') + ' sent.' + (bad.length ? ' Not sent: ' + bad.map(x => x.message).join('; ') : '');
+            $('flash').hidden = false;
+          } catch (e) { $('flash').textContent = e.message; $('flash').className = 'err'; $('flash').hidden = false; }
+          loadShadow();
+        };
+        $('shList').replaceChildren(el('div', { className: 'admcard' }, ...rows, el('div', { className: 'actions' }, go)));
+      } catch (e) { $('shList').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
     }
   </script>
 </body>

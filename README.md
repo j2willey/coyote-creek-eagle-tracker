@@ -148,7 +148,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     unitDirectoryActions.js  Units page / unit page contacts: list, edit, add, remove
     broadcastActions.js   Admin → Email the units (preview, test, send in Bcc batches)
     openTimesActions.js   committee page: several sessions at once (saveSlots), open-times email draft
-    shadowInviteActions.js  Admin → Old-way bookings: send calendar invitations
+    shadowInviteActions.js  Dev → Old-way bookings: send calendar invitations (being retired)
     scheduleCheckActions.js    Admin → Schedule: check against the tracking sheet
     templateMail.js       mailFromTemplate_ (template Doc → email, or built-in wording), template Doc setup
     unitActions.js        unit contacts' page (EBoRs, board members, calendar, Eagle candidates)
@@ -940,9 +940,15 @@ Run by `digestHourly`; each fires once (Script Properties `bm:` / `pb:` / `br:`)
 ### Dev page (`/committee/dev`, every committee member)
 
 Experimental pages live here until the committee has tried them, then move to their real home (Jim W., 2026-11-12).
-Now: the EBoR paperwork page.
+Now: the EBoR paperwork page; Old-way bookings: send calendar invitations (moved from Admin, being retired;
+described under the Admin page below).
 
 ### Admin page (`/committee/admin`, every committee member)
+
+Sub-tabs (2026-11-12): **Needs attention** (web submissions, comparisons to review, unit requests; count badge),
+**Email** (email the units, drafts for several Scouts, template preview), **Year-end** (the two January archives).
+`#attention` / `#email` / `#yearend` in the address bar opens that tab. Plan for People / Settings / System tabs:
+vault `admin-ui-plan.md`.
 
 - **Web submissions that need a person** (Intake Queue): never confirmed (link expired), possible duplicates, errors,
   stuck. Attach to an existing Scout (likely matches first), add as a new Scout, resend the confirmation link,
@@ -962,7 +968,7 @@ Now: the EBoR paperwork page.
   differed show "Compare with the sheet…" for 60 days (`AdminRules.toReview`); the Intake Queue Note gets
   "Reviewed <date> by <who>: took … / kept the sheet", which ends it.
 - **Unit requests** with Done.
-- **Old-way bookings: send calendar invitations** (`lib/shadowInvites.js`, `shadowInviteActions.js`; switch-over
+- **Old-way bookings: send calendar invitations** (now on the Dev page; `lib/shadowInvites.js`, `shadowInviteActions.js`; switch-over
   helper): booked "shadow" sessions from tomorrow on, each with its Scout, members, place and any problem (no Scout or
   parent email, no member with an email; unknown initials are listed and not invited). Ticked ones get a Calendar
   invitation as if booked in the tool (Scout, parent, members; EBoR also the Unit Board Members and others to invite),

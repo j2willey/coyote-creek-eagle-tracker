@@ -22,25 +22,19 @@
     <p id="msg" class="muted">Loading…</p>
     <p id="flash" class="ok" hidden></p>
     <div id="app" hidden>
-      <section class="admsec" id="intake">
+      <!-- Sub-tabs (Jim W., 2026-11-12; plan: vault admin-ui-plan.md). #attention / #email / #yearend in the address bar. -->
+      <div class="admtabs" id="admTabs" role="tablist"></div>
+      <section class="admsec" id="intake" data-tab="attention">
         <h2>Web submissions that need a person</h2>
         <p class="hint">From the Intake Queue: never confirmed, possible duplicates, errors, or stuck. Everything you do here goes in the Activity tab.</p>
         <div id="intake"></div>
       </section>
-      <section class="admsec">
+      <section class="admsec" data-tab="attention">
         <h2>Unit requests</h2>
         <p class="hint">Units asking to hold an Eagle Board of Review on their meeting night. Add the slot on the <a href="/committee/schedule">schedule</a>, then mark it done.</p>
         <div id="ureq"></div>
       </section>
-      <section class="admsec">
-        <h2>Old-way bookings: send calendar invitations</h2>
-        <p class="hint">Sessions booked on the old sign-up sheet are on the schedule as "shadow" (no invitation). From tomorrow on,
-          this sends each ticked one a Google Calendar invitation, as if it had been booked here: the Scout, the parent and the
-          committee members on the slot (EBoR: also the Unit Board Members and others to invite). After that the invitation
-          follows member changes and moves like any other booking. No other email is sent.</p>
-        <div id="shList"><p class="muted">Loading…</p></div>
-      </section>
-      <section class="admsec">
+      <section class="admsec" data-tab="email">
         <h2>Email the units</h2>
         <p class="hint">From the Advancement Committee to unit leaders. Sent To the committee group with the units in Bcc (no one
           sees the other addresses), in emails of up to 48 (Google's limit is 50 per email). Chartered Org Reps are never included.</p>
@@ -67,7 +61,7 @@
         <div class="actions"><button type="button" id="bcTest">Send me a preview</button><button type="button" class="primary" id="bcSend">Send…</button></div>
         <p id="bcMsg" role="status"></p>
       </section>
-      <section class="admsec">
+      <section class="admsec" data-tab="email">
         <h2>Draft an email for several Scouts</h2>
         <p class="hint">For the switch-over: pick a stage and an email; every ticked Scout gets their own draft in the Outbox
           (filled in for them, as the stage change would have). Nothing is sent until someone clicks Send. Scouts who already
@@ -78,18 +72,18 @@
         </div>
         <div id="bkList"></div>
       </section>
-      <section class="admsec">
+      <section class="admsec" data-tab="email">
         <h2>Email templates: preview and test</h2>
         <p class="hint">Every email in the catalog, as the template Doc has it now (edits show at once), filled in with sample data.
           "Send me a test" emails it only to you, with TEST banners at the top and bottom; nobody else is copied.</p>
         <div id="tpl"><p class="muted">Loading…</p></div>
       </section>
-      <section class="admsec">
+      <section class="admsec" data-tab="yearend">
         <h2>January: archive last year's Eagles</h2>
         <p class="hint">Moves the Eagle Earned rows of a past year to the top of the "Eagle Archive" tab (Settings → eagleArchiveTab) in the tracking spreadsheet, as a new "&lt;year&gt; Eagles" section above the older years. Columns are matched by their hidden machine name, so the archive can have its own column order; a column the archive lacks is added at its right end. Then the rows leave the tracking tab. Their folders stay where they are. Nothing happens until you confirm; the list shows what it would do.</p>
         <div id="arch"></div>
       </section>
-      <section class="admsec">
+      <section class="admsec" data-tab="yearend">
         <h2>January: archive last year's Closed records</h2>
         <p class="hint">Closed records from a past year are cleared once a year. For each: a row (no contact details) goes to the "Closed Archive" tab next to the tracking sheet, the Scout's folder moves to <b id="clFolder">Archive/Closed</b> (Settings → closedFolder), and the row leaves the tracking tab. Nothing happens until you press Archive; the list below is what it would do.</p>
         <div id="closedArch"></div>
@@ -232,6 +226,8 @@
 
     function show(d) {
       data = d;
+      const attn = d.intake.length + (d.review || []).length + d.unitRequests.length;
+      $('attnCount').textContent = String(attn); $('attnCount').hidden = !attn;
       const ik = d.intake.map(intakeCard).concat((d.review || []).map(reviewCard));
       $('intake').replaceChildren(...(ik.length ? ik : [el('p', { className: 'muted admempty', textContent: 'Nothing waiting.' })]));
       $('ureq').replaceChildren(...(d.unitRequests.length ? d.unitRequests.map(r => {
@@ -336,34 +332,6 @@
       } catch (e) { $('tpl').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
     }
 
-    // ---------- old-way (shadow) bookings → invitations ----------
-    async function loadShadow() {
-      try {
-        const r = await api('shadowList', { session });
-        if (!r.sessions.length) { $('shList').replaceChildren(el('p', { className: 'muted', textContent: 'No old-way bookings from tomorrow on.' })); return; }
-        const rows = r.sessions.map(x => el('label', { className: 'choice shrow' },
-          el('input', { type: 'checkbox', value: x.key, checked: !x.problem, disabled: !!x.problem }),
-          el('span', {}, el('b', { textContent: x.when + ' · ' + x.label }), ' ', x.scout + (x.unit ? ' (' + x.unit + ')' : ''),
-            el('span', { className: 'muted', textContent: ' · ' + (x.who || 'no members') + (x.board ? ' + ' + x.board + ' unit' : '') + (x.place ? ' · ' + x.place : '') +
-              (x.unknown && x.unknown.length ? ' · unknown initials ' + x.unknown.join(', ') + ' (not invited)' : '') }),
-            ...(x.problem ? [el('span', { className: 'err', textContent: ' · ' + x.problem })] : []))));
-        const go = el('button', { type: 'button', className: 'primary', textContent: 'Send invitations for the ticked sessions' });
-        go.onclick = () => {
-          const keys = rows.map(l => l.querySelector('input')).filter(c => c.checked).map(c => c.value);
-          if (!keys.length) return;
-          confirmDo('Send ' + keys.length + ' calendar invitation' + (keys.length > 1 ? 's' : '') + '?',
-            el('p', { textContent: 'Google emails each invitation to the Scout, the parent and the members (EBoR: and the Unit Board Members). This can\'t be undone, but a booking can still be changed or cancelled as usual.' }),
-            'Send invitations', async () => {
-              const res = await api('shadowInvite', { session, keys });
-              const ok = res.results.filter(x => x.ok).length, bad = res.results.filter(x => !x.ok);
-              loadShadow();
-              return ok + ' invitation' + (ok === 1 ? '' : 's') + ' sent.' + (bad.length ? ' Not sent: ' + bad.map(x => x.message).join('; ') : '');
-            });
-        };
-        $('shList').replaceChildren(el('div', { className: 'admcard' }, ...rows, el('div', { className: 'actions' }, go)));
-      } catch (e) { $('shList').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
-    }
-
     // ---------- email the units ----------
     let bc = null;
     const bcReq = () => ({ session, types: [...document.querySelectorAll('input[name=bcType]:checked')].map(c => c.value),
@@ -449,10 +417,30 @@
       };
     }
 
+    // ---------- sub-tabs ----------
+    const TABS = [['attention', 'Needs attention'], ['email', 'Email'], ['yearend', 'Year-end']];
+    const tabBtns = TABS.map(([key, label]) => {
+      const b = el('button', { type: 'button', className: 'admtab', textContent: label });
+      b.setAttribute('role', 'tab');
+      b.dataset.tab = key;
+      if (key === 'attention') b.append(el('span', { className: 'badge', id: 'attnCount', hidden: true }));
+      b.onclick = () => showTab(key, true);
+      return b;
+    });
+    $('admTabs').replaceChildren(...tabBtns);
+    function showTab(key, push) {
+      if (!TABS.some(t => t[0] === key)) key = 'attention';
+      tabBtns.forEach(b => { const on = b.dataset.tab === key; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
+      document.querySelectorAll('#app section[data-tab]').forEach(sec => { sec.hidden = sec.dataset.tab !== key; });
+      if (push && location.hash !== '#' + key) history.replaceState(null, '', '#' + key);
+    }
+    showTab(location.hash.slice(1), false);
+    window.addEventListener('hashchange', () => showTab(location.hash.slice(1), false));
+
     async function load() {
       const d = await api('adminData', { session });
       bulkSetup(d);
-      if (!bc) { bcPreview(); loadShadow(); }
+      if (!bc) bcPreview();
       $('msg').hidden = true; $('app').hidden = false;
       show(d);
     }

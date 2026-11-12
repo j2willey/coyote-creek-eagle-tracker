@@ -414,3 +414,8 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .ep-textbar input[type=text] { font-family: Helvetica, Arial, sans-serif; white-space: pre; width: 11rem; }
 .ep-textbar .ep-inline-ink { display: inline-flex; gap: .25rem; margin: 0; }
 .ep-textbar .ws-font-select { max-width: 10rem; }
+/* Admin sub-tabs (2026-11-12) */
+.admtabs { display: flex; flex-wrap: wrap; gap: .3rem; margin: .4rem 0 0; border-bottom: 1px solid var(--line); }
+.admtab { padding: .45rem .9rem; border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; background: var(--bg); cursor: pointer; font-weight: 600; }
+.admtab.on { background: #1e4b8f; color: #fff; border-color: #1e4b8f; }
+.admtab .badge { margin-left: .35rem; }
