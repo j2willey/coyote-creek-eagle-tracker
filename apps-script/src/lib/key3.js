@@ -20,7 +20,8 @@ var Key3 = (function () {
 
   var COLS = {
     unitType: /^(unit\s*type|program\s*type|type)$/i,
-    unit: /^(unit|unit\s*(number|no\.?|#|name|id)|unit\/?\s*number)$/i,
+    // "displayname" ("Troop 0230"): the District Executive's export, 2026-10 (Jim W., 2026-11-12)
+    unit: /^(unit|unit\s*(number|no\.?|#|name|id)|unit\/?\s*number|display\s*name)$/i,
     position: /^(position|role|title|position\s*(title|name)|registered\s*position)$/i,
     name: /^(name|full\s*name|member\s*name|leader\s*name)$/i,
     first: /^first(\s*name)?$/i,

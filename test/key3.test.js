@@ -152,3 +152,21 @@ describe('Key3 leader address', () => {
     expect(out.rows.find(r => r.role === 'Committee Chair').address).toBe('');   // only the leader's row keeps an address
   });
 });
+
+describe('Key3.parse: the District Executive\'s export (displayname, fullname, email, position)', () => {
+  const p = Key3.parse([
+    ['displayname', 'fullname', 'email', 'position'],
+    ['Pack 0999', 'Cub Fake', 'cub@x.org', 'Cubmaster'],
+    ['Troop 0999', 'Pat  Fake', 'pat@x.org', 'Scoutmaster'],
+    ['Troop 0999', 'Cor Fake', 'cor@x.org', 'Chartered Organization Rep.'],
+    ['Troop 0999', 'Lee Fake', 'lee@x.org', 'Committee Chair'],
+    ['Crew 0998', 'Ada Fake', 'ada@x.org', 'Venturing Crew Advisor'],
+    ['Post 0997', 'Exp Fake', 'exp@x.org', 'Explorer Post Advisor']
+  ]);
+  it('reads "displayname" as the unit', () => {
+    expect(p.error).toBeUndefined();
+    expect(p.rows.map(r => [r.unit, r.role, r.email])).toEqual([
+      ['C998', 'Unit Leader', 'ada@x.org'], ['T999', 'Committee Chair', 'lee@x.org'], ['T999', 'Unit Leader', 'pat@x.org']]);
+  });
+});
+
