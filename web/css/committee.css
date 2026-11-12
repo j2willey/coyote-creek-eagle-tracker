@@ -291,7 +291,7 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .ws-page-pill.active, .ws-page-btn.active { background: #1e4b8f; color: #fff; border-color: #1e4b8f; font-weight: 600; }
 .ws-page-btn { min-width: 1.7rem; padding: .1rem .3rem; cursor: pointer; }
 .ws-canvas-wrap { position: relative; border: 1px solid var(--line); border-radius: 8px; background: #525659; padding: .5rem; max-height: 68vh; overflow: auto; }
-.ws-doc { display: flex; flex-direction: column; align-items: center; gap: .7rem; }
+.ws-doc { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: max-content; min-width: 100%; }
 .ws-doc.armed .ws-page:not(.locked) { cursor: crosshair; outline: 2px dashed #7fb3ff; }
 .ws-doc.armed .ws-page.locked { cursor: not-allowed; }
 .ws-page { position: relative; flex: none; background: #fff; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); user-select: none; }
@@ -315,7 +315,7 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .ws-item-x { position: absolute; right: -9px; top: -9px; width: 17px; height: 17px; padding: 0; border-radius: 50%; border: 1.5px solid #fff; background: #b3261e; color: #fff; font-size: .62rem; line-height: 1; cursor: pointer; pointer-events: auto; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
 .ws-place-box { position: absolute; pointer-events: auto; cursor: grab; border: 1.5px dashed #1e4b8f; background: rgba(30, 75, 143, .10); color: #0f296b; font-size: .72rem; font-weight: 600; display: flex; align-items: center; justify-content: flex-start; padding: 0 3px; border-radius: 3px; overflow: visible; white-space: nowrap; touch-action: none; }
 .ws-place-box:active { cursor: grabbing; background: rgba(30, 75, 143, .20); }
-.ws-place-content { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
+.ws-place-content { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 100%; overflow: hidden; pointer-events: none; white-space: pre; }
 .ws-place-signature .ws-place-content { justify-content: center; }
 .ws-place-box img { max-width: 100%; max-height: 100%; object-fit: contain; pointer-events: none; }
 .ws-resize-handle { position: absolute; right: -5px; bottom: -5px; width: 11px; height: 11px; border-radius: 2px; background: #1e4b8f; border: 1.5px solid #fff; cursor: nwse-resize; pointer-events: auto; touch-action: none; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
@@ -406,3 +406,9 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .sp-hint { position: absolute; left: 0; right: 0; top: 30%; text-align: center; pointer-events: none; }
 .ws-pen-btn { margin: .2rem 0 .4rem; min-height: 2.4rem; }
 @media (pointer: coarse) { .ws-pen-btn { min-height: 2.9rem; font-size: 1rem; } }
+
+/* Zoom control (pdfZoom.js) and the EBoR paperwork page's text bar (Jim W., 2026-11-12) */
+.ws-zoom { display: inline-flex; align-items: center; gap: .3rem; margin-left: auto; }
+.ws-zoom .ws-size-val { min-width: 3.2em; text-align: center; }
+.ep-textbar { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin: .3rem 0 .4rem; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.ep-textbar input[type=text] { font-family: Helvetica, Arial, sans-serif; white-space: pre; width: 11rem; }

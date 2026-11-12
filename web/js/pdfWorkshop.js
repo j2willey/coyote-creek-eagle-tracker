@@ -55,6 +55,7 @@ import {
 } from './pdfInk.js';
 
 import { createDrawPad } from './pdfDraw.js';
+import { createZoomControl, loadZoom, applyPageScale } from './pdfZoom.js';
 import { openSigningOverlay } from './pdfSignPad.js';
 import { parseInk, serializeInk, fitInkInto, pixelWidthForBox } from './pdfStrokes.js';
 
@@ -800,6 +801,7 @@ export async function openSignWorkshop(opts) {
         pageBar.appendChild(btn);
         jumpBtns.push(btn);
       }
+      if (zoomCtl) pageBar.appendChild(zoomCtl.el);
       refreshPageBar();
     }
     function refreshPageBar() {
@@ -1143,7 +1145,14 @@ export async function openSignWorkshop(opts) {
       const avail = (docWrap.clientWidth || 720) - 28;
       return Math.max(0.5, Math.min(1.3, avail / maxW));
     }
-    const cssScale = computeScale();
+    // Zoom (Jim W., 2026-11-12): the pages open fitted to the window; zoom multiplies that (pdfZoom.js).
+    const fitScale = computeScale();
+    let cssScale = fitScale * loadZoom();
+    const zoomCtl = createZoomControl(docWrap, z => {
+      cssScale = fitScale * z;
+      applyPageScale(docWrap, pageEls, pageSizeOf, cssScale, requestRender);
+      renderAllItems();
+    }, loadZoom());
 
     /** @type {Array<{ wrap: HTMLElement, canvas: HTMLCanvasElement, overlay: HTMLElement, rendered: boolean, rendering: boolean, want: boolean }>} */
     const pageEls = [];
@@ -1392,10 +1401,11 @@ export async function openSignWorkshop(opts) {
       pe.rendering = true;
       renderChain = renderChain.then(async () => {
         if (!pe.want || closed) { pe.rendering = false; return; }
+        const scaleUsed = cssScale;
         try {
           const page = await pdfjsDoc.getPage(i + 1);
           const dpr = Math.min(2, window.devicePixelRatio || 1);
-          const vpRender = page.getViewport({ scale: cssScale * dpr });
+          const vpRender = page.getViewport({ scale: scaleUsed * dpr });
           pe.canvas.width = Math.round(vpRender.width);
           pe.canvas.height = Math.round(vpRender.height);
           const ctx = pe.canvas.getContext('2d');
@@ -1406,6 +1416,8 @@ export async function openSignWorkshop(opts) {
           /* leave blank; scrolling away and back retries */
         } finally {
           pe.rendering = false;
+          // Zoomed while this page was drawing: draw it again at the new scale.
+          if (pe.rendered && scaleUsed !== cssScale && !closed) { pe.rendered = false; if (pe.want) requestRender(i); }
         }
       });
     }

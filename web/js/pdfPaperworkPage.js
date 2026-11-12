@@ -9,7 +9,8 @@
  * type-checked without importing the untyped committee.js.
  */
 import { ensurePdfLibs, ensureGoogleScriptFonts, renderTypedSignaturePngAsync, loadSavedSignature } from './pdfWorkshop.js';
-import { SCRIPT_FONTS, INK_COLORS, DEFAULT_INK, normalizeInk, SIGNATURE_BASE_WIDTH_PT } from './pdfPlan.js';
+import { SCRIPT_FONTS, INK_COLORS, DEFAULT_INK, normalizeInk, SIGNATURE_BASE_WIDTH_PT, fitTextFontSize, TEXT_FONT_MIN_PT, TEXT_FONT_MAX_PT } from './pdfPlan.js';
+import { createZoomControl, loadZoom } from './pdfZoom.js';
 import { inspectPdfWithPdfJs, applyMarksAndFlatten } from './pdfEngine.js';
 import { createPageView } from './pdfView.js';
 import { createDrawPad } from './pdfDraw.js';
@@ -31,7 +32,8 @@ const STORE_KEY = 'ccacEborPaperwork_v1';
  *   kind: 'application' | 'report', host: any, pagesBar: any, slotsBox: any,
  *   baseBytes: Uint8Array | null, pdfjsDoc: any, view: import('./pdfView.js').PageView | null,
  *   pageSizes: Array<{ width: number, height: number }>, marks: Mark[], slots: Slot[],
- *   sigRects: Record<string, Rect | null>, armed: Slot | null, verifiedId: string
+ *   sigRects: Record<string, Rect | null>, armed: Slot | null, verifiedId: string,
+ *   bar: { el: HTMLElement, sync: () => void } | null
  * }} DocState
  */
 
@@ -59,7 +61,7 @@ export function initPaperwork(deps) {
   const newDoc = kind => {
     const k = kind === 'application' ? 'Application' : 'Report';
     return { kind, host: $('host' + k), pagesBar: $('pages' + k), slotsBox: $('slots' + k), baseBytes: null, pdfjsDoc: null, view: null,
-      pageSizes: [], marks: [], slots: [], sigRects: {}, armed: null, verifiedId: '' };
+      pageSizes: [], marks: [], slots: [], sigRects: {}, armed: null, verifiedId: '', bar: null };
   };
   const docs = { application: newDoc('application'), report: newDoc('report') };
 
@@ -184,17 +186,78 @@ export function initPaperwork(deps) {
     d.baseBytes = bytes;
     d.marks = [];
     d.armed = null;
+    const bar = viewBar(d);
     d.view = createPageView(d.host, {
       pdfjsDoc: d.pdfjsDoc, pageSizes: d.pageSizes, getMarks: () => d.marks,
       onRemove: m => { d.marks = d.marks.filter(x => x !== m); afterMarksChanged(d); },
-      onChange: () => { dirty = true; refreshInkMarks(d); },
+      onChange: () => { dirty = true; refreshInkMarks(d); bar.sync(); },
       onPageClick: (pageIndex, point) => placeAtPoint(d, pageIndex, point),
-      onCurrentPage: () => drawPageBar(d)
+      onCurrentPage: () => drawPageBar(d),
+      onSelect: () => bar.sync(),
+      zoom: loadZoom()
     });
+    bar.sync();
     drawPageBar(d);
     refreshSlots(d);
     return insp;
   }
+  /**
+   * The bar above a document (Jim W., 2026-11-12): zoom, and for a text mark (the Requirement 7 date) its text and
+   * font size. The text is free to edit (add or remove spaces to line the numbers up with the form's boxes); the
+   * size is "Auto" (fits the box) or a fixed size in points, because each form's boxes need a different size.
+   * The selected text mark is edited, else the first one. Built once per document.
+   * @param {DocState} d
+   */
+  function viewBar(d) {
+    if (d.bar) return d.bar;
+    const label = el('span', { className: 'hint' });
+    const input = /** @type {HTMLInputElement} */ (el('input', { type: 'text', autocomplete: 'off', spellcheck: false,
+      title: 'Add or remove spaces to line the numbers up with the boxes on the form' }));
+    const smaller = el('button', { type: 'button', className: 'ws-step-btn', textContent: '−', title: 'Smaller text' });
+    const larger = el('button', { type: 'button', className: 'ws-step-btn', textContent: '+', title: 'Larger text' });
+    const size = el('span', { className: 'ws-size-val' });
+    const auto = el('button', { type: 'button', className: 'ws-linkbtn', textContent: 'Auto', title: 'Fit the text to its box' });
+    const textPart = el('span', { className: 'ep-textpart' }, label, input, el('span', { className: 'hint', textContent: 'Size' }), smaller, size, larger, auto);
+    textPart.style.display = 'contents';
+    /** @returns {Mark | undefined} */
+    const target = () => {
+      const texts = d.marks.filter(m => m.kind === 'text');
+      const selId = d.view ? d.view.selectedId() : '';
+      return texts.find(m => m.id === selId) || texts[0];
+    };
+    const sync = () => {
+      const m = target();
+      textPart.hidden = !m;
+      textPart.style.display = m ? 'contents' : 'none';
+      if (!m) return;
+      label.textContent = `${m.label}:`;
+      if (document.activeElement !== input) input.value = String(m.text || '');
+      const fixed = Number(m.fontSize) || 0;
+      const pt = fitTextFontSize(String(m.text || ''), m.width, m.height, fixed);
+      size.textContent = fixed > 0 ? `${pt} pt` : `Auto (${pt} pt)`;
+      auto.disabled = fixed <= 0;
+      smaller.disabled = pt <= TEXT_FONT_MIN_PT;
+      larger.disabled = pt >= TEXT_FONT_MAX_PT;
+    };
+    const changed = () => { dirty = true; if (d.view) d.view.refresh(); sync(); };
+    input.oninput = () => { const m = target(); if (m) { m.text = input.value; changed(); } };
+    const step = (/** @type {number} */ delta) => {
+      const m = target();
+      if (!m) return;
+      const cur = fitTextFontSize(String(m.text || ''), m.width, m.height, Number(m.fontSize) || 0);
+      m.fontSize = Math.max(TEXT_FONT_MIN_PT, Math.min(TEXT_FONT_MAX_PT, Math.round((cur + delta) * 2) / 2));
+      changed();
+    };
+    smaller.onclick = () => step(-0.5);
+    larger.onclick = () => step(0.5);
+    auto.onclick = () => { const m = target(); if (m) { m.fontSize = 0; changed(); } };
+    const zoom = createZoomControl(d.host, z => { if (d.view) d.view.setZoom(z); }, loadZoom());
+    const row = el('div', { className: 'ep-textbar' }, textPart, zoom.el);
+    d.host.before(row);
+    d.bar = { el: row, sync };
+    return d.bar;
+  }
+
   /** @param {DocState} d */
   function drawPageBar(d) {
     d.pagesBar.replaceChildren(el('span', { className: 'hint', textContent: 'Jump to page:' }));
@@ -209,6 +272,7 @@ export function initPaperwork(deps) {
   function afterMarksChanged(d) {
     dirty = true;
     if (d.view) d.view.refresh();
+    if (d.bar) d.bar.sync();
     drawPageBar(d);
     refreshSlots(d);
   }
@@ -404,7 +468,7 @@ export function initPaperwork(deps) {
     $('appNote').textContent = `${name}: ` + (r7.how === 'text' ? `Requirement 7 is on page ${target + 1}.`
       : r7.how === 'page2' ? 'Requirement 7 text not found (a scan?): opened at page 2. Scroll to the right page if it is not.'
         : 'Scroll to the page with Requirement 7.') +
-      (sc.requirement7 ? ` The date ${sc.requirement7.text} is placed as three boxes (MM, DD, YY): drag them together onto the form's boxes.` : ' No EBoR date yet: pick it above.');
+      (sc.requirement7 ? ` The date ${sc.requirement7.text} is on the page: drag it onto the form's date boxes, and use the bar above the page to change its spacing and size (zoom in to line it up).` : ' No EBoR date yet: pick it above.');
   }
 
   /** @param {number} seq */

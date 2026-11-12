@@ -173,6 +173,7 @@ web/                      Firebase Hosting: index, intake, confirm, proposal-gui
                           pdfEngine.js (pdf.js inspection, BSA workbook decryption, sign + flatten with pdf-lib),
                           pdfWorkshop.js (Sign Workshop dialog on the Review page; libraries and fonts loaded on demand),
                           pdfInk.js (signature image helpers), pdfDraw.js (touch / stylus draw pad), pdfView.js (page viewer with draggable marks),
+                          pdfZoom.js (zoom control for both page viewers),
                           pdfPaperwork.js (EBoR paperwork: Requirement 7 page and date boxes, form fill), pdfPaperworkPage.js (that page),
                           pdfStrokes.js (pen strokes as data, pure), pdfDraw.js (pad engine), pdfSignPad.js (the signing overlay)
 test/                     vitest (+ tsconfig.json: type check of web/js/pdf*.js)
@@ -587,8 +588,13 @@ board on the schedule is preselected; the board's date can be changed on the pag
 
 1. **Verified Eagle Application**, Requirement 7: the file with "verified" in its name in the Scout's folder (newest;
    or pick another, or choose one from the computer). The page finds Requirement 7 by its text (else page 2) and puts the
-   board date as three boxes **MM, DD, YY** (drag them together onto the form's boxes). Two signatures: the board chair
-   and a District Advancement Committee / Council representative.
+   board date as one mark, **MM DD YY** with spaces between (drag it onto the form's boxes). The bar above the page edits
+   its text (add or remove spaces to line the numbers up) and its font size (**Auto** fits the box, or − / + in half
+   points, 7 to 16 pt; forms differ). Two signatures: the board chair and a District Advancement Committee / Council
+   representative.
+
+   **Zoom** (both documents here, and the Sign Workshop): − / + / Fit in that bar (in the Workshop, beside the page buttons), or Ctrl / ⌘ + mouse wheel
+   (a trackpad pinch). 100% = fit the window, up to 400%; the last zoom is remembered in the browser (`pdfZoom.js`).
 2. **Advancement Report** (BSA form 34403): the blank is fetched from Drive (Settings `advancementReportTemplateId`, else the PDF in the Form Templates folder) and
    prefilled: Scout's number, District and Title (Settings), Unit Leader name and address (Key 3), the date forwarded,
    Board of Review date (MM/DD/YYYY), "Eagle Scout", and the unit type. Three signatures, each placed in its form field's box.

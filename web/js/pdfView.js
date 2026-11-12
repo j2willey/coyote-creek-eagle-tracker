@@ -10,6 +10,7 @@
  * and the rest of the page still scrolls.
  */
 import { clampItemToPage, resizeBoxInPage, resizeImageBoxInPage, fitTextFontSize, inkHex } from './pdfPlan.js';
+import { applyPageScale, clampZoom } from './pdfZoom.js';
 
 /**
  * @typedef {Object} ViewMark
@@ -32,7 +33,9 @@ import { clampItemToPage, resizeBoxInPage, resizeImageBoxInPage, fitTextFontSize
  * @property {(i: number) => void} scrollToPage
  * @property {() => number} currentPage
  * @property {(armed: boolean) => void} setArmed  the next click on a page calls onPageClick (cursor changes)
- * @property {(id: string) => void} select
+ * @property {(id: string) => void} select       '' = nothing selected
+ * @property {() => string} selectedId
+ * @property {(zoom: number) => void} setZoom   1 = fit the window (see pdfZoom.js)
  * @property {() => void} destroy
  */
 
@@ -46,7 +49,9 @@ import { clampItemToPage, resizeBoxInPage, resizeImageBoxInPage, fitTextFontSize
  *   onChange?: () => void,
  *   onPageClick?: (pageIndex: number, point: { x: number, y: number }) => void,
  *   onCurrentPage?: (pageIndex: number) => void,
- *   scale?: number
+ *   onSelect?: (mark: ViewMark | null) => void,
+ *   scale?: number,
+ *   zoom?: number
  * }} opts
  * @returns {PageView}
  */
@@ -54,7 +59,9 @@ export function createPageView(host, opts) {
   const { pdfjsDoc, pageSizes } = opts;
   const totalPages = pageSizes.length;
   const pageSizeOf = (/** @type {number} */ i) => pageSizes[i] || { width: 612, height: 792 };
-  const cssScale = opts.scale || Math.max(0.5, Math.min(1.3, ((host.clientWidth || 720) - 28) / Math.max(...pageSizes.map(p => p.width), 612)));
+  const fitScale = opts.scale || Math.max(0.5, Math.min(1.3, ((host.clientWidth || 720) - 28) / Math.max(...pageSizes.map(p => p.width), 612)));
+  let zoom = clampZoom(opts.zoom || 1);
+  let cssScale = fitScale * zoom;
   let armed = false;
   let selectedId = '';
   let current = 0;
@@ -87,9 +94,9 @@ export function createPageView(host, opts) {
     doc.appendChild(wrap);
     pageEls.push({ wrap, canvas, overlay, rendered: false, rendering: false, want: false });
     wrap.addEventListener('click', ev => {
-      if (!armed || !opts.onPageClick) return;
       const target = /** @type {HTMLElement} */ (ev.target);
       if (target.closest && target.closest('.ws-place-box')) return;
+      if (!armed || !opts.onPageClick) { if (selectedId) select(''); return; }
       const r = wrap.getBoundingClientRect();
       opts.onPageClick(i, {
         x: ((ev.clientX - r.left) / Math.max(1, r.width)) * ps.width,
@@ -115,6 +122,7 @@ export function createPageView(host, opts) {
   function select(/** @type {string} */ id) {
     selectedId = id;
     host.querySelectorAll('.ws-place-box').forEach(e => e.classList.toggle('selected', /** @type {HTMLElement} */ (e).dataset.id === id));
+    if (opts.onSelect) opts.onSelect((id && opts.getMarks().find(m => m.id === id)) || null);
   }
 
   /** Marks of one page: drag (a group together), corner resize, cross to remove. */
@@ -248,10 +256,11 @@ export function createPageView(host, opts) {
     pe.rendering = true;
     renderChain = renderChain.then(async () => {
       if (!pe.want || closed) { pe.rendering = false; return; }
+      const scaleUsed = cssScale;
       try {
         const page = await pdfjsDoc.getPage(i + 1);
         const dpr = Math.min(2, window.devicePixelRatio || 1);
-        const vp = page.getViewport({ scale: cssScale * dpr });
+        const vp = page.getViewport({ scale: scaleUsed * dpr });
         pe.canvas.width = Math.round(vp.width);
         pe.canvas.height = Math.round(vp.height);
         const ctx = pe.canvas.getContext('2d');
@@ -259,7 +268,11 @@ export function createPageView(host, opts) {
         pe.rendered = true;
         if (!pe.want) release(i);
       } catch { /* left blank; scrolling away and back retries */ }
-      finally { pe.rendering = false; }
+      finally {
+        pe.rendering = false;
+        // Zoomed while this page was drawing: draw it again at the new scale.
+        if (pe.rendered && scaleUsed !== cssScale && !closed) { pe.rendered = false; if (pe.want) requestRender(i); }
+      }
     });
   }
   function release(/** @type {number} */ i) {
@@ -298,6 +311,15 @@ export function createPageView(host, opts) {
     currentPage: () => current,
     setArmed(a) { armed = a; doc.classList.toggle('armed', a); },
     select,
+    selectedId: () => selectedId,
+    setZoom(z) {
+      const next = clampZoom(z);
+      if (Math.abs(next - zoom) < 1e-6) return;
+      zoom = next;
+      cssScale = fitScale * zoom;
+      applyPageScale(host, pageEls, pageSizeOf, cssScale, requestRender);
+      refresh();
+    },
     destroy() {
       closed = true;
       if (renderObserver) renderObserver.disconnect();
