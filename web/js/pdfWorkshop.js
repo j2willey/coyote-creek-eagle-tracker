@@ -37,11 +37,23 @@ import {
   resizeBoxInPage,
   resizeImageBoxInPage,
   setImageItemWidth,
-  inkBoundingBox,
   SIGNATURE_BASE_WIDTH_PT,
   hasTransparentPixel,
-  STAMP_OPAQUE_WARNING
+  STAMP_OPAQUE_WARNING,
+  INK_COLORS,
+  DEFAULT_INK,
+  normalizeInk,
+  inkHex
 } from './pdfPlan.js';
+
+import {
+  canvasToTrimmedPngDataUrl,
+  trimPngDataUrl,
+  pngAspect,
+  dataUrlToBytes
+} from './pdfInk.js';
+
+import { createDrawPad } from './pdfDraw.js';
 
 import { CDN_SCRIPTS } from './cdnIntegrity.js';
 
@@ -64,6 +76,7 @@ import {
  * @property {string} printedName
  * @property {number} signatureScale
  * @property {number} textFontSize
+ * @property {string} ink  an INK_COLORS key (default black)
  * @property {boolean} [hasSaved]
  *
  * @typedef {Object} WorkshopOpenOptions
@@ -231,6 +244,7 @@ export function loadSavedSignature(fallbackName) {
           printedName: String(parsed.printedName || fallbackName || ''),
           signatureScale,
           textFontSize,
+          ink: normalizeInk(parsed.ink),
           hasSaved: true
         };
       }
@@ -244,6 +258,7 @@ export function loadSavedSignature(fallbackName) {
     printedName: fallbackName || '',
     signatureScale: 1,
     textFontSize: 0,
+    ink: DEFAULT_INK,
     hasSaved: false
   };
 }
@@ -259,75 +274,13 @@ function saveSignatureToStorage(sig) {
 }
 
 /**
- * A PNG data URL of `canvas` cropped to its ink (pixels that are not transparent) plus a small margin, so a signature
- * carries no transparent padding: its box then hugs the ink, in the preview and in the PDF. An empty canvas is returned
- * as is.
- * @param {HTMLCanvasElement} canvas
- * @returns {string}
- */
-function canvasToTrimmedPngDataUrl(canvas) {
-  try {
-    const ctx = canvas.getContext('2d');
-    if (!ctx || !canvas.width || !canvas.height) return canvas.toDataURL('image/png');
-    const box = inkBoundingBox(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-    if (!box || (box.width === canvas.width && box.height === canvas.height)) return canvas.toDataURL('image/png');
-    const out = document.createElement('canvas');
-    out.width = box.width;
-    out.height = box.height;
-    const octx = out.getContext('2d');
-    if (!octx) return canvas.toDataURL('image/png');
-    octx.drawImage(canvas, box.x, box.y, box.width, box.height, 0, 0, box.width, box.height);
-    return out.toDataURL('image/png');
-  } catch {
-    return canvas.toDataURL('image/png');
-  }
-}
-
-/**
- * Trim a PNG data URL (e.g. a signature saved by an earlier version) to its ink; resolves to the input on any problem.
- * @param {string} dataUrl
- * @returns {Promise<string>}
- */
-function trimPngDataUrl(dataUrl) {
-  return new Promise(resolve => {
-    if (!dataUrl) { resolve(dataUrl); return; }
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = Math.max(1, img.naturalWidth);
-      c.height = Math.max(1, img.naturalHeight);
-      const ctx = c.getContext('2d');
-      if (!ctx) { resolve(dataUrl); return; }
-      ctx.drawImage(img, 0, 0);
-      resolve(canvasToTrimmedPngDataUrl(c));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
-}
-
-/**
- * Natural aspect ratio (width / height) of a PNG data URL, 0 when empty or unreadable.
- * @param {string} dataUrl
- * @returns {Promise<number>}
- */
-function pngAspect(dataUrl) {
-  return new Promise(resolve => {
-    if (!dataUrl) { resolve(0); return; }
-    const img = new Image();
-    img.onload = () => resolve(img.naturalWidth > 0 && img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : 0);
-    img.onerror = () => resolve(0);
-    img.src = dataUrl;
-  });
-}
-
-/**
  * Render a typed signature in the chosen script font at ~3x DPI onto a transparent PNG data URL.
  * @param {string} text
  * @param {string} [fontKey]
+ * @param {string} [ink]  an INK_COLORS key (default black)
  * @returns {string} PNG data URL (or '' if text is empty)
  */
-export function renderTypedSignaturePng(text, fontKey = 'dancing') {
+export function renderTypedSignaturePng(text, fontKey = 'dancing', ink = DEFAULT_INK) {
   const clean = String(text || '').trim();
   if (!clean) return '';
   const canvas = document.createElement('canvas');
@@ -339,7 +292,7 @@ export function renderTypedSignaturePng(text, fontKey = 'dancing') {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const spec = getFontSpec(fontKey);
   ctx.font = `48px "${spec.family}", "Segoe Script", "Brush Script MT", cursive`;
-  ctx.fillStyle = '#0f296b';
+  ctx.fillStyle = inkHex(ink);
   ctx.textBaseline = 'middle';
 
   const measured = ctx.measureText(clean).width;
@@ -362,16 +315,17 @@ export function renderTypedSignaturePng(text, fontKey = 'dancing') {
  * to canvas, so the first draw uses the real webfont glyphs rather than a system fallback.
  * @param {string} text
  * @param {string} [fontKey]
+ * @param {string} [ink]
  * @returns {Promise<string>}
  */
-export async function renderTypedSignaturePngAsync(text, fontKey = 'dancing') {
+export async function renderTypedSignaturePngAsync(text, fontKey = 'dancing', ink = DEFAULT_INK) {
   const spec = getFontSpec(fontKey);
   if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.load === 'function') {
     try {
       await document.fonts.load(`48px "${spec.family}"`);
     } catch { /* fallback font if offline */ }
   }
-  return renderTypedSignaturePng(text, spec.key);
+  return renderTypedSignaturePng(text, spec.key, ink);
 }
 
 /**
@@ -420,21 +374,6 @@ function imageFileToTransparentPng(file) {
     };
     img.src = url;
   });
-}
-
-/**
- * Convert a `data:image/png;base64,...` URL into a `Uint8Array`.
- * @param {string} dataUrl
- * @returns {Uint8Array}
- */
-function dataUrlToBytes(dataUrl) {
-  const idx = String(dataUrl || '').indexOf(',');
-  if (idx < 0) return new Uint8Array(0);
-  const b64 = dataUrl.slice(idx + 1);
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
 }
 
 /**
@@ -497,7 +436,7 @@ export async function openSignWorkshop(opts) {
   const defaultName = String(opts.signerName || '').trim();
   const savedSig = loadSavedSignature(defaultName);
   if (savedSig.mode === 'type' && savedSig.typedText) {
-    savedSig.pngDataUrl = await renderTypedSignaturePngAsync(savedSig.typedText, savedSig.fontKey);
+    savedSig.pngDataUrl = await renderTypedSignaturePngAsync(savedSig.typedText, savedSig.fontKey, savedSig.ink);
   } else if (savedSig.pngDataUrl) {
     savedSig.pngDataUrl = await trimPngDataUrl(savedSig.pngDataUrl); // a signature saved before trimming existed
   }
@@ -624,10 +563,10 @@ export async function openSignWorkshop(opts) {
             </div>
 
             <div id="wsTabDraw" class="ws-tab-pane" hidden>
-              <canvas id="wsDrawPad" width="540" height="130" class="ws-draw-pad"></canvas>
+              <canvas id="wsDrawPad" width="900" height="220" class="ws-draw-pad"></canvas>
               <div class="ws-pad-actions">
                 <span class="hint">Sign above with mouse, stylus, or finger.</span>
-                <button type="button" class="ws-linkbtn" id="wsClearPadBtn">Clear pad</button>
+                <span><button type="button" class="ws-linkbtn" id="wsUndoPadBtn">Undo</button> <button type="button" class="ws-linkbtn" id="wsClearPadBtn">Clear pad</button></span>
               </div>
             </div>
 
@@ -637,6 +576,11 @@ export async function openSignWorkshop(opts) {
               <div class="ws-sig-preview-box">
                 <img id="wsUploadPreviewImg" alt="Uploaded signature preview">
               </div>
+            </div>
+
+            <div class="ws-ink-row" id="wsInkRow" role="radiogroup" aria-label="Ink colour">
+              <span class="hint">Ink:</span>
+              ${INK_COLORS.map(c => `<button type="button" class="ws-ink" role="radio" data-ink="${c.key}" title="${c.label}" aria-label="${c.label}" style="background:${c.hex}"></button>`).join('')}
             </div>
 
             <div class="ws-size-row">
@@ -719,6 +663,7 @@ export async function openSignWorkshop(opts) {
     const typePreviewImg = /** @type {HTMLImageElement} */ (q('#wsTypePreviewImg'));
     const drawPad = /** @type {HTMLCanvasElement} */ (q('#wsDrawPad'));
     const clearPadBtn = /** @type {HTMLButtonElement} */ (q('#wsClearPadBtn'));
+    const undoPadBtn = /** @type {HTMLButtonElement} */ (q('#wsUndoPadBtn'));
     const uploadSigInput = /** @type {HTMLInputElement} */ (q('#wsUploadSigInput'));
     const uploadPreviewImg = /** @type {HTMLImageElement} */ (q('#wsUploadPreviewImg'));
     const sigScaleRange = /** @type {HTMLInputElement} */ (q('#wsSigScaleRange'));
@@ -1035,7 +980,7 @@ export async function openSignWorkshop(opts) {
       q('#wsTabDraw').hidden = mode !== 'draw';
       q('#wsTabUpload').hidden = mode !== 'upload';
       if (mode === 'type') {
-        savedSig.pngDataUrl = await renderTypedSignaturePngAsync(typedSigInput.value, fontSelect.value);
+        savedSig.pngDataUrl = await renderTypedSignaturePngAsync(typedSigInput.value, fontSelect.value, savedSig.ink);
         typePreviewImg.src = savedSig.pngDataUrl || '';
       }
       await signatureImageChanged();
@@ -1048,7 +993,7 @@ export async function openSignWorkshop(opts) {
       savedSig.typedText = typedSigInput.value;
       savedSig.fontKey = normalizeFontKey(fontSelect.value);
       applyFontSelectPreviewStyle();
-      savedSig.pngDataUrl = await renderTypedSignaturePngAsync(savedSig.typedText, savedSig.fontKey);
+      savedSig.pngDataUrl = await renderTypedSignaturePngAsync(savedSig.typedText, savedSig.fontKey, savedSig.ink);
       typePreviewImg.src = savedSig.pngDataUrl || '';
       await signatureImageChanged();
     }
@@ -1093,55 +1038,33 @@ export async function openSignWorkshop(opts) {
     textLargerBtn.onclick = () => setTextFontSize((textFontSize || 10) + 0.5);
     textAutoBtn.onclick = () => setTextFontSize(0);
 
-    // Draw pad setup
-    const padCtx = drawPad.getContext('2d');
-    let drawing = false;
-    let hasDrawnStrokes = false;
-    if (padCtx) {
-      padCtx.strokeStyle = '#0f296b';
-      padCtx.lineWidth = 3.2;
-      padCtx.lineCap = 'round';
-      padCtx.lineJoin = 'round';
-    }
-    function padCoords(/** @type {PointerEvent} */ ev) {
-      const r = drawPad.getBoundingClientRect();
-      return {
-        x: ((ev.clientX - r.left) / Math.max(1, r.width)) * drawPad.width,
-        y: ((ev.clientY - r.top) / Math.max(1, r.height)) * drawPad.height
-      };
-    }
-    drawPad.addEventListener('pointerdown', ev => {
-      if (!padCtx) return;
-      drawing = true;
-      hasDrawnStrokes = true;
-      drawPad.setPointerCapture(ev.pointerId);
-      const pt = padCoords(ev);
-      padCtx.beginPath();
-      padCtx.moveTo(pt.x, pt.y);
-    });
-    drawPad.addEventListener('pointermove', ev => {
-      if (!drawing || !padCtx) return;
-      const pt = padCoords(ev);
-      padCtx.lineTo(pt.x, pt.y);
-      padCtx.stroke();
-    });
-    const finishStroke = () => {
-      if (!drawing) return;
-      drawing = false;
-      if (hasDrawnStrokes) {
-        savedSig.pngDataUrl = canvasToTrimmedPngDataUrl(drawPad);
+    // Draw pad (pdfDraw.js: touch / stylus friendly, Undo / Clear, recolours with the ink)
+    const pad = createDrawPad(drawPad, {
+      getInk: () => savedSig.ink,
+      onChange: () => {
+        savedSig.pngDataUrl = pad.hasInk() ? pad.toPngDataUrl() : '';
         void signatureImageChanged();
       }
-    };
-    drawPad.addEventListener('pointerup', finishStroke);
-    drawPad.addEventListener('pointercancel', finishStroke);
-    clearPadBtn.onclick = () => {
-      if (!padCtx) return;
-      padCtx.clearRect(0, 0, drawPad.width, drawPad.height);
-      hasDrawnStrokes = false;
-      savedSig.pngDataUrl = '';
-      void signatureImageChanged();
-    };
+    });
+    clearPadBtn.onclick = () => pad.clear();
+    undoPadBtn.onclick = () => pad.undo();
+
+    // Ink colour (typed, drawn and the placed name / date)
+    const inkBtns = /** @type {NodeListOf<HTMLButtonElement>} */ (modal.querySelectorAll('.ws-ink'));
+    function syncInkButtons() {
+      inkBtns.forEach(b => { const on = b.dataset.ink === savedSig.ink; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
+    }
+    inkBtns.forEach(b => {
+      b.onclick = async () => {
+        savedSig.ink = normalizeInk(b.dataset.ink);
+        syncInkButtons();
+        pad.redraw();
+        if (savedSig.mode === 'draw' && pad.hasInk()) { savedSig.pngDataUrl = pad.toPngDataUrl(); await signatureImageChanged(); }
+        else if (savedSig.mode === 'type') await updateTypedSig();
+        renderOverlayBoxes();
+      };
+    });
+    syncInkButtons();
 
     uploadSigInput.onchange = async () => {
       const f = uploadSigInput.files && uploadSigInput.files[0];
@@ -1317,6 +1240,7 @@ export async function openSignWorkshop(opts) {
               ? (dateStrInput.value || 'Date')
               : (printedNameInput.value || 'Printed Name');
             contentSpan.textContent = txt;
+            contentSpan.style.color = inkHex(savedSig.ink);
             const ptSize = fitTextFontSize(txt, box.width, box.height, textFontSize);
             contentSpan.style.fontSize = `${Math.max(9, Math.round(ptSize * cssScale * 10) / 10)}px`;
           }
@@ -1501,7 +1425,7 @@ export async function openSignWorkshop(opts) {
       setStatus('Signing and flattening Proposal fields…', 'hint');
       try {
         if (savedSig.mode === 'type') {
-          savedSig.pngDataUrl = await renderTypedSignaturePngAsync(typedSigInput.value, fontSelect.value);
+          savedSig.pngDataUrl = await renderTypedSignaturePngAsync(typedSigInput.value, fontSelect.value, savedSig.ink);
         }
         if (rememberSigCheck.checked) {
           saveSignatureToStorage({
@@ -1511,7 +1435,8 @@ export async function openSignWorkshop(opts) {
             pngDataUrl: savedSig.pngDataUrl,
             printedName: printedNameInput.value.trim(),
             signatureScale,
-            textFontSize
+            textFontSize,
+            ink: savedSig.ink
           });
         } else {
           try { localStorage.removeItem(SIG_STORAGE_KEY); } catch {}
@@ -1532,6 +1457,7 @@ export async function openSignWorkshop(opts) {
           printedName: printedNameInput.value.trim(),
           dateStr: dateStrInput.value.trim(),
           textFontSize,
+          ink: savedSig.ink,
           stampPngs,
           flattenEarlier
         });

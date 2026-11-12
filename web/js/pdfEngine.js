@@ -22,7 +22,8 @@ import {
   viewerRectToUser,
   markDrawSpec,
   textDrawSpec,
-  defaultSignPlacement
+  defaultSignPlacement,
+  inkRgb
 } from './pdfPlan.js';
 
 /**
@@ -807,6 +808,7 @@ function sameBoxSizeAndPos(a, b) {
  *   printedName: string,
  *   dateStr: string,
  *   textFontSize?: number,
+ *   ink?: string,
  *   stampPngs?: Record<string, Uint8Array>,
  *   flattenEarlier?: boolean
  * }} opts
@@ -921,7 +923,7 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
         y: spec.y,
         size: fSize,
         font: helvetica,
-        color: rgb(0.05, 0.05, 0.1),
+        color: rgb(...inkRgb(opts.ink)),
         rotate: degrees(spec.angle)
       });
     }

@@ -129,6 +129,92 @@ export const SCRIPT_FONTS = [
   { key: 'caveat', family: 'Caveat', label: 'Caveat' }
 ];
 
+/**
+ * Ink colours for typed and drawn signatures and for placed text (Task 12). Default black.
+ * @typedef {'black' | 'darkblue' | 'blue' | 'purple' | 'darkgreen' | 'brown' | 'rust' | 'darkred'} InkKey
+ * @type {Array<{ key: InkKey, label: string, hex: string }>}
+ */
+export const INK_COLORS = [
+  { key: 'black', label: 'Black', hex: '#111111' },
+  { key: 'darkblue', label: 'Dark blue', hex: '#0f296b' },
+  { key: 'blue', label: 'Blue', hex: '#1d4ed8' },
+  { key: 'purple', label: 'Purple', hex: '#5b21b6' },
+  { key: 'darkgreen', label: 'Dark green', hex: '#14532d' },
+  { key: 'brown', label: 'Brown', hex: '#5c3a21' },
+  { key: 'rust', label: 'Rust', hex: '#9a3412' },
+  { key: 'darkred', label: 'Dark red', hex: '#7f1d1d' }
+];
+
+/** @type {InkKey} */
+export const DEFAULT_INK = 'black';
+
+/**
+ * A stored or typed ink key made valid (anything unknown is black).
+ * @param {unknown} key
+ * @returns {InkKey}
+ */
+export function normalizeInk(key) {
+  const k = String(key == null ? '' : key).trim().toLowerCase();
+  const hit = INK_COLORS.find(c => c.key === k);
+  return hit ? hit.key : DEFAULT_INK;
+}
+
+/** @param {unknown} key @returns {string} CSS colour */
+export function inkHex(key) {
+  const k = normalizeInk(key);
+  return (INK_COLORS.find(c => c.key === k) || INK_COLORS[0]).hex;
+}
+
+/** @param {unknown} key @returns {[number, number, number]} 0..1 components (pdf-lib `rgb`) */
+export function inkRgb(key) {
+  const hex = inkHex(key).replace('#', '');
+  const n = parseInt(hex, 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+// ---------------------------------------------------------------------------
+// Draw pad (touch / stylus): which pointers draw, and how wide a stroke is
+// ---------------------------------------------------------------------------
+
+/** A touch contact at least this big (CSS px, either way) is a resting palm, not a finger. */
+export const PALM_CONTACT_PX = 32;
+/** After a pen was seen, a touch within this long is the hand resting on the screen. */
+export const PEN_PALM_WINDOW_MS = 2000;
+
+/**
+ * Should a pointer-down start (or join) a stroke on the draw pad?
+ * One pointer draws at a time; a second finger, a palm (big contact, or any touch just after a pen), a non-primary
+ * pointer and a mouse's right/middle button are ignored.
+ * @param {{ pointerType?: string, isPrimary?: boolean, button?: number, width?: number, height?: number, pointerId?: number }} ev
+ * @param {{ activePointerId: number | null, lastPenMs: number, nowMs: number }} state
+ * @returns {boolean}
+ */
+export function acceptPadPointer(ev, state) {
+  const type = ev.pointerType || 'mouse';
+  if (state.activePointerId !== null) return false;                       // a stroke is already being drawn: multi-touch ignored
+  if (ev.isPrimary === false) return false;
+  if (type === 'mouse' && Number(ev.button) > 0) return false;
+  if (type === 'touch') {
+    if (Number(ev.width) >= PALM_CONTACT_PX || Number(ev.height) >= PALM_CONTACT_PX) return false;
+    if (state.lastPenMs > 0 && state.nowMs - state.lastPenMs < PEN_PALM_WINDOW_MS) return false;
+  }
+  return true;
+}
+
+/**
+ * Stroke width for a point: a stylus presses harder for a thicker line (0.55x..1.45x); a finger or mouse is constant
+ * (they report 0 or a fixed 0.5 for pressure).
+ * @param {number} base
+ * @param {number} pressure
+ * @param {string} pointerType
+ * @returns {number}
+ */
+export function strokeWidth(base, pressure, pointerType) {
+  const p = Number(pressure);
+  if (pointerType !== 'pen' || !(p > 0)) return base;
+  return Math.round(base * (0.55 + 0.9 * Math.min(1, p)) * 100) / 100;
+}
+
 const str = (/** @type {unknown} */ v) => v == null ? '' : String(v).trim();
 
 /**

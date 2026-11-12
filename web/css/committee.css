@@ -359,3 +359,7 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 /* a scanned page is likely the signature page: an info line, not a warning */
 .infobox { border-left: 4px solid #1e4b8f; background: color-mix(in srgb, #1e4b8f 9%, transparent); padding: .5rem .8rem; border-radius: 4px; margin-top: .8rem; }
 .ws-banner.infobox { margin: 0; }
+.ws-ink-row { display: flex; align-items: center; gap: .4rem; margin: .5rem 0; flex-wrap: wrap; }
+.ws-ink { width: 26px; height: 26px; min-width: 26px; padding: 0; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.ws-ink.on { box-shadow: 0 0 0 2px var(--fg); transform: scale(1.12); }
+@media (pointer: coarse) { .ws-ink { width: 36px; height: 36px; min-width: 36px; } }
