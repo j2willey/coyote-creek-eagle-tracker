@@ -25,13 +25,13 @@ describe('EborPaperwork: dates', () => {
 describe('EborPaperwork: Advancement Report fields', () => {
   const base = { scout: 'Theodore Sample', unit: 'T999', district: 'Coyote Creek', title: 'Coyote Creek Advancement', leaderName: 'Pat Q Leader',
     address: '12 Elm St', city: 'Springfield', state: 'CA', zip: '95000', boardYmd: '2026-03-07' };
-  it('fills the named fields, every date = the EBoR date', () => {
+  it('fills the named fields, every date = the EBoR date (Date Award Earned as MM/DD/YY)', () => {
     const r = P.reportFields(base);
     expect(r.problems).toEqual([]);
     expect(r.text).toEqual({
       'No': '999', 'District': 'Coyote Creek', 'Leader': 'Pat Q Leader', 'Address': '12 Elm St', 'City': 'Springfield', 'State': 'CA', 'Zip': '95000',
       'Date this report forwarded to council service center': '03/07/2026', 'Title': 'Coyote Creek Advancement', 'Board of Review Date': '03/07/2026',
-      '#1': 'Theodore Sample', 'Date Award Earned1': '03/07/2026', 'Badge of Rank Merit Badge or Award1': 'Eagle Scout'
+      '#1': 'Theodore Sample', 'Date Award Earned1': '03/07/26', 'Badge of Rank Merit Badge or Award1': 'Eagle Scout'
     });
   });
   it('picks the unit type widget by position: Pack, Troop, Crew, Ship', () => {

@@ -80,7 +80,9 @@ var EborPaperwork = (function () {
     put(FIELD.title, i.title);
     put(FIELD.boardDate, date);
     put(FIELD.scout, i.scout);
-    put(FIELD.earned, date);
+    // Date Award Earned is a narrow column: MM/DD/YY lets its text be larger (Jim W., 2026-11-12).
+    var short = mmddyy(i.boardYmd);
+    put(FIELD.earned, short ? short.text : '');
     put(FIELD.badge, BADGE);
     if (!str(i.leaderName)) problems.push('No Unit Leader on the Key 3 tab for ' + (str(i.unit) || 'this unit') + ': the Leader box stays empty.');
     return { text: text, radio: u ? { group: UNIT_GROUP, index: u.index } : null, problems: problems };
