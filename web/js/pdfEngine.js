@@ -935,3 +935,71 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
     flattenedPages
   };
 }
+
+/**
+ * @typedef {Object} FreeMark  a mark for `applyMarksAndFlatten` (EBoR paperwork page); viewer space, bottom-left origin
+ * @property {string} id
+ * @property {'image' | 'text'} kind
+ * @property {number} pageIndex
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ * @property {Uint8Array} [png]   an image mark's PNG bytes (the image fills the box exactly)
+ * @property {string} [text]      a text mark's text
+ * @property {string} [ink]       an INK_COLORS key (text marks)
+ * @property {number} [fontSize]  0 / absent = fit the box
+ */
+
+/**
+ * Draw free marks (signature images, typed text) on a PDF and flatten the form fields on the pages that received a
+ * mark (or on `flattenPages`). No Proposal guardrails: the EBoR paperwork page signs Council's own documents. Marks are
+ * in viewer space (the page as displayed, `/Rotate` applied) and are drawn upright, like `applyPlacedItemsAndFlatten`.
+ *
+ * @param {any} PDFLib
+ * @param {{ pdfBytes: Uint8Array, marks: FreeMark[], flattenPages?: number[] }} opts
+ * @returns {Promise<{ pdfBytes: Uint8Array, flattenedPages: number[] }>}
+ */
+export async function applyMarksAndFlatten(PDFLib, opts) {
+  const marks = Array.isArray(opts.marks) ? opts.marks : [];
+  const pdfDoc = await loadPdfWithDecrypt(PDFLib, opts.pdfBytes);
+  const pages = pdfDoc.getPages();
+  for (const m of marks) {
+    if (!pages[m.pageIndex]) throw new Error('A mark is on a page that does not exist in this PDF.');
+    if (m.kind === 'image' && !(m.png && m.png.byteLength)) throw new Error('A signature on the page has no image. Remove it and place it again.');
+  }
+  const { StandardFonts, rgb, degrees } = PDFLib;
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const viewOf = (/** @type {number} */ idx) => {
+    const pg = pages[idx];
+    const cb = typeof pg.getCropBox === 'function' ? pg.getCropBox() : pg.getSize();
+    return {
+      size: { width: cb.width, height: cb.height },
+      origin: { x: Number(cb.x) || 0, y: Number(cb.y) || 0 },
+      rotation: normalizeRotation(pg.getRotation ? pg.getRotation().angle : 0)
+    };
+  };
+
+  const flat = (opts.flattenPages || [...new Set(marks.map(m => m.pageIndex))]).slice().sort((a, b) => a - b);
+  flattenPagesUpTo(PDFLib, pdfDoc, flat, helvetica);
+
+  /** @type {Map<Uint8Array, any>} */
+  const embedded = new Map();
+  for (const m of [...marks.filter(x => x.kind === 'image'), ...marks.filter(x => x.kind === 'text')]) {
+    const page = pages[m.pageIndex];
+    const v = viewOf(m.pageIndex);
+    if (m.kind === 'image' && m.png) {
+      if (!embedded.has(m.png)) embedded.set(m.png, await pdfDoc.embedPng(m.png));
+      const spec = markDrawSpec(m, v.size, v.rotation, v.origin);
+      page.drawImage(embedded.get(m.png), { x: spec.x, y: spec.y, width: spec.width, height: spec.height, rotate: degrees(spec.angle) });
+    } else if (m.kind === 'text') {
+      const text = String(m.text || '').replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+      if (!text) continue;
+      const size = fitTextFontSize(text, m.width, m.height, Number(m.fontSize) || 0);
+      const spec = textDrawSpec(m, { dx: 2, dy: Math.max(2, (m.height - size) / 2) }, v.size, v.rotation, v.origin);
+      page.drawText(text, { x: spec.x, y: spec.y, size, font: helvetica, color: rgb(...inkRgb(m.ink)), rotate: degrees(spec.angle) });
+    }
+  }
+  const saved = await pdfDoc.save({ updateFieldAppearances: false });
+  return { pdfBytes: saved instanceof Uint8Array ? saved : new Uint8Array(saved), flattenedPages: flat };
+}

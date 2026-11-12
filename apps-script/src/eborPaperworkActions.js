@@ -83,7 +83,7 @@ function actionEborPaperworkScout_(req) {
   try { board = EborPaperwork.boardFor(readSchedule_().rows, rec.recordId, today); } catch (e) { console.warn('ebor paperwork board: ' + e); }
   // The board's date: the schedule row is the source of truth; the tracking EBoR date is the fallback.
   var cols = stageColumns_();
-  var boardYmd = (board && board.ymd) || (cols.ebor ? Intake.dateKey(rec.fields[cols.ebor]) : '') || '';
+  var boardYmd = (EborPaperwork.parts(req.boardYmd) ? String(req.boardYmd) : '') || (board && board.ymd) || (cols.ebor ? Intake.dateKey(rec.fields[cols.ebor]) : '') || '';
   var committee = [];
   try { committee = committee_(); } catch (e) { /* suggestions only */ }
   var suggestions = { district: [], unit: [] };

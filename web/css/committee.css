@@ -363,3 +363,26 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .ws-ink { width: 26px; height: 26px; min-width: 26px; padding: 0; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
 .ws-ink.on { box-shadow: 0 0 0 2px var(--fg); transform: scale(1.12); }
 @media (pointer: coarse) { .ws-ink { width: 36px; height: 36px; min-width: 36px; } }
+
+/* EBoR paperwork page (/committee/ebor-paperwork) */
+.ep-tabs { display: flex; gap: .4rem; margin: .8rem 0 .4rem; flex-wrap: wrap; }
+.ep-tab { padding: .45rem .9rem; border-radius: 8px 8px 0 0; border: 1px solid var(--line); background: var(--bg); cursor: pointer; font-weight: 600; }
+.ep-tab.on { background: #1e4b8f; color: #fff; border-color: #1e4b8f; }
+.ep-tab .ep-ok { color: #8fe3a0; margin-left: .3rem; }
+.ep-panel { display: grid; grid-template-columns: minmax(20rem, 1.2fr) minmax(19rem, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .ep-panel { grid-template-columns: 1fr; } }
+.ep-panel .ws-canvas-wrap { max-height: 74vh; }
+.ep-slot { border: 1px solid var(--line); border-radius: 8px; padding: .55rem .7rem; margin: .5rem 0; background: color-mix(in srgb, var(--fg) 2%, var(--card)); }
+.ep-slot h4 { margin: 0 0 .3rem; font-size: .95rem; }
+.ep-slot input[type=text] { width: 100%; }
+.ep-slot .ep-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .4rem; }
+.ep-slot .ep-thumb { height: 2.4rem; max-width: 9rem; object-fit: contain; border: 1px dashed var(--line); background: #fff; border-radius: 4px; }
+.ep-slot.done { border-color: #2e7d32; }
+.ep-slot button { min-height: 2.4rem; }
+@media (pointer: coarse) { .ep-slot button, .ep-tab, .ep-panel select, .ep-panel input[type=text] { min-height: 2.9rem; font-size: 1rem; } }
+.ep-sigdlg { border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.2rem; width: min(34rem, 96vw); background: var(--card); color: var(--fg); }
+.ep-sigdlg::backdrop { background: rgba(15, 20, 30, .6); }
+.ep-sigdlg .ws-draw-pad { height: 11rem; }
+.ep-board { margin: .4rem 0; font-size: .9rem; }
+.ep-board ul { margin: .2rem 0; padding-left: 1.2rem; }
+.ep-savebar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-top: 1rem; }

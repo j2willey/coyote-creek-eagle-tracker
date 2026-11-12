@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>EBoR paperwork · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>EBoR paperwork <span class="tag reps" title="Experimental">experimental</span></h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+
+    <div id="app" hidden>
+      <p class="hint">At the Board of Review, on one device: sign the <b>Verified Eagle Application</b> (Requirement 7) and the <b>Advancement Report</b>.
+        Each signer types their name and signs (typed or drawn). Nothing leaves this browser until <b>Save both</b>, which files the two signed PDFs
+        in the Scout's folder and drafts the email to Council in the Outbox. The Scout's row does not move: use <i>Eagle earned…</i> on the dashboard afterwards.</p>
+
+      <label for="fScout">Scout</label>
+      <select id="fScout"></select>
+      <div id="scoutBox" class="ep-board" hidden></div>
+      <div id="problems" class="warnbox" hidden></div>
+
+      <div class="ws-ink-row" id="inkRow" role="radiogroup" aria-label="Ink colour for signatures and the date"></div>
+      <datalist id="boardNames"></datalist>
+
+      <div class="ep-tabs" role="tablist">
+        <button type="button" class="ep-tab on" id="tabApplication" role="tab" data-doc="application">1. Verified Eagle Application <span class="ep-ok" hidden>✓</span></button>
+        <button type="button" class="ep-tab" id="tabReport" role="tab" data-doc="report">2. Advancement Report <span class="ep-ok" hidden>✓</span></button>
+      </div>
+
+      <section id="panelApplication" class="ep-panel" data-doc="application">
+        <div>
+          <div class="file-row">
+            <label for="fVerified" style="margin:0">Verified Application</label>
+            <select id="fVerified"></select>
+            <label class="obbtn" style="cursor:pointer">Choose from computer… <input type="file" id="fVerifiedLocal" accept=".pdf,application/pdf" hidden></label>
+          </div>
+          <p class="hint" id="appNote"></p>
+          <div class="ws-canvas-wrap" id="hostApplication"></div>
+          <div class="ws-pagebar" id="pagesApplication" style="margin-top:.3rem"></div>
+        </div>
+        <div id="slotsApplication"></div>
+      </section>
+
+      <section id="panelReport" class="ep-panel" data-doc="report" hidden>
+        <div>
+          <p class="hint" id="repNote"></p>
+          <div class="file-row" id="repLocalRow" hidden><label class="obbtn" style="cursor:pointer">Choose the blank Advancement Report&hellip; <input type="file" id="fReportLocal" accept=".pdf,application/pdf"></label></div>
+          <div class="ws-canvas-wrap" id="hostReport"></div>
+          <div class="ws-pagebar" id="pagesReport" style="margin-top:.3rem"></div>
+        </div>
+        <div id="slotsReport"></div>
+      </section>
+
+      <div class="ep-savebar">
+        <button type="button" class="primary" id="saveBtn">Save both…</button>
+        <span id="saveMsg" role="status" class="muted"></span>
+      </div>
+    </div>
+
+    <dialog id="sigDlg" class="ep-sigdlg">
+      <h3 id="sigTitle" style="margin-top:0">Sign</h3>
+      <p class="hint" id="sigWho"></p>
+      <div class="ws-tabs" role="tablist"><button type="button" class="ws-tab active" data-mode="type">Type</button><button type="button" class="ws-tab" data-mode="draw">Draw</button></div>
+      <div id="sigType" class="ws-tab-pane">
+        <div class="ws-row">
+          <div><label for="sigText">Typed signature</label><input type="text" id="sigText" autocomplete="off"></div>
+          <div><label for="sigFont">Script font</label><select id="sigFont" class="ws-font-select"></select></div>
+        </div>
+        <div class="ws-sig-preview-box"><img id="sigPreview" alt="Typed signature preview"></div>
+      </div>
+      <div id="sigDraw" class="ws-tab-pane" hidden>
+        <canvas id="sigPad" width="900" height="260" class="ws-draw-pad"></canvas>
+        <div class="ws-pad-actions"><span class="hint">Sign above with a finger, a stylus or a mouse.</span>
+          <span><button type="button" class="ws-linkbtn" id="sigUndo">Undo</button> <button type="button" class="ws-linkbtn" id="sigClear">Clear</button></span></div>
+      </div>
+      <div class="ws-ink-row" id="sigInk" role="radiogroup" aria-label="Ink colour"></div>
+      <p id="sigMsg" class="hint err" role="alert"></p>
+      <div class="actions"><button type="button" class="primary" id="sigUse">Use this signature</button><button type="button" id="sigCancel">Cancel</button></div>
+    </dialog>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    import { readBase64, sizeText } from '/js/files.js';
+    import { initPaperwork } from '/js/pdfPaperworkPage.js';
+    const meLine = renderNav($('cnav'), 'admin');
+    initPaperwork({ api, $, el, session, meLine, meText, needSignIn, isSignedOut, readBase64, sizeText });
+  </script>
+</body>
+</html>
