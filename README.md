@@ -163,7 +163,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     tabs.js settings.js mail.js menu.js setup.js
   src/tools/              migrate.js, fakeSchedule.js
 web/                      Firebase Hosting: index, intake, confirm, proposal-guide, signin, update, unit,
-                          committee.html (dashboard), committee/{schedule,outbox,review,units,stats,admin,ebor-paperwork}.html (absolute /css /js paths)
+                          committee.html (dashboard), committee/{schedule,outbox,review,units,stats,admin,dev,ebor-paperwork}.html (absolute /css /js paths)
   js/                     api.js (fetch), config.js (API URL per host), header.js (shared header), files.js (uploads),
                           committee.js (session, committee nav), outbox.js (Outbox UI, page + schedule popup),
                           boardSort.js (dashboard sorting inside a stage), photos.js (EBoR photo resize + EXIF date),
@@ -331,7 +331,7 @@ members use the Action column, the schedule sheet and the committee page instead
 | Record a Proposal Review outcome (upload the signed Proposal) | `/committee/review` |
 | Check / send emails waiting for review | `/committee/outbox` (also a popup on the schedule) |
 | Held web submissions, unit requests, January archive, email preview | `/committee/admin` |
-| Sign the Verified Application + Advancement Report at the board | `/committee/ebor-paperwork` (link on Admin) |
+| Sign the Verified Application + Advancement Report at the board | `/committee/ebor-paperwork` (link on Dev) |
 | Statistics | `/committee/stats` |
 | Book / cancel on the sheet | Schedule sheet: type / clear the Scout's name in a slot |
 | Promote / spam a submission | Intake Queue → Action column |
@@ -936,6 +936,11 @@ Run by `digestHourly`; each fires once (Script Properties `bm:` / `pb:` / `br:`)
 - **6.2.b Session briefing:** the day before (within 24 h) → sent to the members on the slot (folder and log links); a Follow-Up / Consult too.
 - **6.9.e Health check** (once a day, also from `syncInvitesHourly`): a missing trigger or a Digest Log silent for
   2 days → adminEmail.
+
+### Dev page (`/committee/dev`, every committee member)
+
+Experimental pages live here until the committee has tried them, then move to their real home (Jim W., 2026-11-12).
+Now: the EBoR paperwork page.
 
 ### Admin page (`/committee/admin`, every committee member)
 

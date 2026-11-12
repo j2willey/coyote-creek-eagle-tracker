@@ -16,7 +16,8 @@ const PAGES = [
   ['outbox', '/committee/outbox', 'Outbox'],
   ['units', '/committee/units', 'Units'],
   ['stats', '/committee/stats', 'Stats'],
-  ['admin', '/committee/admin', 'Admin']
+  ['admin', '/committee/admin', 'Admin'],
+  ['dev', '/committee/dev', 'Dev']           // experimental pages before they roll out (Jim W., 2026-11-12)
 ];
 const OB_KEY = 'ccacOutboxN', REV_KEY = 'ccacReviewN';   // last counts seen, so every page can show them at once
 

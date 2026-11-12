@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Dev · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <!-- Dev (Jim W., 2026-11-12): experimental pages live here until the committee has tried them; then they move to
+       their real home and leave this page. -->
+  <main class="wide">
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Dev</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p id="msg" class="muted">Loading…</p>
+    <div id="app" hidden>
+      <p class="hint">Experimental: try these on staging (or with the Demo Scout) before using them for real. Tell Jim W. what works and what doesn't.</p>
+      <section class="admsec">
+        <h2>EBoR paperwork</h2>
+        <p class="hint">At the Board of Review: sign the Verified Eagle Application and the Advancement Report on one device, file both in the
+          Scout's folder and draft the email to Council. <a href="/committee/ebor-paperwork">Open the EBoR paperwork page</a>.</p>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    const meLine = renderNav($('cnav'), 'dev');
+    if (!session) needSignIn($('msg'));
+    else {
+      api('whoami', { session }).then(me => {
+        if (!me.committee) { $('msg').textContent = 'This page is for committee members.'; $('msg').className = 'err'; return; }
+        let testMode = false;
+        try { const c = JSON.parse(localStorage.getItem('ccacHome') || 'null'); testMode = !!(c && c.session === session && c.d.testMode); } catch {}
+        meLine.textContent = meText({ name: me.committee.name, initials: me.committee.initials, email: me.email }, testMode);
+        $('msg').hidden = true; $('app').hidden = false;
+      }).catch(e => { if (isSignedOut(e)) needSignIn($('msg'), e.message); else { $('msg').textContent = e.message; $('msg').className = 'err'; } });
+    }
+  </script>
+</body>
+</html>
