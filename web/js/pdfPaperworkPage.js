@@ -9,7 +9,7 @@
  * type-checked without importing the untyped committee.js.
  */
 import { ensurePdfLibs, ensureGoogleScriptFonts, renderTypedSignaturePngAsync, loadSavedSignature } from './pdfWorkshop.js';
-import { SCRIPT_FONTS, INK_COLORS, DEFAULT_INK, normalizeInk, SIGNATURE_BASE_WIDTH_PT, fitTextFontSize, TEXT_FONT_MIN_PT, TEXT_FONT_MAX_PT } from './pdfPlan.js';
+import { SCRIPT_FONTS, INK_COLORS, DEFAULT_INK, normalizeInk, SIGNATURE_BASE_WIDTH_PT, fitTextFontSize, TEXT_FONT_MIN_PT, TEXT_FONT_MAX_PT, clampItemToPage } from './pdfPlan.js';
 import { createZoomControl, loadZoom } from './pdfZoom.js';
 import { inspectPdfWithPdfJs, applyMarksAndFlatten } from './pdfEngine.js';
 import { createPageView } from './pdfView.js';
@@ -23,10 +23,11 @@ import { findRequirement7Page, requirement7DateMarks, fitSignatureToBox, fillAdv
 const STORE_KEY = 'ccacEborPaperwork_v1';
 
 /**
- * @typedef {{ dataUrl: string, ink: import('./pdfStrokes.js').Ink | null }} SigResult
+ * @typedef {{ text: string, font: string, ink: string }} Typed  a typed signature's recipe (it stays editable)
+ * @typedef {{ dataUrl: string, ink: import('./pdfStrokes.js').Ink | null, typed?: Typed }} SigResult
  * @typedef {import('./pdfView.js').ViewMark & { slotKey?: string }} Mark
  * @typedef {{ key: string, label: string, rep: boolean, name: string, dataUrl: string, aspect: number,
- *   ink: import('./pdfStrokes.js').Ink | null, px: number }} Slot  `ink`: a pen signature as strokes (its picture is drawn from them)
+ *   ink: import('./pdfStrokes.js').Ink | null, px: number, typed: Typed | null }} Slot  `ink`: a pen signature as strokes (its picture is drawn from them)
  * @typedef {{ pageIndex: number, x: number, y: number, width: number, height: number }} Rect
  * @typedef {{
  *   kind: 'application' | 'report', host: any, pagesBar: any, slotsBox: any,
@@ -105,6 +106,7 @@ export function initPaperwork(deps) {
       d.marks.forEach(m => { if (m.kind === 'text') m.ink = ink; });
       for (const s of d.slots) if (s.ink) redrawSlot(d, s);
       if (d.view) d.view.refresh();
+      if (d.bar) d.bar.sync();
       refreshSlots(d);
     }
     if (sigDialogOpen) { sigPad.redraw(); void renderTyped(); }
@@ -151,7 +153,8 @@ export function initPaperwork(deps) {
   $('sigUse').onclick = async () => {
     if (sigMode === 'type') {
       if (!sigText.value.trim()) { $('sigMsg').textContent = 'Type the signature first.'; return; }
-      closeSig({ dataUrl: await renderTypedSignaturePngAsync(sigText.value, sigFont.value, ink), ink: null });
+      closeSig({ dataUrl: await renderTypedSignaturePngAsync(sigText.value, sigFont.value, ink), ink: null,
+        typed: { text: sigText.value.trim(), font: sigFont.value, ink } });
     } else {
       const drawn = sigPad.getInk();
       if (!drawn) { $('sigMsg').textContent = 'Draw the signature first.'; return; }
@@ -202,6 +205,95 @@ export function initPaperwork(deps) {
     return insp;
   }
   /**
+   * The signature part of the bar above a document (Jim W., 2026-11-12), shown while a signature on the page is
+   * selected: Size − / + for any signature; for a TYPED one also its text, script font and colour, which stay
+   * editable after it is placed (the picture is re-made from the recipe). A pen signature is redone with
+   * "Sign with pen…" and follows the Ink row.
+   * @param {DocState} d
+   * @returns {{ el: HTMLElement, sync: () => boolean }}  sync() returns whether it is showing
+   */
+  function signatureBar(d) {
+    const label = el('span', { className: 'hint' });
+    const text = /** @type {HTMLInputElement} */ (el('input', { type: 'text', autocomplete: 'off', spellcheck: false, title: 'The typed signature' }));
+    const font = /** @type {HTMLSelectElement} */ (el('select', { className: 'ws-font-select', title: 'Script font' },
+      ...SCRIPT_FONTS.map(f => { const o = el('option', { value: f.key, textContent: f.label }); o.style.fontFamily = `'${f.family}', cursive`; return o; })));
+    const inks = el('span', { className: 'ws-ink-row ep-inline-ink' });
+    /** @type {HTMLButtonElement[]} */
+    const inkBtns = INK_COLORS.map(c => {
+      const b = /** @type {HTMLButtonElement} */ (el('button', { type: 'button', className: 'ws-ink', title: c.label }));
+      b.style.background = c.hex;
+      b.setAttribute('aria-label', c.label);
+      b.onclick = () => edit({ ink: c.key });
+      inks.appendChild(b);
+      return b;
+    });
+    const typedPart = el('span', {}, text, font, inks);
+    const penNote = el('span', { className: 'hint', textContent: 'Pen signature: redo it with “Sign with pen…”; colour follows the Ink row.' });
+    const smaller = el('button', { type: 'button', className: 'ws-step-btn', textContent: '−', title: 'Smaller' });
+    const larger = el('button', { type: 'button', className: 'ws-step-btn', textContent: '+', title: 'Larger' });
+    const wrap = el('span', {}, label, typedPart, penNote, el('span', { className: 'hint', textContent: 'Size' }), smaller, larger);
+    /** @returns {{ m: Mark, s: Slot } | null} */
+    const current = () => {
+      const selId = d.view ? d.view.selectedId() : '';
+      const m = d.marks.find(x => x.id === selId && x.kind === 'image' && x.slotKey);
+      const s = m && d.slots.find(x => x.key === m.slotKey);
+      return m && s ? { m, s } : null;
+    };
+    let seq = 0;
+    /** @param {Partial<Typed>} change */
+    async function edit(change) {
+      const cur = current();
+      if (!cur || !cur.s.typed) return;
+      const s = cur.s;
+      s.typed = { ...s.typed, ...change };
+      if (change.font) { fontKey = change.font; saveSettings(); }
+      sync();
+      if (!s.typed.text.trim()) return;
+      const mine = ++seq;
+      const url = await renderTypedSignaturePngAsync(s.typed.text, s.typed.font, s.typed.ink);
+      if (mine !== seq || !url) return;
+      s.dataUrl = url;
+      s.aspect = await pngAspect(url);
+      signatureChanged(d, s);
+    }
+    text.oninput = () => void edit({ text: text.value });
+    font.onchange = () => void edit({ font: font.value });
+    /** @param {number} f */
+    const scale = f => {
+      const cur = current();
+      if (!cur) return;
+      const { m } = cur;
+      const ps = d.pageSizes[m.pageIndex];
+      const w = Math.max(24, Math.min(ps.width, m.width * f)), h = w * (m.height / Math.max(1, m.width));
+      const r = clampItemToPage({ x: m.x + (m.width - w) / 2, y: m.y + (m.height - h) / 2, width: w, height: h }, ps);
+      m.x = Math.round(r.x * 10) / 10; m.y = Math.round(r.y * 10) / 10;
+      m.width = Math.round(r.width * 10) / 10; m.height = Math.round(r.height * 10) / 10;
+      dirty = true;
+      refreshInkMarks(d);
+      if (d.view) d.view.refresh();
+    };
+    smaller.onclick = () => scale(1 / 1.1);
+    larger.onclick = () => scale(1.1);
+    const sync = () => {
+      const cur = current();
+      wrap.style.display = cur ? 'contents' : 'none';
+      if (!cur) return false;
+      const t = cur.s.typed;
+      label.textContent = `${cur.m.label}:`;
+      typedPart.style.display = t ? 'contents' : 'none';
+      penNote.hidden = !!t || !cur.s.ink;
+      if (t) {
+        if (document.activeElement !== text) text.value = t.text;
+        font.value = t.font;
+        font.style.fontFamily = `"${(SCRIPT_FONTS.find(f => f.key === t.font) || SCRIPT_FONTS[0]).family}", cursive`;
+        inkBtns.forEach((b, i) => b.classList.toggle('on', INK_COLORS[i].key === t.ink));
+      }
+      return true;
+    };
+    return { el: wrap, sync };
+  }
+
+  /**
    * The bar above a document (Jim W., 2026-11-12): zoom, and for a text mark (the Requirement 7 date) its text and
    * font size. The text is free to edit (add or remove spaces to line the numbers up with the form's boxes); the
    * size is "Auto" (fits the box) or a fixed size in points, because each form's boxes need a different size.
@@ -218,7 +310,7 @@ export function initPaperwork(deps) {
     const size = el('span', { className: 'ws-size-val' });
     const auto = el('button', { type: 'button', className: 'ws-linkbtn', textContent: 'Auto', title: 'Fit the text to its box' });
     const textPart = el('span', { className: 'ep-textpart' }, label, input, el('span', { className: 'hint', textContent: 'Size' }), smaller, size, larger, auto);
-    textPart.style.display = 'contents';
+    const sig = signatureBar(d);
     /** @returns {Mark | undefined} */
     const target = () => {
       const texts = d.marks.filter(m => m.kind === 'text');
@@ -226,8 +318,8 @@ export function initPaperwork(deps) {
       return texts.find(m => m.id === selId) || texts[0];
     };
     const sync = () => {
-      const m = target();
-      textPart.hidden = !m;
+      const showSig = sig.sync();
+      const m = showSig ? undefined : target();
       textPart.style.display = m ? 'contents' : 'none';
       if (!m) return;
       label.textContent = `${m.label}:`;
@@ -252,7 +344,7 @@ export function initPaperwork(deps) {
     larger.onclick = () => step(0.5);
     auto.onclick = () => { const m = target(); if (m) { m.fontSize = 0; changed(); } };
     const zoom = createZoomControl(d.host, z => { if (d.view) d.view.setZoom(z); }, loadZoom());
-    const row = el('div', { className: 'ep-textbar' }, textPart, zoom.el);
+    const row = el('div', { className: 'ep-textbar' }, sig.el, textPart, zoom.el);
     d.host.before(row);
     d.bar = { el: row, sync };
     return d.bar;
@@ -328,9 +420,9 @@ export function initPaperwork(deps) {
         sign.onclick = async () => {
           const got = await askSignature(s.label, s.name.trim());
           if (!got) return;
-          if (got.ink) setSlotInk(d, s, got.ink);
+          if (got.ink) { s.typed = null; setSlotInk(d, s, got.ink); }
           else {
-            s.ink = null; s.dataUrl = got.dataUrl; s.aspect = await pngAspect(got.dataUrl);
+            s.ink = null; s.typed = got.typed || null; s.dataUrl = got.dataUrl; s.aspect = await pngAspect(got.dataUrl);
             signatureChanged(d, s);
           }
         };
@@ -338,6 +430,7 @@ export function initPaperwork(deps) {
           const res = await openSigningOverlay({ title: s.label, who: `Signer: ${s.name.trim()}`, inkKey: ink });
           if (!res) return;
           if (res.inkKey !== ink) setInk(res.inkKey);
+          s.typed = null;
           setSlotInk(d, s, res.ink);
         };
         place.onclick = () => placeSlot(d, s);
@@ -377,6 +470,7 @@ export function initPaperwork(deps) {
     dirty = true;
     const m = d.marks.find(x => x.slotKey === s.key);
     if (m) { m.dataUrl = s.dataUrl; m.height = Math.round((m.width / (s.aspect || 4)) * 10) / 10; if (d.view) d.view.refresh(); }
+    if (d.bar) d.bar.sync();
     refreshSlots(d);
   }
   function setSlotInk(/** @type {DocState} */ d, /** @type {Slot} */ s, /** @type {import('./pdfStrokes.js').Ink} */ strokes) {
@@ -556,7 +650,7 @@ export function initPaperwork(deps) {
       sc = await api('eborPaperworkScout', { session, recordId, ...(boardYmd ? { boardYmd } : {}) });
       if (seq !== loadSeq) return;
       /** @param {any} s @returns {Slot} */
-      const slotOf = s => ({ key: s.key, label: s.label, rep: !!s.rep, name: '', dataUrl: '', aspect: 0, ink: null, px: 0 });
+      const slotOf = s => ({ key: s.key, label: s.label, rep: !!s.rep, name: '', dataUrl: '', aspect: 0, ink: null, px: 0, typed: null });
       docs.application.slots = data.slots.application.map(slotOf);
       docs.report.slots = data.slots.report.map(slotOf);
       showScoutInfo();

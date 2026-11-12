@@ -593,6 +593,10 @@ board on the schedule is preselected; the board's date can be changed on the pag
    points, 7 to 16 pt; forms differ). Two signatures: the board chair and a District Advancement Committee / Council
    representative.
 
+   **A placed signature** is edited in the same bar while it is selected (click it): **Size − / +** for any signature;
+   a **typed** signature also keeps its text, script font and colour editable (the picture is re-made). A pen
+   signature is redone with "Sign with pen…" and follows the Ink row.
+
    **Zoom** (both documents here, and the Sign Workshop): − / + / Fit in that bar (in the Workshop, beside the page buttons), or Ctrl / ⌘ + mouse wheel
    (a trackpad pinch). 100% = fit the window, up to 400%; the last zoom is remembered in the browser (`pdfZoom.js`).
 2. **Advancement Report** (BSA form 34403): the blank is fetched from Drive (Settings `advancementReportTemplateId`, else the PDF in the Form Templates folder) and

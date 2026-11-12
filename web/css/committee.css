@@ -412,3 +412,5 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .ws-zoom .ws-size-val { min-width: 3.2em; text-align: center; }
 .ep-textbar { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin: .3rem 0 .4rem; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .ep-textbar input[type=text] { font-family: Helvetica, Arial, sans-serif; white-space: pre; width: 11rem; }
+.ep-textbar .ep-inline-ink { display: inline-flex; gap: .25rem; margin: 0; }
+.ep-textbar .ws-font-select { max-width: 10rem; }
