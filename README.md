@@ -103,6 +103,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     reminders.js          EBoR reminder (4.3.c): which boards are due, board list text
     closing.js            Closed records: reasons, close / reopen plans, the _closed cell, "Close?" suggestions, January archive rows (no contact details), closures by reason
     nudges.js             hourly nudges (4.1.h, 6.2.b, 6.2.c), _stage_since, the digest's "Awaiting action" list
+    settingsView.js       Admin → Settings: settings grouped with help; the Admin role
     adminRules.js         Admin page: held web submissions and their actions; January archive (years, rows to delete)
     sectionSort.js        EBoR Booked in EBoR Date order (latest at the top): wanted order + row moves
     stats.js              Stats page: this year live (months, ages, female, pipeline, speed, units, sessions); history rows
@@ -947,8 +948,17 @@ described under the Admin page below).
 
 Sub-tabs (2026-11-12): **Needs attention** (web submissions, comparisons to review, unit requests; count badge),
 **Email** (email the units, drafts for several Scouts, template preview), **Year-end** (the two January archives).
-`#attention` / `#email` / `#yearend` in the address bar opens that tab. Plan for People / Settings / System tabs:
-vault `admin-ui-plan.md`.
+`#attention` / `#email` / `#yearend` / `#settings` in the address bar opens that tab. Plan for People / Settings /
+System tabs: vault `admin-ui-plan.md`.
+
+**Admin role (2026-11-12):** Committee tab column **Role** (blank | Admin; Setup / repair adds the column). The Settings
+adminEmail always has it too. Admin-only tabs are hidden for others and every Admin-only action checks the role on the
+server (`adminMe_`, `SettingsView.isAdmin`).
+
+**Settings** (Admin role; read-only for now, `lib/settingsView.js`, `adminSettings`): every setting grouped (District
+details, Scheduling, Reminders and email, Web submissions, Sign-in and security, Test mode, Internal wiring), with a help
+line, the default when the value differs, and links for folder / Doc / sheet IDs; keys not in a group show under
+"Other"; the stage table (Settings D–G) at the end. A test keeps every default key in exactly one group.
 
 - **Web submissions that need a person** (Intake Queue): never confirmed (link expired), possible duplicates, errors,
   stuck. Attach to an existing Scout (likely matches first), add as a new Scout, resend the confirmation link,

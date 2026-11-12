@@ -419,3 +419,7 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .admtab { padding: .45rem .9rem; border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; background: var(--bg); cursor: pointer; font-weight: 600; }
 .admtab.on { background: #1e4b8f; color: #fff; border-color: #1e4b8f; }
 .admtab .badge { margin-left: .35rem; }
+.setgroup summary { cursor: pointer; padding: .2rem 0; }
+.settable td { vertical-align: top; }
+.settable td:first-child { white-space: nowrap; }
+.settable tr.setchanged td:nth-child(2) { font-weight: 600; }

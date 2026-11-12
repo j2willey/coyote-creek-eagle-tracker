@@ -23,6 +23,14 @@ function committeeMe_(session) {
   return { email: email, me: me, committee: committee };
 }
 
+/** committeeMe_ + the Admin role (Committee tab Role "Admin", or Settings adminEmail): Admin → People / Settings / System. */
+function adminMe_(session) {
+  var c = committeeMe_(session);
+  if (!SettingsView.isAdmin(c.me, c.email, getSettings_())) throw userError_('This part of the Admin page needs the Admin role ' +
+    '(Committee tab → Role = Admin). Ask Jim W.');
+  return c;
+}
+
 function scheduleActivity_(entry, by) {
   try {
     Tabs.append(ACTIVITY_TAB, { 'When': new Date(), 'Scout': 'Schedule', 'Unit': '', 'Record ID': '', 'Entry': entry, 'By': by || '' });

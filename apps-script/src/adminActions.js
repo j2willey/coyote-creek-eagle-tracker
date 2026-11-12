@@ -7,6 +7,7 @@
  *   adminArchive {session, year, confirm}               -> {needsConfirm, names, ...} | {message, url}   (eagleArchiveActions.js)
  *   adminClosedArchive {session, confirm}               -> {needsConfirm, rows, folder} | {message}   (closingActions.js)
  *   adminRequestDone {session, id}                       -> {message}   unit host-a-board request handled
+ *   adminSettings {session}                              -> {groups, sections}   Admin role only, read-only for now (lib/settingsView.js)
  */
 function adminRecords_() {
   var eCol = getSettings_().eborDateColumn || 'ebor_date';
@@ -16,7 +17,7 @@ function adminRecords_() {
 }
 
 function actionAdminData_(req) {
-  committeeMe_(req.session);
+  var me = committeeMe_(req.session);
   var s = getSettings_();
   var recs = adminRecords_();
   var byId = {};
@@ -48,7 +49,13 @@ function actionAdminData_(req) {
       .sort(function (a, b) { return a.label.localeCompare(b.label); }),
     sections: (s.sections || []).filter(function (x) { return EmailMenu.ENTRIES.some(function (e) { return EmailMenu.fits(e, x.key); }); })
       .map(function (x) { return { key: x.key, label: x.label || x.key }; }),
-    testMode: s.testMode !== false };
+    testMode: s.testMode !== false, isAdmin: SettingsView.isAdmin(me.me, me.email, s) };
+}
+
+/** Admin → Settings (Admin role): every setting, grouped, with help and defaults. Read-only (step 2 of the plan). */
+function actionAdminSettings_(req) {
+  adminMe_(req.session);
+  return SettingsView.view(readSettingsTab_(false), SettingsModel.DEFAULT_VALUES);
 }
 
 /** Dashboard strip: items on the Admin page that need a person (held web submissions, open unit requests). */

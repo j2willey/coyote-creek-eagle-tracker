@@ -88,6 +88,13 @@
         <p class="hint">Closed records from a past year are cleared once a year. For each: a row (no contact details) goes to the "Closed Archive" tab next to the tracking sheet, the Scout's folder moves to <b id="clFolder">Archive/Closed</b> (Settings → closedFolder), and the row leaves the tracking tab. Nothing happens until you press Archive; the list below is what it would do.</p>
         <div id="closedArch"></div>
       </section>
+      <section class="admsec" data-tab="settings">
+        <h2>Settings</h2>
+        <p class="hint">Every setting the tool reads from the Settings tab, grouped, with what it does. <b>Read-only for now</b>: change a value on
+          the spreadsheet's Settings tab (it takes effect within 5 minutes). Editing here comes group by group. Values that differ from the
+          built-in default are marked.</p>
+        <div id="setView"><p class="muted">Loading…</p></div>
+      </section>
     </div>
     <dialog id="pvDlg" class="detail">
       <div class="dethead"><div><h2 id="pvTitle"></h2><p class="muted" id="pvMeta"></p></div><button type="button" id="pvClose">Close</button></div>
@@ -418,18 +425,22 @@
     }
 
     // ---------- sub-tabs ----------
-    const TABS = [['attention', 'Needs attention'], ['email', 'Email'], ['yearend', 'Year-end']];
+    const TABS = [['attention', 'Needs attention'], ['email', 'Email'], ['yearend', 'Year-end'], ['settings', 'Settings']];
+    const ADMIN_ONLY = ['settings'];   // the Admin role (Committee tab → Role); the server checks it too
     const tabBtns = TABS.map(([key, label]) => {
       const b = el('button', { type: 'button', className: 'admtab', textContent: label });
       b.setAttribute('role', 'tab');
       b.dataset.tab = key;
       if (key === 'attention') b.append(el('span', { className: 'badge', id: 'attnCount', hidden: true }));
       b.onclick = () => showTab(key, true);
+      if (ADMIN_ONLY.includes(key)) b.hidden = true;
       return b;
     });
+    let isAdmin = false, settingsLoaded = false;
     $('admTabs').replaceChildren(...tabBtns);
     function showTab(key, push) {
-      if (!TABS.some(t => t[0] === key)) key = 'attention';
+      if (!TABS.some(t => t[0] === key) || (ADMIN_ONLY.includes(key) && data && !isAdmin)) key = 'attention';
+      if (key === 'settings' && data && !settingsLoaded) { settingsLoaded = true; loadSettings(); }
       tabBtns.forEach(b => { const on = b.dataset.tab === key; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
       document.querySelectorAll('#app section[data-tab]').forEach(sec => { sec.hidden = sec.dataset.tab !== key; });
       if (push && location.hash !== '#' + key) history.replaceState(null, '', '#' + key);
@@ -437,12 +448,38 @@
     showTab(location.hash.slice(1), false);
     window.addEventListener('hashchange', () => showTab(location.hash.slice(1), false));
 
+    // ---------- Settings (read-only; Admin role) ----------
+    async function loadSettings() {
+      try {
+        const v = await api('adminSettings', { session });
+        const cards = v.groups.map(g => {
+          const rows = g.items.map(i => el('tr', { className: i.isDefault ? '' : 'setchanged' },
+            el('td', {}, el('code', { textContent: i.key })),
+            el('td', {}, i.link ? el('a', { href: i.link, target: '_blank', rel: 'noopener', textContent: i.value || '(blank)' })
+              : el('span', { className: i.value ? '' : 'muted', textContent: i.value || '(blank)' }),
+              ...(i.isDefault ? [] : [el('div', { className: 'muted', textContent: 'default: ' + (i.def || '(blank)') })])),
+            el('td', { className: 'muted', textContent: i.help })));
+          return el('details', { className: 'admcard setgroup', open: g.id !== 'wiring' && g.id !== 'other' },
+            el('summary', {}, el('b', { textContent: g.label }), g.who ? el('span', { className: 'muted', textContent: ' · edits: ' + g.who }) : ''),
+            el('div', { className: 'boardwrap' }, el('table', { className: 'admtable settable' }, el('tbody', {}, ...rows))));
+        });
+        const secRows = v.sections.map(x => el('tr', {}, el('td', { textContent: String(x.order) }), el('td', {}, el('b', { textContent: x.label }), el('div', {}, el('code', { textContent: x.key }))),
+          el('td', { className: 'muted', textContent: x.scoutStatus })));
+        cards.push(el('details', { className: 'admcard setgroup' }, el('summary', {}, el('b', { textContent: 'Stages' }), el('span', { className: 'muted', textContent: ' · label and what the Scout sees (Settings tab, columns D–G)' })),
+          el('div', { className: 'boardwrap' }, el('table', { className: 'admtable settable' }, el('tbody', {}, ...secRows)))));
+        $('setView').replaceChildren(...cards);
+      } catch (e) { settingsLoaded = false; $('setView').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
+    }
+
     async function load() {
       const d = await api('adminData', { session });
       bulkSetup(d);
+      isAdmin = !!d.isAdmin;
+      tabBtns.forEach(b => { if (ADMIN_ONLY.includes(b.dataset.tab)) b.hidden = !isAdmin; });
       if (!bc) bcPreview();
       $('msg').hidden = true; $('app').hidden = false;
       show(d);
+      showTab(location.hash.slice(1), false);
     }
 
     if (!session) needSignIn($('msg'));

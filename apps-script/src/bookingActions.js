@@ -98,7 +98,8 @@ function committee_() {
       return Tabs.read('Committee').map(function (r) {
         var a = r['Active'];
         var active = !(a === false || /^(false|no|n|0)$/i.test(String(a == null ? '' : a).trim()));   // blank = active
-        return { name: String(r['Name'] || ''), initials: String(r['Initials'] || ''), email: String(r['Email'] || ''), active: active };
+        return { name: String(r['Name'] || ''), initials: String(r['Initials'] || ''), email: String(r['Email'] || ''), active: active,
+          role: String(r['Role'] || '').trim() };   // Role: blank | Admin (Admin → People / Settings / System; 2026-11-12)
       });
     });
   } catch (e) {

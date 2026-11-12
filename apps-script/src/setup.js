@@ -17,7 +17,7 @@ var TAB_HEADERS_ = {
     '_confirm_hash', '_confirm_expires'],
   'Uploads Log': ['Received', 'Record ID', 'Queue ID', 'File type', 'Version', 'Stored name', 'Drive file ID', 'Bytes',
     'Original name'],
-  'Committee': ['Name', 'Initials', 'Email', 'Active'],
+  'Committee': ['Name', 'Initials', 'Email', 'Active', 'Role'],
   'Unit Info': ['Unit', 'Under Review', 'Lien Doan', 'Meeting Location', 'Meeting Day', 'Meeting Time', 'Unit Notes',
   'Meeting Frequency', 'Meeting Address', 'Meeting Notes', 'Eagles to Date', 'Last Updated', 'Updated By'],
   'Unit Contacts': ['Unit', 'Role', 'Name', 'Email', 'Phone', 'Note', 'Updated', 'Updated By'],
