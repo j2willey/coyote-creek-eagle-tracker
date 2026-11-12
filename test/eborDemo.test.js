@@ -30,7 +30,7 @@ function makeDrive() {
     constructor(name, mime, bytes, parent) { this.id = 'F' + (++seq); this.name = name; this.mime = mime; this.bytes = bytes; this.parent = parent; this.t = Date.now() + seq; byId[this.id] = this; }
     getId() { return this.id; } getName() { return this.name; } setName(n) { this.name = n; return this; }
     getMimeType() { return this.mime; } getSize() { return this.bytes.length; } getLastUpdated() { return new Date(this.t); }
-    getBlob() { return { getBytes: () => this.bytes }; }
+    getBlob() { return { getBytes: () => this.bytes, getContentType: () => this.mime }; }
     moveTo(folder) { this.parent.files = this.parent.files.filter(f => f !== this); this.parent = folder; folder.files.push(this); return this; }
     makeCopy(name, folder) { const f = new File(name, this.mime, this.bytes, folder); folder.files.push(f); return f; }
   }
@@ -116,6 +116,16 @@ describe('EBoR paperwork: the Demo Scout never touches real records or Council',
     call({ action: 'eborPaperworkScout', session: 's', recordId: 'DEMO' });
     expect(demoFolder().files).toHaveLength(1);                       // not copied twice
     expect(templates.files).toHaveLength(2);                          // the blank stays in Form Templates
+    expect(log.forbidden).toEqual([]);
+  });
+
+  it('the page can open the demo\'s Verified PDF (fetchScoutFile with recordId DEMO reads the demo folder, not the tracking tab)', () => {
+    const sc = call({ action: 'eborPaperworkScout', session: 's', recordId: 'DEMO' });
+    const r = call({ action: 'fetchScoutFile', session: 's', recordId: 'DEMO', fileId: sc.verifiedId });
+    expect(r.error).toBeUndefined();
+    expect(r.name).toBe('Verified Eagle Application (demo).pdf');
+    const bad = call({ action: 'fetchScoutFile', session: 's', recordId: 'DEMO', fileId: 'NOT-IN-DEMO' });
+    expect(String(bad.error || '')).toMatch(/not in the demo Scout/);
     expect(log.forbidden).toEqual([]);
   });
 

@@ -449,14 +449,17 @@ function actionScoutReviewFiles_(req) {
  */
 function actionFetchScoutFile_(req) {
   committeeMe_(req.session);
-  var rec = Records.get(String(req.recordId || ''));
-  if (!rec) throw userError_('That Scout is no longer on the tracking tab. Reload the page.');
+  // The EBoR paperwork demo (recordId 'DEMO', 2026-11-11) has no tracking row: its files live in the demo folder.
+  var demo = EborPaperwork.isDemo(req.recordId);
+  var rec = demo ? null : Records.get(String(req.recordId || ''));
+  if (!demo && !rec) throw userError_('That Scout is no longer on the tracking tab. Reload the page.');
+  var who = demo ? 'the demo Scout' : rec.fields.scout_name;
   var fileId = String(req.fileId || '').trim();
   if (!fileId) throw userError_('Pick a file from the Scout\'s folder.');
-  var folder = folderForRecord_(rec, false);
-  if (!folder) throw userError_('No folder found for ' + rec.fields.scout_name + '.');
+  var folder = demo ? demoFolder_(false) : folderForRecord_(rec, false);
+  if (!folder) throw userError_('No folder found for ' + who + '.');
   var hit = listFolder_(folder).filter(function (x) { return String(x.id) === fileId; })[0];
-  if (!hit) throw userError_('That file is not in ' + rec.fields.scout_name + '\'s folder (it may have been moved to Archive). Reload the page.');
+  if (!hit) throw userError_('That file is not in ' + who + '\'s folder (it may have been moved to Archive). Reload the page.');
   var maxMB = Number(getSettings_().maxUploadMB) || 20;
   var size = Number(hit.file.getSize()) || 0;
   if (size > maxMB * 1024 * 1024) {
