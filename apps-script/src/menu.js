@@ -63,14 +63,24 @@ function councilAccountOk_() {
 
 function menuSetup() {
   if (!councilAccountOk_()) return;
+  SpreadsheetApp.getUi().alert(setupRunText_());
+}
+
+/** Setup / repair tabs (the menu item and Admin → System). -> what it did, as text */
+function setupRunText_() {
   var created = setupTabs_();
   try { if (getSettings_().scheduleSheetId && ensureScheduleColumn_('reserved', 'Reserved')) created.push('Schedule column "Reserved"'); }
   catch (e) { created.push('(Schedule column "Reserved" NOT added: ' + e.message + ')'); }
   uncache_(['c:settings', 'c:committee', 'c:units']);
-  SpreadsheetApp.getUi().alert(created.length ? 'Created: ' + created.join(', ') : 'All tabs already exist.');
+  return created.length ? 'Created: ' + created.join(', ') : 'All tabs already exist.';
 }
 
 function menuSelfCheck() {
+  SpreadsheetApp.getUi().alert(selfCheckLines_().join('\n\n'));
+}
+
+/** The Self-check report lines (the menu item and Admin → System). */
+function selfCheckLines_() {
   var s = getSettings_();
   var who = ''; try { who = Session.getEffectiveUser().getEmail(); } catch (e) {}
   var acct = SheetKind.accountProblem(SpreadsheetApp.getActive().getName(), who, s.councilDomain);
@@ -153,7 +163,7 @@ function menuSelfCheck() {
     lines.push('Hidden link columns (_folder_id, _log_id): ' +
       (cols.indexOf('_folder_id') >= 0 && cols.indexOf('_log_id') >= 0 ? 'yes' : 'NO (run Setup / repair tabs)'));
   } catch (e) {}
-  SpreadsheetApp.getUi().alert(lines.join('\n\n'));
+  return lines;
 }
 
 /**

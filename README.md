@@ -973,6 +973,12 @@ written, other columns on the tab are left alone; a new row's Active cell gets a
 an Admin can't remove their own role, deactivate themselves or change their own email; a row changed on the sheet since
 the page loaded is refused. Each change is logged on Activity; the committee cache is cleared.
 
+**System** (Admin role; `adminSystem`; 2026-11-12): the sheet's Admin menu items most used after a deploy, run from the
+page as the deploying (Council) account with the same account check: Self-check, Setup / repair tabs, Templates: add
+missing tabs, Digest: send now, Schedule: check against the tracking sheet. Output shows on the page; every run but
+Self-check is logged on Activity. The menu items call the same functions (`selfCheckLines_`, `setupRunText_`,
+`ensureTemplateDoc_`, `runDigest_`, `scheduleCheck_`). Migration, folders and staging tools stay in the sheet menu.
+
 - **Web submissions that need a person** (Intake Queue): never confirmed (link expired), possible duplicates, errors,
   stuck. Attach to an existing Scout (likely matches first), add as a new Scout, resend the confirmation link,
   remove (spam / test). Confirmed first; logged on Activity.

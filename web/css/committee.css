@@ -429,3 +429,6 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .ppltable input[type=text], .ppltable input[type=email] { min-width: 10rem; }
 .ppltable input.ppl-ini { width: 4.5rem; min-width: 0; text-transform: uppercase; }
 .ppltable tr.ppl-inactive td { opacity: .7; }
+.sysrow { display: flex; gap: .7rem; align-items: baseline; margin: .5rem 0; }
+.sysrow button { flex: none; min-width: 16rem; text-align: left; }
+.sysout { white-space: pre-wrap; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: .7rem .9rem; margin-top: .8rem; font-size: .85rem; max-height: 60vh; overflow: auto; }

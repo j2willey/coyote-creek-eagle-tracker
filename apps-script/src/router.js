@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.72.0';
+var API_VERSION = '0.73.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -116,6 +116,7 @@ var ACTIONS_ = {
   adminSettingsSave: function (req) { return actionAdminSettingsSave_(req); },
   adminPeople: function (req) { return actionAdminPeople_(req); },
   adminPeopleSave: function (req) { return actionAdminPeopleSave_(req); },
+  adminSystem: function (req) { return actionAdminSystem_(req); },
   adminIntakeCompare: function (req) { return actionAdminIntakeCompare_(req); },
   adminIntakeApply: function (req) { return actionAdminIntakeApply_(req); },
   adminArchive: function (req) { return actionAdminArchive_(req); },

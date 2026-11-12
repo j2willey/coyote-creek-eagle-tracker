@@ -96,6 +96,13 @@
           Every change is logged on the Activity tab.</p>
         <div id="pplView"><p class="muted">Loading…</p></div>
       </section>
+      <section class="admsec" data-tab="system">
+        <h2>System</h2>
+        <p class="hint">The spreadsheet's "Eagle Tracker → Admin" menu items, run from here as the Council account (like the menu).
+          Everything but Self-check is logged on the Activity tab. The rest of that menu (migration, folders, staging tools) stays in the sheet.</p>
+        <div id="sysView"></div>
+        <pre id="sysOut" class="sysout" hidden></pre>
+      </section>
       <section class="admsec" data-tab="settings">
         <h2>Settings</h2>
         <p class="hint">Every setting the tool reads from the Settings tab, grouped, with what it does. District details and Scheduling can be edited
@@ -434,8 +441,8 @@
     }
 
     // ---------- sub-tabs ----------
-    const TABS = [['attention', 'Needs attention'], ['email', 'Email'], ['yearend', 'Year-end'], ['people', 'People'], ['settings', 'Settings']];
-    const ADMIN_ONLY = ['people', 'settings'];   // the Admin role (Committee tab → Role); the server checks it too
+    const TABS = [['attention', 'Needs attention'], ['email', 'Email'], ['yearend', 'Year-end'], ['people', 'People'], ['settings', 'Settings'], ['system', 'System']];
+    const ADMIN_ONLY = ['people', 'settings', 'system'];   // the Admin role (Committee tab → Role); the server checks it too
     const tabBtns = TABS.map(([key, label]) => {
       const b = el('button', { type: 'button', className: 'admtab', textContent: label });
       b.setAttribute('role', 'tab');
@@ -457,6 +464,27 @@
     }
     showTab(location.hash.slice(1), false);
     window.addEventListener('hashchange', () => showTab(location.hash.slice(1), false));
+
+    // ---------- System (sheet menu items; Admin role) ----------
+    const SYS = [
+      ['selfCheck', 'Self-check', 'Account, test mode, tracking tab structure, folders, triggers, templates, Key 3, settings to fill in. Changes nothing.', ''],
+      ['setup', 'Setup / repair tabs', 'Adds missing tabs, columns and settings after an update (deletes nothing). Run it after each deploy that says so.', 'Run Setup / repair tabs now?'],
+      ['templates', 'Templates: add missing tabs', 'Adds a tab to the template Doc for each new email (and creates the Doc if there is none).', 'Add the missing tabs to the template Doc?'],
+      ['digest', 'Digest: send now', 'Sends the committee digest now, covering everything since the last one; the next scheduled digest starts from now.', 'Send the digest now?'],
+      ['scheduleCheck', 'Schedule: check against the tracking sheet', 'Links schedule rows to Scouts, fills empty tracking dates, lists differing ones on the "Schedule Check" tab. No emails.', 'Check the schedule against the tracking sheet?']
+    ];
+    $('sysView').replaceChildren(...SYS.map(([op, label, help, ask]) => {
+      const b = el('button', { type: 'button', textContent: label });
+      b.onclick = async () => {
+        if (ask && !confirm(ask + '\n\n' + help)) return;
+        document.querySelectorAll('#sysView button').forEach(x => { x.disabled = true; });
+        $('sysOut').hidden = false; $('sysOut').className = 'sysout'; $('sysOut').textContent = label + ': running…';
+        try { const r = await api('adminSystem', { session, op }); $('sysOut').textContent = r.title + '\n\n' + r.text; }
+        catch (e) { $('sysOut').textContent = label + ': ' + e.message; $('sysOut').className = 'sysout err'; }
+        document.querySelectorAll('#sysView button').forEach(x => { x.disabled = false; });
+      };
+      return el('div', { className: 'sysrow' }, b, el('span', { className: 'hint', textContent: help }));
+    }));
 
     // ---------- People (Committee tab; Admin role) ----------
     async function loadPeople() {

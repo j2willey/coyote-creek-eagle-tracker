@@ -11,6 +11,7 @@
  *   adminSettingsSave {session, group, values, was}      -> {message, view}   Admin role; editable groups only; logged on Activity
  *   adminPeople  {session}                              -> {members, me}   Admin role (lib/people.js)
  *   adminPeopleSave {session, row?, wasEmail?, member}  -> {message, members}   Admin role; add (no row) or update; logged on Activity
+ *   adminSystem  {session, op}                          -> {title, text}   Admin role; op: selfCheck | setup | templates | digest | scheduleCheck
  */
 function adminRecords_() {
   var eCol = getSettings_().eborDateColumn || 'ebor_date';
@@ -59,6 +60,41 @@ function actionAdminData_(req) {
 function actionAdminSettings_(req) {
   adminMe_(req.session);
   return SettingsView.view(readSettingsTab_(false), SettingsModel.DEFAULT_VALUES);
+}
+
+/**
+ * Admin → System (Admin role; plan step 4): the sheet menu's maintenance items, run from the page. The web app runs
+ * as the deploying (Council) account, like the menu; the same account check applies. Each run (but Self-check) is
+ * logged on Activity.
+ */
+function actionAdminSystem_(req) {
+  var c = adminMe_(req.session);
+  var op = String(req.op || '');
+  var who = ''; try { who = Session.getEffectiveUser().getEmail(); } catch (e) {}
+  var acct = SheetKind.accountProblem(SpreadsheetApp.getActive().getName(), who, getSettings_().councilDomain);
+  if (acct && op !== 'selfCheck') throw userError_(acct);
+  var title, text;
+  if (op === 'selfCheck') { title = 'Self-check'; text = selfCheckLines_().join('\n\n'); }
+  else if (op === 'setup') { title = 'Setup / repair tabs'; text = setupRunText_(); }
+  else if (op === 'templates') {
+    title = 'Templates: create Doc / add missing tabs';
+    var t = ensureTemplateDoc_();
+    text = (t.created ? 'Created the template Doc' : 'Template Doc checked') + ': ' + t.added + ' tab(s) added, ' + t.filled +
+      ' empty tab(s) filled with the current wording.\n\n' + t.url;
+  } else if (op === 'digest') {
+    title = 'Digest: send now';
+    try { text = 'Digest: ' + runDigest_({ scheduled: false }).detail + '\n\nSee the Digest Log tab.'; }
+    catch (e) { throw userError_('Digest failed: ' + e.message + ' (logged on the Digest Log tab)'); }
+  } else if (op === 'scheduleCheck') {
+    title = 'Schedule: check against the tracking sheet';
+    var r = scheduleCheck_();
+    text = r.rows.length + ' booked session(s).\n' +
+      '• Scout not found / unclear: ' + r.count.notFound + '\n• Linked (Record ID written): ' + r.count.linked + '\n' +
+      '• Tracking date filled in: ' + r.count.filled + '\n• Tracking date DIFFERENT: ' + r.count.differs + '\n• Already the same: ' + r.count.same +
+      '\n\nDetails on the "Schedule Check" tab.';
+  } else throw userError_('Unknown System action.');
+  if (op !== 'selfCheck') adminLog_('System: ' + title, c.email);
+  return { title: title, text: text };
 }
 
 /** Admin → People: the Committee tab's members (Admin role). */
