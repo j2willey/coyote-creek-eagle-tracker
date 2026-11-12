@@ -189,9 +189,11 @@ var StageActions = (function () {
     if (a.ifPending && !input.pending) errors.push('There are no new files waiting for this Scout. Reload the page.');
     if (a.email === 'note' && !str(input.note)) warnings.push('No note: the email will not say what to change. Add a note, or write it in the Outbox before sending.');
     if (a.setTrue && !(input.cols || {})[a.setTrue]) errors.push('The tracking tab has no "' + COLUMNS[a.setTrue].label + '" column (Settings → ' + COLUMNS[a.setTrue].setting + ').');
-    (a.requireFiles || []).forEach(function (k) { if ((input.files || []).indexOf(k) < 0) errors.push('Add the ' + FILE_LABELS[k] + '.'); });
+    // input.have: the signed scans already in the Scout's folder (the EBoR paperwork page filed them): not asked for again.
+    var have = input.have || [];
+    (a.requireFiles || []).forEach(function (k) { if ((input.files || []).indexOf(k) < 0 && have.indexOf(k) < 0) errors.push('Add the ' + FILE_LABELS[k] + '.'); });
     if (a.key === 'eagle_earned' && input.files) {
-      var hasApp = input.files.indexOf('application') >= 0, hasRep = input.files.indexOf('report') >= 0;
+      var hasApp = input.files.indexOf('application') >= 0 || have.indexOf('application') >= 0, hasRep = input.files.indexOf('report') >= 0 || have.indexOf('report') >= 0;
       if (hasApp !== hasRep) errors.push('Add both signed scans (application and Advancement Report), or neither (send them later from the Eagles tab).');
       else if (!hasApp) warnings.push('No signed scans: the Council email is not drafted. Send them later with "Send signed paperwork to Council…" on the Eagles tab.');
       if (input.files.indexOf('photo') < 0) warnings.push('No photos: the congratulations email goes without pictures.');

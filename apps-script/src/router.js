@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.65.1';
+var API_VERSION = '0.66.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -73,6 +73,13 @@ var ACTIONS_ = {
   committeeUploadFinish: function (req) { return actionCommitteeUploadFinish_(req); },
   scoutReviewFiles: function (req) { return actionScoutReviewFiles_(req); },
   fetchScoutFile: function (req) { return actionFetchScoutFile_(req); },
+  // EBoR paperwork page (eborPaperworkActions.js)
+  eborPaperworkChoices: function (req) { return actionEborPaperworkChoices_(req); },
+  eborPaperworkScout: function (req) { return actionEborPaperworkScout_(req); },
+  eborPaperworkTemplate: function (req) { return actionEborPaperworkTemplate_(req); },
+  eborPaperworkStart: function (req) { return actionEborPaperworkStart_(req); },
+  eborPaperworkUpload: function (req) { return actionEborPaperworkUpload_(req); },
+  eborPaperworkFinish: function (req) { return actionEborPaperworkFinish_(req); },
   // Sign Workshop stamps (stampActions.js)
   stampList: function (req) { return actionStampList_(req); },
   stampFetch: function (req) { return actionStampFetch_(req); },

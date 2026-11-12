@@ -95,6 +95,12 @@ describe('StageActions', () => {
     expect(SA.plan({ ...b, files: ['application'] }).errors[0]).toMatch(/both signed scans/);
     expect(SA.plan({ ...b, files: [] }).warnings.join(' ')).toMatch(/No signed scans.*No photos/);
     expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: ['report'] }).errors[0]).toMatch(/signed Eagle Scout Rank Application/);
+    // Signed on the EBoR paperwork page: both scans are in the folder already, none asked for again (Task 12).
+    expect(SA.plan({ ...b, files: [], have: ['application', 'report'] }).warnings.join(' ')).not.toMatch(/No signed scans/);
+    expect(SA.plan({ ...b, files: [], have: ['application', 'report'] }).errors).toEqual([]);
+    expect(SA.plan({ ...b, files: [], have: ['application'] }).errors[0]).toMatch(/both signed scans/);
+    expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: [], have: ['application', 'report'] }).errors).toEqual([]);
+    expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: [], have: ['report'] }).errors[0]).toMatch(/Rank Application/);
     expect(SA.plan({ action: 'svmbc_received', section: 'eagle_earned', cols: c3 }).errors).toEqual([]);
     expect(SA.plan({ action: 'svmbc_received', section: 'eagle_earned', cols: {} }).errors[0]).toMatch(/SVMBC Received/);
     expect(SA.forSection('ebor_booked')[0]).toMatchObject({ files: ['application', 'report', 'photo'] });

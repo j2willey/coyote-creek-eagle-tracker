@@ -15,7 +15,27 @@ var ROW_TOKEN_SECONDS = 2 * 3600;
 
 function stageColumns_() { return StageActions.resolveColumns(Records.columns(), getSettings_()); }
 
-/** Validate an action for a record. -> {a, rec, cols, dates, p, unit, warnings} (throws user errors). */
+/**
+ * The signed Eagle application / Advancement Report already at the top of the Scout's folder (the EBoR paperwork page
+ * files them under the standard names), newest of each. -> {application: {id, name}, report: {id, name}} (a missing one is absent)
+ */
+function existingSigned_(rec) {
+  var out = {};
+  var folder = null;
+  try { folder = folderForRecord_(rec, false); } catch (e) { console.warn('existingSigned_: ' + e); }
+  if (!folder) return out;
+  var best = {};
+  listFolder_(folder).forEach(function (x) {
+    var kind = /_EagleApplication-Signed\.pdf$/i.test(x.name) ? 'application' : /_AdvancementReport-Signed\.pdf$/i.test(x.name) ? 'report' : '';
+    if (!kind) return;
+    var t = x.file.getLastUpdated().getTime();
+    if (!best[kind] || t > best[kind].t) best[kind] = { t: t, id: x.id, name: x.name };
+  });
+  Object.keys(best).forEach(function (k) { out[k] = { id: best[k].id, name: best[k].name }; });
+  return out;
+}
+
+/** Validate an action for a record. -> {a, rec, cols, dates, p, unit, warnings, existing} (throws user errors). */
 function rowCheck_(req) {
   var a = StageActions.get(String(req.kind || ''));   // req.action is the router's action name
   if (!a || a.page) throw userError_('Unknown action. Reload the page.');
@@ -24,8 +44,10 @@ function rowCheck_(req) {
   var cols = stageColumns_();
   var dates = {};
   Object.keys(cols).forEach(function (role) { if (cols[role]) dates[role] = Intake.dateKey(rec.fields[cols[role]]) || ''; });
+  var existing = a.eagleDone ? existingSigned_(rec) : {};
   var p = StageActions.plan({ action: a.key, section: rec.section, date: req.date, today: todayYmd_(), dates: dates, cols: cols,
-    note: req.note, pending: Pending.isPending(rec.fields[Pending.COLUMN]), files: a.files ? (req.files || []) : undefined });
+    note: req.note, pending: Pending.isPending(rec.fields[Pending.COLUMN]), files: a.files ? (req.files || []) : undefined,
+    have: Object.keys(existing) });
   if (p.errors.length) throw userError_(p.errors.join(' '));
   var unit = (a.toUnit || a.eagleDone) ? Units.find(units_(), rec.fields.unit) : null;
   var warnings = p.warnings.slice();
@@ -35,7 +57,7 @@ function rowCheck_(req) {
   if (a.eagleDone && !String(getSettings_().councilEaglesEmail || '').trim()) {
     warnings.push('Settings → councilEaglesEmail is empty: the Council paperwork email will have no address (add it in the Outbox).');
   }
-  return { a: a, rec: rec, cols: cols, dates: dates, p: p, unit: unit, warnings: warnings };
+  return { a: a, rec: rec, cols: cols, dates: dates, p: p, unit: unit, warnings: warnings, existing: existing };
 }
 
 function actionRowAction_(req) {
@@ -107,6 +129,25 @@ function lastEborSlot_(recordId) {
     .map(function (r) { return { r: r, start: Booking.slotStart(r.date, r.time) || 0 }; })
     .sort(function (x, y) { return y.start - x.start; });
   return mine.length ? mine[0].r : null;
+}
+
+/**
+ * The "Council: Eagle paperwork" email as an Outbox draft: To Settings → councilEaglesEmail, Cc the committee group and
+ * the unit's contacts, both signed PDFs attached; the "signed paperwork sent" date is filled when it is sent. Used by
+ * Eagle earned / Send signed paperwork (rowExecute_) and by the EBoR paperwork page (eborPaperworkActions.js).
+ * attachments: [{id, name}] (application, then Advancement Report). -> mailFromTemplate_'s result
+ */
+function draftCouncilPaperwork_(c, rec, boardYmd, attachments, unitContacts, cols) {
+  var s = getSettings_();
+  var scout = String(rec.fields.scout_name || '');
+  var vars = { scout: scout, firstName: EagleDone.firstName(scout, rec.fields.preferred_name), unitName: EagleDone.unitName(rec.fields.unit),
+    date: EagleDone.longDate(boardYmd), senderName: String(c.me.name || c.email) };
+  var cp = reviewBuiltIn_(TemplateCatalog.get('Council: Eagle paperwork'), vars);
+  return mailFromTemplate_('Council: Eagle paperwork', vars, {
+    committee: true, outbox: true, by: c.email, recordId: rec.recordId, scout: scout,
+    to: [String(s.councilEaglesEmail || '')].filter(String), cc: [s.committeeGroupEmail].concat(unitContacts || []).filter(String).join(', '),
+    subject: cp.subject, body: cp.body, attachments: attachments,
+    onSent: cols && cols.signedSent ? { column: cols.signedSent, label: StageActions.COLUMNS.signedSent.label } : null });
 }
 
 function rowExecute_(c, ck, req, uploads) {
@@ -184,13 +225,14 @@ function rowExecute_(c, ck, req, uploads) {
       photosLine: filed.photos.length ? 'Photos from your Board of Review are attached.' : '',
       eagleNumberLine: EagleCount.emailLine(eagleNums) };
     // Council: signed paperwork (when both scans are here).
+    var have = ck.existing || {};
+    var appF = filed.application || have.application, repF = filed.report || have.report;
     if (filed.application && filed.report) {
-      var cp = reviewBuiltIn_(TemplateCatalog.get('Council: Eagle paperwork'), common);
-      record(mailFromTemplate_('Council: Eagle paperwork', common, {
-        committee: true, outbox: true, by: c.email, recordId: rec.recordId, scout: scout,
-        to: [String(s.councilEaglesEmail || '')].filter(String), cc: [s.committeeGroupEmail].concat(unitContacts).filter(String).join(', '),
-        subject: cp.subject, body: cp.body, attachments: [filed.application, filed.report],
-        onSent: cols.signedSent ? { column: cols.signedSent, label: StageActions.COLUMNS.signedSent.label } : null }));
+      record(draftCouncilPaperwork_(c, rec, boardYmd, [filed.application, filed.report], unitContacts, cols));
+    } else if (appF && repF) {
+      // Signed on the EBoR paperwork page (or one scan filed earlier): the files are in the folder already.
+      if (a.key === 'paperwork') record(draftCouncilPaperwork_(c, rec, boardYmd, [appF, repF], unitContacts, cols));
+      else notes.push('signed paperwork already in the folder: Council email not drafted again');
     }
     // Congratulations: Scout, family, unit, the board (district reps + Unit Board Members), others to invite.
     if (a.key === 'eagle_earned') {
