@@ -84,3 +84,71 @@ describe('Units.combine', () => {
       { unit: 'T910', role: 'Other', email: 'a@x.org' }, { unit: 'T910', role: 'Other', email: 'b@x.org' }]);
   });
 });
+
+// Leader address columns (Task 12). All names and addresses fake.
+describe('Key3 leader address', () => {
+  const head = ['Unit', 'Role', 'Position', 'Name', 'Email', 'Phone', 'Leader Address', 'Leader City', 'Leader State', 'Leader Zip'];
+
+  it('finds the four columns by header text, ignoring case, spaces and underscores', () => {
+    const grid = [['Unit', 'Role', 'Name', 'leader  address', 'LEADER_CITY', 'Leader State', ' leader zip ']];
+    expect(Key3.addressColumns(grid)).toEqual({ address: 3, city: 4, state: 5, zip: 6 });
+  });
+
+  it('prefers the machine-name row when there is one', () => {
+    const grid = [
+      ['Unit', 'Street', 'Town', 'ST', 'Postal'],
+      ['unit', 'leader_address', 'leader_city', 'leader_state', 'leader_zip']
+    ];
+    expect(Key3.hasMachineRow(grid)).toBe(true);
+    expect(Key3.addressColumns(grid)).toEqual({ address: 1, city: 2, state: 3, zip: 4 });
+  });
+
+  it('finds nothing when the tab has no such columns', () => {
+    expect(Key3.addressColumns([['Unit', 'Role', 'Name']])).toEqual({});
+    expect(Key3.hasMachineRow([['Unit'], ['T999']])).toBe(false);
+  });
+
+  it('reads the tab as rows, skipping a machine-name row', () => {
+    const grid = [
+      ['Unit', 'Role', 'Name', 'Street', 'City'],
+      ['unit', 'role', 'name', 'leader_address', 'leader_city'],
+      ['T999', 'Unit Leader', 'Pat Fake', '12 Elm St', 'Springfield']
+    ];
+    const rows = Key3.readGrid(grid);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ _row: 3, Unit: 'T999', Name: 'Pat Fake', address: '12 Elm St', city: 'Springfield', state: '', zip: '' });
+  });
+
+  const oldRows = Key3.readGrid([head,
+    ['T999', 'Unit Leader', 'Scoutmaster', 'Pat Fake', 'pat@example.org', '', '12 Elm St', 'Springfield', 'CA', '95000'],
+    ['T999', 'Committee Chair', 'Committee Chair', 'Lee Fake', 'lee@example.org', '', '', '', '', ''],
+    ['C917', 'Unit Leader', 'Crew Advisor', 'Ada Fake', 'ada@example.org', '', '5 Oak Ave', 'Shelbyville', 'CA', '95001']]);
+
+  it('carries the address forward for the same unit and the same leader name', () => {
+    const fresh = Key3.parse([
+      ['Unit', 'Position', 'Name', 'Email'],
+      ['T999', 'Scoutmaster', 'PAT  fake', 'pat@example.org'],
+      ['T999', 'Committee Chair', 'Lee Fake', 'lee@example.org'],
+      ['C917', 'Crew Advisor', 'New Person', 'new@example.org']
+    ]).rows;
+    const out = Key3.carryForward(oldRows, fresh);
+    expect(out.carried).toBe(1);
+    const t999 = out.rows.find(r => r.unit === 'T999' && r.role === 'Unit Leader');
+    expect(t999).toMatchObject({ address: '12 Elm St', city: 'Springfield', state: 'CA', zip: '95000' });
+    expect(out.rows.find(r => r.unit === 'C917')).toMatchObject({ name: 'New Person' });
+    expect(out.rows.find(r => r.unit === 'C917').address || '').toBe('');
+    expect(out.rows.find(r => r.role === 'Committee Chair').address || '').toBe('');
+  });
+
+  it('uses the export\'s own address columns when it has them, over the old values', () => {
+    const fresh = Key3.parse([
+      ['Unit', 'Position', 'Name', 'Email', 'Address', 'City', 'State', 'Zip Code'],
+      ['T999', 'Scoutmaster', 'Pat Fake', 'pat@example.org', '99 New Rd', 'Capital City', 'CA', '95111'],
+      ['T999', 'Committee Chair', 'Lee Fake', 'lee@example.org', '1 Chair Ln', 'Elsewhere', 'CA', '95222']
+    ]).rows;
+    const out = Key3.carryForward(oldRows, fresh);
+    expect(out.carried).toBe(0);
+    expect(out.rows.find(r => r.role === 'Unit Leader')).toMatchObject({ address: '99 New Rd', city: 'Capital City', zip: '95111' });
+    expect(out.rows.find(r => r.role === 'Committee Chair').address).toBe('');   // only the leader's row keeps an address
+  });
+});

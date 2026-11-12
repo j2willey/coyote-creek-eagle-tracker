@@ -8,7 +8,32 @@ var KEY3_TAB = 'Key 3';
 var KEY3_PREV_TAB = '_Key 3 previous';
 var UNIT_CONTACTS_TAB = 'Unit Contacts';
 var UNIT_INFO_TAB = 'Unit Info';
-var KEY3_HEADERS = ['Unit', 'Role', 'Position', 'Name', 'Email', 'Phone'];
+var KEY3_HEADERS = ['Unit', 'Role', 'Position', 'Name', 'Email', 'Phone', 'Leader Address', 'Leader City', 'Leader State', 'Leader Zip'];
+
+/**
+ * The Key 3 tab as rows keyed by header (like Tabs.read), with the Unit Leader's address under address / city / state / zip.
+ * Those four columns are found by machine key when row 2 is a machine-name row, else by header text (lib/key3.js).
+ */
+function key3Rows_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(KEY3_TAB);
+  if (!sh || sh.getLastRow() < 1) return [];
+  return Key3.readGrid(sh.getRange(1, 1, sh.getLastRow(), Math.max(sh.getLastColumn(), 1)).getValues());
+}
+
+/** Write the leader address cells of one Key 3 row (sheet row). fields: {address, city, state, zip}. Call under the lock. */
+function writeKey3Address_(row, fields) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(KEY3_TAB);
+  var top = sh.getRange(1, 1, Math.min(2, sh.getLastRow()), Math.max(sh.getLastColumn(), 1)).getValues();
+  var ac = Key3.addressColumns(top);
+  Key3.ADDRESS.forEach(function (a) {
+    var v = String(fields[a.field] == null ? '' : fields[a.field]);
+    if (ac[a.field] === undefined) {
+      if (v) throw userError_('The Key 3 tab has no "' + a.col + '" column: run Admin → Setup / repair tabs.');
+      return;
+    }
+    sh.getRange(row, ac[a.field] + 1).setNumberFormat('@').setValue(v);
+  });
+}
 var UNIT_CONTACTS_HEADERS = ['Unit', 'Role', 'Name', 'Email', 'Phone', 'Note', 'Updated', 'Updated By'];
 var UNIT_INFO_HEADERS = ['Unit', 'Under Review', 'Lien Doan', 'Meeting Location', 'Meeting Day', 'Meeting Time', 'Unit Notes',
   'Meeting Frequency', 'Meeting Address', 'Meeting Notes', 'Eagles to Date', 'Last Updated', 'Updated By'];
@@ -113,14 +138,18 @@ function menuImportKey3() {
 
   var p = Key3.parse(rows);
   if (p.error) { ui.alert('Key 3 import: ' + p.error); return; }
-  var old = readTabOrEmpty_(KEY3_TAB);
+  var old = key3Rows_();
+  // The Unit Leader's address is not in Council's export: carry it forward for a unit whose leader's name is unchanged.
+  var carried = Key3.carryForward(old, p.rows);
+  p.rows = carried.rows;
   var d = Key3.diff(old, p.rows);
   var skipped = Object.keys(p.skipped).filter(function (k) { return p.skipped[k]; })
     .map(function (k) { return k + ': ' + p.skipped[k]; }).join(', ');
   var list = function (xs) { return xs.slice(0, 12).join('\n') + (xs.length > 12 ? '\n… ' + (xs.length - 12) + ' more' : ''); };
   var msg = p.rows.length + ' contacts from ' + label + (skipped ? ' (skipped ' + skipped + ')' : '') + '.\n\n' +
     'Added: ' + d.added.length + (d.added.length ? '\n' + list(d.added) : '') + '\n\n' +
-    'Removed: ' + d.removed.length + (d.removed.length ? '\n' + list(d.removed) : '') + '\n\nReplace the Key 3 tab?';
+    'Removed: ' + d.removed.length + (d.removed.length ? '\n' + list(d.removed) : '') + '\n\n' +
+    'Unit Leader addresses carried over: ' + carried.carried + '\n\nReplace the Key 3 tab?';
   if (ui.alert('Import Key 3', msg, ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
 
   withLock_(function () {
@@ -129,8 +158,9 @@ function menuImportKey3() {
     if (prev) ss.deleteSheet(prev);
     if (sh.getLastRow() > 1) { prev = sh.copyTo(ss).setName(KEY3_PREV_TAB); prev.hideSheet(); }
     sh.clear();
-    var out = [KEY3_HEADERS].concat(p.rows.map(function (r) { return [r.unit, r.role, r.position, r.name, r.email, r.phone]; }));
+    var out = [KEY3_HEADERS].concat(p.rows.map(function (r) { return [r.unit, r.role, r.position, r.name, r.email, r.phone, r.address || '', r.city || '', r.state || '', r.zip || '']; }));
     sh.getRange(1, 1, out.length, KEY3_HEADERS.length).setValues(out);
+    sh.getRange(2, 7, Math.max(1, out.length - 1), 4).setNumberFormat('@');   // the address columns are text (zip codes)
     sh.getRange(1, 1, 1, KEY3_HEADERS.length).setFontWeight('bold');
     sh.setFrozenRows(1);
     sh.getRange(1, 1).setNote(key3Note_(label + ', ' + Intake.shortDate(new Date())));

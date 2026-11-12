@@ -21,7 +21,7 @@ var TAB_HEADERS_ = {
   'Unit Info': ['Unit', 'Under Review', 'Lien Doan', 'Meeting Location', 'Meeting Day', 'Meeting Time', 'Unit Notes',
   'Meeting Frequency', 'Meeting Address', 'Meeting Notes', 'Eagles to Date', 'Last Updated', 'Updated By'],
   'Unit Contacts': ['Unit', 'Role', 'Name', 'Email', 'Phone', 'Note', 'Updated', 'Updated By'],
-  'Key 3': ['Unit', 'Role', 'Position', 'Name', 'Email', 'Phone'],
+  'Key 3': ['Unit', 'Role', 'Position', 'Name', 'Email', 'Phone', 'Leader Address', 'Leader City', 'Leader State', 'Leader Zip'],
   'Activity': ['When', 'Scout', 'Unit', 'Record ID', 'Entry', 'By'],
   'Outbox': ['Id', 'Created', 'Created by', 'Record ID', 'Scout', 'Template', 'Status', 'To', 'Cc', 'Subject', 'Html', 'Text', 'Done', 'Done by', 'Note', 'Attachments', 'On sent', 'Event at', 'Send at', 'Scheduled by'],
   'Digest Log': ['Ran at', 'Slot', 'Covers since', 'Changes', 'To', 'Result'],

@@ -57,14 +57,18 @@ function removeBlankUnitContacts_() {
 
 function actionUnitDirectory_(req) {
   committeeMe_(req.session);
-  return { units: UnitDirectory.directory(units_(), readTabOrEmpty_(KEY3_TAB), readTabOrEmpty_(UNIT_CONTACTS_TAB)) };
+  return { units: UnitDirectory.directory(units_(), key3Rows_(), readTabOrEmpty_(UNIT_CONTACTS_TAB)) };
 }
 
 function actionUnitContactsGet_(req) {
   var a = unitAccess_(req.session, req.unit);
   var u = Units.find(units_(), a.code) || {};
   return { code: a.code, unit: Units.label(a.code), underReview: !!u.underReview, canEditKey3: a.committee, roles: UnitDirectory.ROLES,
-    key3: UnitDirectory.key3For(readTabOrEmpty_(KEY3_TAB), a.code), contacts: UnitDirectory.contactsFor(readTabOrEmpty_(UNIT_CONTACTS_TAB), a.code),
+    // The Unit Leader's address is for the committee only (the unit's own contacts see the rest of the Key 3 rows).
+    key3: UnitDirectory.key3For(key3Rows_(), a.code).map(function (x) {
+      if (!a.committee) { x.address = ''; x.city = ''; x.state = ''; x.zip = ''; }
+      return x;
+    }), contacts: UnitDirectory.contactsFor(readTabOrEmpty_(UNIT_CONTACTS_TAB), a.code),
     meeting: UnitDirectory.meetingFor(unitInfoDisplayRows_(), a.code).fields, days: UnitDirectory.DAYS, frequencies: UnitDirectory.FREQUENCIES,
     eagles: UnitDirectory.eaglesFor(unitInfoDisplayRows_(), a.code),
     eaglesThisYear: (function () { try { return eaglesThisYear_()[a.code] || 0; } catch (e) { return null; } })() };
@@ -176,13 +180,21 @@ function actionUnitContactSave_(req) {
       sortUnitContacts_();                                  // keep the tab in unit order (Jim W., 2026-10-25)
       return 'added ' + c.role + ' ' + (c.name || c.email);
     }
-    var cur = Tabs.read(tab).filter(function (r) { return r._row === row; })[0];
+    var cur = (kind === 'key3' ? key3Rows_() : Tabs.read(tab)).filter(function (r) { return r._row === row; })[0];
     if (!UnitDirectory.same(cur, a.code, req.orig)) throw userError_('That contact changed meanwhile. Reload the page.');
     var upd = kind === 'key3' ? { 'Name': c.name, 'Email': c.email, 'Phone': c.phone }
       : { 'Role': c.role, 'Name': c.name, 'Email': c.email, 'Phone': c.phone, 'Note': c.note, 'Updated': new Date() };
     if (by) upd[by] = a.who;
     Tabs.update(tab, row, upd);
-    return 'changed ' + (kind === 'key3' ? String(cur['Role']) + ' (Key 3)' : c.role) + ': ' + (req.orig.name || '') + ' <' + (req.orig.email || '') + '> → ' + c.name + ' <' + c.email + '>';
+    var addrNote = '';
+    if (kind === 'key3' && Units.key3Role(cur['Role'], cur['Position']) === 'Unit Leader' && req.fields && req.fields.address !== undefined) {
+      var oldAddr = [cur.address, cur.city, cur.state, cur.zip].join('|');
+      if (oldAddr !== [c.address, c.city, c.state, c.zip].join('|')) {
+        writeKey3Address_(row, c);
+        addrNote = '; address ' + (c.address || c.city || c.zip ? 'changed' : 'cleared');
+      }
+    }
+    return 'changed ' + (kind === 'key3' ? String(cur['Role']) + ' (Key 3)' : c.role) + ': ' + (req.orig.name || '') + ' <' + (req.orig.email || '') + '> → ' + c.name + ' <' + c.email + '>' + addrNote;
   });
   uncache_(['c:units']);
   unitLog_(a.code, 'Unit contacts: ' + line, a.who);

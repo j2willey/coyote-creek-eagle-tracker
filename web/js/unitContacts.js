@@ -93,6 +93,14 @@ export function mountUnitContacts(root, { session, unit, onChange = () => {}, me
     if (role) role.setAttribute('list', 'ucRoles');
     const name = inp('Name', x.name), email = inp('Email', x.email, 'email'), phone = inp('Phone', x.phone, 'tel');
     const note = kind === 'key3' ? null : inp('Note (optional)', x.note);
+    // The Unit Leader's mailing address (Key 3 row; filled into the Advancement Report on the EBoR paperwork page)
+    const leaderAddr = kind === 'key3' && x.role === 'Unit Leader';
+    const addr = leaderAddr ? inp('Street address (optional)', x.address) : null;
+    const city = leaderAddr ? inp('City', x.city) : null;
+    const state = leaderAddr ? inp('State', x.state) : null;
+    const zip = leaderAddr ? inp('Zip', x.zip) : null;
+    if (state) state.maxLength = 2;
+    if (zip) zip.maxLength = 10;
     const save = el('button', { type: 'button', className: 'primary', textContent: 'Save' });
     const cancel = el('button', { type: 'button', textContent: 'Cancel' });
     cancel.onclick = () => { editing = null; render(); };
@@ -100,11 +108,13 @@ export function mountUnitContacts(root, { session, unit, onChange = () => {}, me
       save.disabled = true; say('Saving…', 'muted');
       try {
         const r = await api('unitContactSave', { session, unit, kind, row: x.row || 0, orig: { name: x.name || '', email: x.email || '' },
-          fields: { role: role ? role.value : x.role, name: name.value, email: email.value, phone: phone.value, note: note ? note.value : '' } });
+          fields: { role: role ? role.value : x.role, name: name.value, email: email.value, phone: phone.value, note: note ? note.value : '',
+            ...(leaderAddr ? { address: addr.value, city: city.value, state: state.value, zip: zip.value } : {}) } });
         editing = null; await load(); say(r.message, 'ok'); onChange();
       } catch (e) { say(e.message, 'err'); save.disabled = false; }
     };
     f.append(...(role ? [role] : [el('b', { textContent: x.role })]), name, email, phone, ...(note ? [note] : []),
+      ...(leaderAddr ? [el('div', { className: 'ucaddr' }, addr, city, state, zip)] : []),
       el('div', { className: 'actions' }, save, cancel));
     return f;
   }
@@ -118,6 +128,7 @@ export function mountUnitContacts(root, { session, unit, onChange = () => {}, me
         el('div', {}, x.name || el('span', { className: 'muted', textContent: '(no name)' }), x.email ? ' · ' : '',
           x.email ? el('a', { href: 'mailto:' + x.email, textContent: x.email }) : el('span', { className: 'err', textContent: ' no email' }),
           x.phone ? ' · ' + x.phone : ''),
+        x.address || x.city ? el('div', { className: 'muted', textContent: [x.address, [x.city, x.state].filter(Boolean).join(', '), x.zip].filter(Boolean).join(' · ') }) : '',
         x.note ? el('div', { className: 'muted', textContent: x.note }) : ''));
     const btns = el('div', { className: 'ucbtns' });
     if (canEdit) {

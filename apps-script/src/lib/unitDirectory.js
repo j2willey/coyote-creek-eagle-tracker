@@ -17,7 +17,11 @@ var UnitDirectory = (function () {
     return (key3 || []).filter(function (r) { return U().code(r['Unit']) === code && U().key3Role(r['Role'], r['Position']); })
       .map(function (r) {
         var role = U().key3Role(r['Role'], r['Position']), pos = str(r['Position']) || (str(r['Role']) !== role ? str(r['Role']) : '');
-        return { row: r._row, role: role, position: pos, name: str(r['Name']), email: str(r['Email']).toLowerCase(), phone: str(r['Phone']) };
+        var leader = role === 'Unit Leader';
+        // Leader address (Task 12): rows from Key3.readGrid carry address / city / state / zip; a plain Tabs.read row, the headers.
+        var pick = function (f, col) { return leader ? str(r[f] !== undefined ? r[f] : r[col]) : ''; };
+        return { row: r._row, role: role, position: pos, name: str(r['Name']), email: str(r['Email']).toLowerCase(), phone: str(r['Phone']),
+          address: pick('address', 'Leader Address'), city: pick('city', 'Leader City'), state: pick('state', 'Leader State'), zip: pick('zip', 'Leader Zip') };
       })
       .sort(function (a, b) { return KEY3_ROLES.indexOf(a.role) - KEY3_ROLES.indexOf(b.role); });
   }
@@ -60,6 +64,15 @@ var UnitDirectory = (function () {
     var c = { role: str(f && f.role).slice(0, 60), name: str(f && f.name).slice(0, 80), email: str(f && f.email).toLowerCase().slice(0, 120),
       phone: str(f && f.phone).slice(0, 30), note: str(f && f.note).slice(0, 300) };
     var errors = [];
+    // The Unit Leader's mailing address (Key 3 rows only; all optional).
+    if (kind === 'key3') {
+      c.address = str(f && f.address).replace(/\s+/g, ' ').slice(0, 120);
+      c.city = str(f && f.city).slice(0, 60);
+      c.state = str(f && f.state).toUpperCase().slice(0, 20);
+      c.zip = str(f && f.zip).slice(0, 10);
+      if (c.state && !/^[A-Z]{2}$/.test(c.state)) errors.push('State: two letters, e.g. CA.');
+      if (c.zip && !/^\d{5}(-\d{4})?$/.test(c.zip)) errors.push('Zip: five digits (or ZIP+4).');
+    }
     if (kind !== 'key3' && !c.role) errors.push('Pick or type the role.');
     if (c.role.toLowerCase() !== 'exclude' && !c.name) errors.push('The name is required.');
     if (!c.email) errors.push('The email address is required (it is how the unit is reached and signs in).');

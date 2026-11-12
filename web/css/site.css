@@ -103,3 +103,5 @@ table.board td.age.a2 { background: #f6cdc8; color: #1d1d1b; }
 .mtlist dt { color: var(--muted, #777); font-size: .9rem; }
 .mtlist dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .uchead { margin: 1rem 0 .2rem; }
+.ucaddr { grid-column: 1 / -1; display: grid; grid-template-columns: 3fr 2fr 1fr 1fr; gap: .4rem; }
+@media (max-width: 40rem) { .ucaddr { grid-template-columns: 1fr 1fr; } }

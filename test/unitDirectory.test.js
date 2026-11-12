@@ -35,3 +35,27 @@ describe('UnitDirectory', () => {
       ['C9:EBoR Coordinator', 'T41:Advancement Chair', 'T41:Exclude', 'T964:Advancement Chair', 'T964:Other', ':Other']);
   });
 });
+
+describe('UnitDirectory: the Unit Leader\'s address (Task 12)', () => {
+  const key3 = [
+    { _row: 2, Unit: 'T999', Role: 'Unit Leader', Position: 'Scoutmaster', Name: 'Pat Fake', Email: 'pat@example.org', Phone: '', address: '12 Elm St', city: 'Springfield', state: 'CA', zip: '95000' },
+    { _row: 3, Unit: 'T999', Role: 'Committee Chair', Position: '', Name: 'Lee Fake', Email: 'lee@example.org', Phone: '', address: 'not shown', city: '', state: '', zip: '' }
+  ];
+  it('shows the address on the Unit Leader row only', () => {
+    const rows = D.key3For(key3, 't999');
+    expect(rows[0]).toMatchObject({ role: 'Unit Leader', address: '12 Elm St', city: 'Springfield', state: 'CA', zip: '95000' });
+    expect(rows[1].address).toBe('');
+  });
+  it('reads the headers on a plain tab row', () => {
+    const rows = D.key3For([{ _row: 2, Unit: 'T999', Role: 'Unit Leader', Name: 'A', Email: 'a@example.org', 'Leader Address': '1 A St', 'Leader Zip': '95001' }], 't999');
+    expect(rows[0]).toMatchObject({ address: '1 A St', zip: '95001' });
+  });
+  it('validates and tidies the address on a Key 3 save', () => {
+    const v = D.validate({ name: 'Pat Fake', email: 'pat@example.org', address: ' 12   Elm St ', city: 'Springfield', state: 'ca', zip: '95000-1234' }, 'key3');
+    expect(v.ok).toBe(true);
+    expect(v.clean).toMatchObject({ address: '12 Elm St', state: 'CA', zip: '95000-1234' });
+    expect(D.validate({ name: 'A', email: 'a@example.org', state: 'Calif' }, 'key3').ok).toBe(false);
+    expect(D.validate({ name: 'A', email: 'a@example.org', zip: '9500' }, 'key3').errors.join(' ')).toMatch(/Zip/);
+    expect(D.validate({ name: 'A', email: 'a@example.org', address: '', city: '', state: '', zip: '' }, 'key3').ok).toBe(true);
+  });
+});
