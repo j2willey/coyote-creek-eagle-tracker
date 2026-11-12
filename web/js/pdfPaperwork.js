@@ -10,7 +10,10 @@
  * The rules (which values, which signers) come from the server (`lib/eborPaperwork.js`); nothing here knows a name.
  */
 import { loadPdfWithDecrypt } from './pdfEngine.js';
-import { normalizeRotation, userRectToViewer, clampItemToPage, SIGNATURE_BASE_WIDTH_PT } from './pdfPlan.js';
+import { normalizeRotation, userRectToViewer, clampItemToPage, SIGNATURE_BASE_WIDTH_PT, fitTextFontSize } from './pdfPlan.js';
+
+/** Largest font for the Advancement Report's filled text (the form's own boxes are ~17 pt tall). */
+export const REPORT_MAX_FONT_PT = 10;
 
 /**
  * The page that holds Requirement 7: the first page whose text has "REQUIREMENT 7" (any case and spacing), else page 2
@@ -106,7 +109,19 @@ export async function fillAdvancementReport(PDFLib, pdfBytes, fill, signatureFie
   /** @type {string[]} */
   const missing = [];
   for (const [name, value] of Object.entries(fill.text || {})) {
-    try { form.getTextField(name).setText(String(value)); } catch { missing.push(name); }
+    try {
+      const tf = form.getTextField(name);
+      // pdf-lib's auto size (0) fills the box height and clips longer text ("11/12/2…" in the Board of Review Date box):
+      // fit the text to the widget instead, at most 10 pt. Set the size BEFORE the text so the appearance uses it.
+      const w = tf.acroField.getWidgets()[0];
+      const r = w ? w.getRectangle() : null;
+      if (r) {
+        const size = Math.min(REPORT_MAX_FONT_PT, fitTextFontSize(String(value), r.width, r.height));
+        // Form 34403's fields carry no /DA of their own (pdf-lib's setFontSize throws): give them one first.
+        try { tf.setFontSize(size); } catch { tf.acroField.setDefaultAppearance(`/Helv ${size} Tf 0 g`); }
+      }
+      tf.setText(String(value));
+    } catch { missing.push(name); }
   }
   if (fill.radio) {
     try { selectRadioByPosition(PDFLib, form, fill.radio.group, fill.radio.index); } catch { missing.push(fill.radio.group); }
