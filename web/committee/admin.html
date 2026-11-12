@@ -119,7 +119,8 @@
     import { api } from '/js/api.js';
     import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
     const meLine = renderNav($('cnav'), 'admin');
-    const ACT = { attach: 'Attach to this Scout', promote: 'Add as a new Scout', resend: 'Resend confirmation link', spam: 'Remove (spam / test)' };
+    const ACT = { attach: 'Attach to this Scout', promote: 'Add as a new Scout', resend: 'Resend confirmation link', spam: 'Remove (spam / test)',
+      emailUpload: 'Email family…', dismiss: 'Dismiss' };
     const fmt = (ms) => ms ? new Date(ms).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
     let data = null;
 
@@ -207,7 +208,8 @@
         bar.append(pick);
       }
       x.actions.forEach(a => {
-        const b = el('button', { type: 'button', className: a === 'spam' ? 'danger' : (a === x.actions[0] ? 'primary' : ''), textContent: ACT[a] });
+        const emailed = a === 'emailUpload' && /\bEmailed\b/.test(x.note || '');
+        const b = el('button', { type: 'button', className: a === 'spam' || a === 'dismiss' ? 'danger' : (a === x.actions[0] ? 'primary' : ''), textContent: emailed ? 'Email again…' : ACT[a] });
         b.onclick = () => {
           if (a === 'attach' && !pick.value) { pick.focus(); flash(''); return; }
           if (a === 'attach') {
@@ -220,8 +222,11 @@
           const text = a === 'attach' ? 'Add the files from this submission to ' + pick.selectedOptions[0].textContent + '. The family gets the "files received" email.'
             : a === 'promote' ? 'Add ' + who + ' to the tracking tab as a new Scout (Proposal Received). The family gets the receipt.'
             : a === 'resend' ? 'Send a new confirmation link to ' + x.emails.join(', ') + '. The old link stops working.'
+            : a === 'emailUpload' ? 'Draft the "Upload did not finish" email (1.1.b) to ' + x.emails.join(', ') + ' (Cc the committee) in the Outbox, where you review and send it. ' +
+              'The card stays until the Scout sends the Proposal again (then it clears by itself) or you dismiss it.'
+            : a === 'dismiss' ? 'Take this unfinished upload off the list (any partial files go to the trash). Nothing is emailed.'
             : 'Remove this submission and move its files to the trash. Nothing is emailed.';
-          confirmDo(ACT[a] + '?', el('p', { textContent: text }), ACT[a],
+          confirmDo(ACT[a].replace('…', '') + '?', el('p', { textContent: text }), ACT[a].replace('…', ''),
             async () => (await api('adminIntake', { session, queueId: x.queueId, act: a, recordId: pick ? pick.value : '' })).message);
         };
         bar.append(b);

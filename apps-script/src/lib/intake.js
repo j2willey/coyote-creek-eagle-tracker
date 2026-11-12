@@ -22,7 +22,8 @@ var Intake = (function () {
     DUPLICATE: 'Possible duplicate',
     SPAM: 'Spam/deleted',
     ERROR: 'Error',
-    ATTACHED: 'Attached'
+    ATTACHED: 'Attached',
+    REPLACED: 'Replaced'        // an unfinished upload the Scout later sent again successfully (Jim W., 2026-11-12)
   };
 
   // Form field -> Intake Queue header -> tracking-tab machine name (same as the key).
@@ -279,12 +280,17 @@ var Intake = (function () {
     throw new Error('Could not generate a unique Queue ID');
   }
 
-  /** rows: [{status, submitted: Date}]. Indexes of unfinished entries older than `days`. */
+  /**
+   * rows: [{status, submitted: Date, note}]. Indexes of unfinished entries older than `days`. An unfinished upload
+   * the committee emailed the family about ("Emailed" in its Note) is kept: it waits for the Scout's new submission
+   * (which replaces it) or for the committee to dismiss it.
+   */
   function purgeIndexes(rows, nowMs, days) {
     var cutoff = nowMs - days * 24 * 3600 * 1000;
     var out = [];
     (rows || []).forEach(function (r, i) {
       if (r.status !== STATUS.UPLOADING && r.status !== STATUS.UNCONFIRMED) return;
+      if (r.status === STATUS.UPLOADING && /\bEmailed\b/.test(str(r.note))) return;
       var t = r.submitted instanceof Date ? r.submitted.getTime() : new Date(r.submitted).getTime();
       if (t < cutoff) out.push(i);
     });

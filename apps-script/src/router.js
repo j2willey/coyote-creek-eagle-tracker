@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.68.3';
+var API_VERSION = '0.69.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -26,6 +26,7 @@ var ACTIONS_ = {
   submitIntake: function (req) { return actionSubmitIntake_(req); },
   uploadIntakeFile: function (req) { return actionUploadIntakeFile_(req); },
   finishIntake: function (req) { return actionFinishIntake_(req); },
+  intakeFailed: function (req) { return actionIntakeFailed_(req); },
   confirmIntake: function (req) { return actionConfirmIntake_(req); },
   // M7 Scout Update (scoutUpdate.js)
   myRecord: function (req) { return actionMyRecord_(req); },

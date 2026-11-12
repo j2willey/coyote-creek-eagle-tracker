@@ -158,6 +158,7 @@ function actionFinishIntake_(req) {
     if (f) { cache.remove('if:' + req.formToken); if (f.start) cache.remove('it:' + f.start); }
   } catch (e) {}
   claimed._clicker = proven;
+  try { markReplacedUploads_(); } catch (e) { console.warn('markReplacedUploads_: ' + e); }
   return processConfirmed_(claimed, true);
 }
 
@@ -446,10 +447,11 @@ function promoteQueueChecked_(q) {
 }
 
 /** Mark a queue row as spam (no UI): files to trash, details cleared. */
-function markQueueSpam_(q) {
+function markQueueSpam_(q, note) {
   if (q['Status'] === Intake.STATUS.PROMOTED) throw new Error('Already promoted; edit the tracking tab instead.');
   trashUploads_(q['Queue ID']);
   var clear = { 'Status': Intake.STATUS.SPAM, 'Files': '', '_confirm_hash': '' };
+  if (note) clear['Note'] = AdminRules.appendNote(q['Note'], note);
   Intake.FIELDS.forEach(function (f) { clear[f.header] = ''; });
   withLock_(function () { Tabs.update(QUEUE_TAB, q._row, clear); });
 }
@@ -519,7 +521,7 @@ function menuPurgeIntake() {
   var ui = SpreadsheetApp.getUi();
   var days = Number(getSettings_().intakePurgeDays) || 14;
   var rows = Tabs.read(QUEUE_TAB);
-  var idx = Intake.purgeIndexes(rows.map(function (r) { return { status: r['Status'], submitted: r['Submitted'] }; }), Date.now(), days);
+  var idx = Intake.purgeIndexes(rows.map(function (r) { return { status: r['Status'], submitted: r['Submitted'], note: r['Note'] }; }), Date.now(), days);
   if (!idx.length) { ui.alert('Nothing unconfirmed older than ' + days + ' days.'); return; }
   if (ui.alert('Purge ' + idx.length + ' unconfirmed submission(s) older than ' + days + ' days?',
     'Their rows are deleted and their files go to the trash.', ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
@@ -532,6 +534,62 @@ function menuPurgeIntake() {
     Tabs.remove(UPLOADS_TAB, logs.map(function (r) { return r._row; }));
   });
   ui.alert('Purged ' + ids.length + '.');
+}
+
+/**
+ * Unfinished uploads the Scout has since sent again successfully (Jim W., 2026-11-12): Status Replaced, Note
+ * "Replaced by Q-…", the partial files to the trash and the form fields cleared (the new submission has them).
+ * Runs after every finished intake and when the Admin page loads. -> how many
+ */
+function markReplacedUploads_() {
+  var list = AdminRules.replacedUploads(Tabs.read(QUEUE_TAB));
+  list.forEach(function (x) {
+    try {
+      trashUploads_(x.queueId);
+      withLock_(function () {
+        var cur = findQueue_(x.queueId);
+        if (!cur || cur['Status'] !== Intake.STATUS.UPLOADING) return;
+        var clear = { 'Status': Intake.STATUS.REPLACED, 'Files': '', '_confirm_hash': '',
+          'Note': AdminRules.appendNote(cur['Note'], 'Replaced by ' + x.by) };
+        Intake.FIELDS.forEach(function (f) { clear[f.header] = ''; });
+        Tabs.update(QUEUE_TAB, cur._row, clear);
+      });
+    } catch (e) { console.warn('markReplacedUploads_ ' + x.queueId + ': ' + e); }
+  });
+  return list.length;
+}
+
+/**
+ * The intake page could not finish (Jim W., 2026-11-12): it reports the error it showed the Scout, so the Admin page
+ * can say why. Public; only an Uploading row whose upload session is still valid is touched. req: {uploadToken, message}
+ */
+function actionIntakeFailed_(req) {
+  var id = '';
+  try { id = queueIdForUpload_(req.uploadToken); } catch (e) { return { ok: false }; }
+  var text = String(req.message || '').replace(/[\r\n;]+/g, ' ').trim().slice(0, 200) || 'unknown error';
+  withLock_(function () {
+    var q = findQueue_(id);
+    if (!q || q['Status'] !== Intake.STATUS.UPLOADING) return;
+    var when = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'M/d h:mm a');
+    Tabs.update(QUEUE_TAB, q._row, { 'Note': AdminRules.appendNote(q['Note'], 'Upload failed ' + when + ': ' + text) });
+  });
+  return { ok: true };
+}
+
+/** Admin "Email family…" on an unfinished upload: 1.1.b into the Outbox, To the Scout, Cc parent + committee. */
+function draftUploadFollowUp_(q, who) {
+  var s = getSettings_();
+  var f = queueToClean_(q);
+  var scout = String(f.scout_name || q['Eagle Candidate'] || '');
+  var vars = { scout: scout, firstName: EagleDone.firstName(scout, f.preferred_name), pageLink: pageUrl_(), maxMB: String(Number(s.maxUploadMB) || 20) };
+  var p = reviewBuiltIn_(TemplateCatalog.get('Upload did not finish'), vars);
+  var fam = familyMsg_(f, s.committeeGroupEmail);
+  mailFromTemplate_('Upload did not finish', vars, { to: fam.to, cc: fam.cc, keepCc: fam.keepCc, subject: p.subject, body: p.body,
+    committee: true, outbox: true, by: who, scout: scout });
+  withLock_(function () {
+    var cur = findQueue_(q['Queue ID']);
+    if (cur) Tabs.update(QUEUE_TAB, cur._row, { 'Note': AdminRules.appendNote(cur['Note'], 'Emailed ' + Intake.shortDate(new Date()) + ' (' + who + ')') });
+  });
 }
 
 function trashUploads_(queueId) {

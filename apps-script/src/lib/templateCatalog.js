@@ -37,6 +37,15 @@ var TemplateCatalog = (function () {
       'To finish, click this link (the Scout or a parent can click it; once is enough):', '', '{link}', '',
       'The link works for {days} days. Until it is clicked, the committee does not start on the Proposal.',
       'If you did not submit anything, ignore this email.'], 'none'),
+    // 1.1.b (Jim W., 2026-11-12): the Admin page's "Email family…" on a submission whose upload never finished.
+    t('Upload did not finish', 'B', ['scout', 'firstName', 'pageLink', 'maxMB'], 'Your Eagle Project Proposal upload did not finish ({scout})', [
+      'Hi {firstName},', '',
+      'You started sending your Eagle Project Proposal on our website, but the upload did not finish, so we did not receive it.', '',
+      'Please send it again here:', '', '{pageLink}', '',
+      'Type the same email address and we will email you a new link to the form.', '',
+      'Tips: stay on the page until it says your Proposal was received (closing the laptop or leaving the page stops the upload). ' +
+      'Each file can be at most {maxMB} MB; a PDF of the signed Proposal works best.', '',
+      'If you already sent it successfully since, you can ignore this email. Questions? Reply to this email.']),
     t('Proposal received', 'A', ['scout', 'entries', 'files', 'pageLink'], 'Eagle Project Proposal received: {scout}', [
       'Thank you. The Coyote Creek District Advancement Committee has received the Proposal for {scout}.', '',
       'What you entered:', '{entries}', '',
@@ -277,6 +286,7 @@ var TemplateCatalog = (function () {
     'Sign-in link': ['0.1.a', 'any', 'sign-in', 'Someone asks for a sign-in link (/signin)', 'the address typed in'],
     'Start your Proposal': ['0.1.b', 'any', 'intake form', 'Sign-in asked for by an address not on file (email-first intake)', 'the address typed in'],
     'Confirm your submission': ['1.1.a', 'Intake form', 'Intake Queue (unconfirmed)', 'First-time Proposal form submitted (/intake); also re-sent on sign-in', 'Scout email, parent email (one each)'],
+    'Upload did not finish': ['1.1.b', 'Intake Queue (uploading)', '(same)', 'Admin page: "Email family…" on a submission whose upload never finished', SF],
     'Proposal received': ['1.2.a', 'Intake Queue', 'Proposal Received', 'Proposal submitted from a proven email (or a legacy confirmation link clicked): new Scout row', SF],
     'Received, held (possible duplicate)': ['1.2.b', 'Intake Queue', 'Intake Queue (held)', 'Submitted; matches an existing Scout (email, BSA ID, or name + unit)', SF],
     'Files added to existing record': ['1.2.c', 'Intake Queue', '(existing row)', 'Submitted from an address on the matching record', SF],

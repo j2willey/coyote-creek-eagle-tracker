@@ -179,15 +179,20 @@
       if (!files.some(x => x.tag === 'ESSPP')) { say('Please attach the signed Proposal and mark it ESSPP.', 'err'); return; }
 
       $('go').disabled = true;
+      // While files go up, warn before the page is left (a closed tab or laptop stops the upload) (Jim W., 2026-11-12).
+      const stay = (/** @type {BeforeUnloadEvent} */ ev) => { ev.preventDefault(); ev.returnValue = ''; };
+      window.addEventListener('beforeunload', stay);
+      let uploadToken = '';
       try {
         say('Sending your details…');
-        const { uploadToken } = await api('submitIntake', data);
+        ({ uploadToken } = await api('submitIntake', data));
         for (let i = 0; i < files.length; i++) {
           say(uploadText(i, files.length, files[i].file));
           await api('uploadIntakeFile', { uploadToken, name: files[i].file.name, tag: files[i].tag, data: await readBase64(files[i].file) });
         }
         say('Finishing…');
         const r = await api('finishIntake', { uploadToken, formToken: form.formToken });
+        window.removeEventListener('beforeunload', stay);
         try { sessionStorage.removeItem(KEY); } catch {}
         if (r.session) {                                         // promoted: the Scout is signed in on this browser
           try { localStorage.setItem('ccacSession', r.session); localStorage.removeItem('ccacMe'); } catch {}
@@ -197,6 +202,9 @@
         $('done').hidden = false;
         window.scrollTo(0, 0);
       } catch (e) {
+        window.removeEventListener('beforeunload', stay);
+        // Tell the committee why (shown on its Admin page); never in the way of the message to the Scout.
+        if (uploadToken) api('intakeFailed', { uploadToken, message: e.message }).catch(() => {});
         say(e.message, 'err');
         if (/expired|entering your email/i.test(e.message)) { try { sessionStorage.removeItem(KEY); } catch {} }
         $('go').disabled = false;

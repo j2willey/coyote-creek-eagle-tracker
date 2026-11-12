@@ -12,8 +12,34 @@ describe('Admin: intake exceptions', () => {
       q('D', 'Error', 5 * H), q('E', 'Confirmed', 10 * 60e3), q('F', 'Confirmed', 3 * H), q('G', 'Uploading', 3 * H), q('H', 'Spam/deleted', H)
     ], now);
     expect(list.map(x => [x.queueId, x.actions.join('|')])).toEqual([
-      ['C', 'attach|promote|spam'], ['F', 'promote|spam'], ['G', 'spam'], ['D', 'promote|attach|spam'], ['B', 'resend|spam']]);
+      ['C', 'attach|promote|spam'], ['F', 'promote|spam'], ['G', 'emailUpload|dismiss'], ['D', 'promote|attach|spam'], ['B', 'resend|spam']]);
     expect(list.find(x => x.queueId === 'B').why).toMatch(/expired/);
+  });
+
+  // Unfinished uploads (Jim W., 2026-11-12)
+  it('says why an upload never finished', () => {
+    expect(A.uploadWhy('')).toMatch(/closed or left/);
+    expect(A.uploadWhy('Upload failed 11/11 6:31 PM: proposal.pdf: larger than 20 MB; Emailed 11/12 (JW)'))
+      .toBe('Upload failed: proposal.pdf: larger than 20 MB');
+    const list = A.intakeExceptions([q('G', 'Uploading', 3 * H, { Note: 'Upload failed 10/24 6:00 AM: Network error' })], now);
+    expect(list[0].why).toBe('Upload failed: Network error');
+  });
+  it('a later finished submission from the same Scout email replaces an unfinished upload', () => {
+    const rows = [
+      q('U1', 'Uploading', 5 * H, { 'Scout Email': 'scout@example.org' }),
+      q('U2', 'Uploading', 4 * H, { 'Scout Email': 'other@example.org' }),
+      q('N1', 'Unconfirmed', 3 * H, { 'Scout Email': 'Scout@Example.org' }),
+      q('N2', 'Promoted', 2 * H, { 'Scout Email': 'scout@example.org' }),
+      q('X', 'Spam/deleted', H, { 'Scout Email': 'other@example.org' }),
+      q('U3', 'Uploading', 30 * 60e3, { 'Scout Email': 'scout@example.org' })   // after the finished ones: still open
+    ];
+    expect(A.replacedUploads(rows)).toEqual([{ queueId: 'U1', by: 'N2' }]);
+    expect(A.intakeExceptions(rows, now).map(x => x.queueId)).not.toContain('U1');
+    expect(A.intakeExceptions(rows, now).map(x => x.queueId)).toContain('U2');
+  });
+  it('appends to a Note', () => {
+    expect(A.appendNote('', 'Emailed 11/12 (JW)')).toBe('Emailed 11/12 (JW)');
+    expect(A.appendNote('x', 'y')).toBe('x; y');
   });
 });
 

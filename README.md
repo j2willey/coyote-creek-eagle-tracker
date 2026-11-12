@@ -601,7 +601,7 @@ board on the schedule is preselected; the board's date can be changed on the pag
    (a trackpad pinch). 100% = fit the window, up to 400%; the last zoom is remembered in the browser (`pdfZoom.js`).
 2. **Advancement Report** (BSA form 34403): the blank is fetched from Drive (Settings `advancementReportTemplateId`, else the PDF in the Form Templates folder) and
    prefilled: Scout's number, District and Title (Settings), Unit Leader name and address (Key 3), the date forwarded,
-   Board of Review date (MM/DD/YYYY), "Eagle Scout", and the unit type. Three signatures, each placed in its form field's box.
+   Board of Review date (MM/DD/YYYY; Date Award Earned as MM/DD/YY so it can be larger), "Eagle Scout", and the unit type. Three signatures, each placed in its form field's box.
 
 Each signer **types their name** (suggestions from the board on the schedule and the committee), ticks whether they are a
 District Advancement Committee / Council representative (at least one per document), and signs **typed or drawn** in a
@@ -942,6 +942,14 @@ Run by `digestHourly`; each fires once (Script Properties `bm:` / `pb:` / `br:`)
 - **Web submissions that need a person** (Intake Queue): never confirmed (link expired), possible duplicates, errors,
   stuck. Attach to an existing Scout (likely matches first), add as a new Scout, resend the confirmation link,
   remove (spam / test). Confirmed first; logged on Activity.
+- **Unfinished uploads (2026-11-12):** a submission still Uploading after 2 hours. The card says why: the intake page
+  reports the error it showed the Scout (`intakeFailed`, Note "Upload failed …"), else "the page was closed or left".
+  **Email family…** drafts 1.1.b "Upload did not finish" into the Outbox (To the Scout, Cc parent + committee; how to
+  send again, tips) and notes "Emailed <date> (<initials>)"; the button becomes **Email again…**. **Dismiss** takes it
+  off the list (Spam/deleted, partial files to the trash). When the same Scout email later finishes a submission, the
+  stuck one becomes **Replaced** ("Replaced by Q-…", fields cleared, partial files trashed) and leaves the list by
+  itself (`AdminRules.replacedUploads`, run after each finished intake and when the Admin page loads). An emailed one is
+  not purged by "Purge old unconfirmed". The intake page also warns before the page is left while files go up.
 - **Attach compares first (2026-11-04):** a table *Field / On the sheet / On the form / Use form* (only fields the form
   filled; same values greyed), a switch per differing field, All / None. Ticked fields go through the Scout detail
   Save (validation, folder rename on a name/unit change, Life to Eagle Log line); no "details differ" email then.

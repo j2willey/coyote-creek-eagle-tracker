@@ -11,16 +11,19 @@ var AdminRules = (function () {
   /** Which submissions need a person, and what can be done with each. queue: Intake Queue rows. */
   function intakeExceptions(queue, nowMs) {
     var out = [];
+    var replaced = {};
+    replacedUploads(queue).forEach(function (x) { replaced[x.queueId] = true; });
     (queue || []).forEach(function (q) {
       var st = str(q['Status']), sub = ms(q['Submitted']);
       var acts = null, why = '';
+      if (replaced[str(q['Queue ID'])]) return;
       if (st === 'Unconfirmed') {
         acts = ['resend', 'spam'];
         why = ms(q['_confirm_expires']) && ms(q['_confirm_expires']) < nowMs ? 'Confirmation link expired: never clicked' : 'Waiting for the family to click the confirmation link';
       } else if (st === 'Possible duplicate') { acts = ['attach', 'promote', 'spam']; why = 'Matches a Scout already on the tracking tab'; }
       else if (st === 'Error') { acts = ['promote', 'attach', 'spam']; why = 'Adding it to the tracking tab failed'; }
       else if (st === 'Confirmed' && sub && nowMs - sub > HOUR) { acts = ['promote', 'spam']; why = 'Confirmed but not added (stuck)'; }
-      else if (st === 'Uploading' && sub && nowMs - sub > 2 * HOUR) { acts = ['spam']; why = 'Upload never finished'; }
+      else if (st === 'Uploading' && sub && nowMs - sub > 2 * HOUR) { acts = ['emailUpload', 'dismiss']; why = uploadWhy(q['Note']); }
       if (!acts) return;
       out.push({ queueId: str(q['Queue ID']), status: st, why: why, scout: str(q['Eagle Candidate']), unit: str(q['Unit']),
         submitted: sub, emails: [str(q['Scout Email']), str(q['Parent/Guardian Email'])].filter(Boolean), note: str(q['Note']),
@@ -28,6 +31,38 @@ var AdminRules = (function () {
     });
     return out.sort(function (a, b) { return b.submitted - a.submitted; });
   }
+
+  /**
+   * Why an upload never finished (Jim W., 2026-11-12): the intake page records the error it showed the Scout in the
+   * Note ("Upload failed 11/11 6:31 PM: <message>"); no such line = the page was closed or left part way.
+   */
+  function uploadWhy(note) {
+    var m = /Upload failed(?: \d+\/\d+ \d+:\d+ ?[AP]M)?:\s*([^;]+)/i.exec(str(note));
+    return m ? 'Upload failed: ' + str(m[1]) : 'Upload never finished (the page was closed or left before it finished?)';
+  }
+
+  /**
+   * Unfinished uploads the Scout later sent again successfully (Jim W., 2026-11-12): an Uploading row with a later
+   * row from the same Scout email whose upload finished (any status but Uploading / Spam/deleted / Replaced).
+   * queue: Intake Queue rows -> [{queueId, by}] (by = the newest such later row).
+   */
+  function replacedUploads(queue) {
+    var DONE_NOT = { 'Uploading': 1, 'Spam/deleted': 1, 'Replaced': 1 };
+    var rows = (queue || []).map(function (q) {
+      return { id: str(q['Queue ID']), st: str(q['Status']), sub: ms(q['Submitted']), email: str(q['Scout Email']).toLowerCase() };
+    });
+    var out = [];
+    rows.forEach(function (r) {
+      if (r.st !== 'Uploading' || !r.email) return;
+      var later = rows.filter(function (x) { return x.id !== r.id && x.email === r.email && !DONE_NOT[x.st] && x.sub > r.sub; })
+        .sort(function (a, b) { return b.sub - a.sub; })[0];
+      if (later) out.push({ queueId: r.id, by: later.id });
+    });
+    return out;
+  }
+
+  /** Append a dated line to a Note cell ("a; b"). */
+  function appendNote(note, line) { var n = str(note); return n ? n + '; ' + line : line; }
 
   /**
    * Field-by-field: the tracking row vs a web form (Jim W., 2026-11-04: a duplicate submission's newer details should
@@ -88,7 +123,8 @@ var AdminRules = (function () {
     return runs.reverse();
   }
 
-  return { intakeExceptions: intakeExceptions, archiveYears: archiveYears, archiveIds: archiveIds, deleteRuns: deleteRuns, compareRows: compareRows, toReview: toReview };
+  return { intakeExceptions: intakeExceptions, archiveYears: archiveYears, archiveIds: archiveIds, deleteRuns: deleteRuns, compareRows: compareRows, toReview: toReview,
+    uploadWhy: uploadWhy, replacedUploads: replacedUploads, appendNote: appendNote };
 })();
 
 if (typeof module !== 'undefined') module.exports = AdminRules;

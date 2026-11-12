@@ -3,7 +3,7 @@
  *
  * Router actions (committee members):
  *   adminData    {session}                              -> {intake, archive, unitRequests}
- *   adminIntake  {session, queueId, act, recordId?}     -> {message}   act: attach | promote | resend | spam
+ *   adminIntake  {session, queueId, act, recordId?}     -> {message}   act: attach | promote | resend | spam | emailUpload | dismiss
  *   adminArchive {session, year, confirm}               -> {needsConfirm, names, ...} | {message, url}   (eagleArchiveActions.js)
  *   adminClosedArchive {session, confirm}               -> {needsConfirm, rows, folder} | {message}   (closingActions.js)
  *   adminRequestDone {session, id}                       -> {message}   unit host-a-board request handled
@@ -22,6 +22,7 @@ function actionAdminData_(req) {
   var byId = {};
   recs.forEach(function (r) { byId[r.recordId] = r; });
   var queue = [];
+  try { markReplacedUploads_(); } catch (e) { console.warn('markReplacedUploads_: ' + e); }
   try { queue = Tabs.read(QUEUE_TAB); } catch (e) {}
   var intake = AdminRules.intakeExceptions(queue, Date.now()).map(function (x) {
     if (x.actions.indexOf('attach') >= 0) {
@@ -94,6 +95,13 @@ function actionAdminIntake_(req) {
     } else if (act === 'spam') {
       markQueueSpam_(q);
       msg = q['Queue ID'] + ' removed (files to trash).';
+    } else if (act === 'emailUpload') {
+      if (!String(q['Scout Email'] || '').trim()) throw userError_('This submission has no Scout email.');
+      draftUploadFollowUp_(q, who);
+      msg = 'Email to ' + name + ' drafted in the Outbox (review and send it there). This card stays until the Scout sends the Proposal again or you dismiss it.';
+    } else if (act === 'dismiss') {
+      markQueueSpam_(q, 'Dismissed ' + Intake.shortDate(new Date()) + ' (' + who + ')');
+      msg = q['Queue ID'] + ' dismissed (any partial files to the trash).';
     }
   } catch (e) { throw e.userMessage ? e : userError_(e.message); }
   adminLog_('Intake ' + q['Queue ID'] + ' (' + name + '): ' + act + (req.recordId ? ' → ' + req.recordId : ''), c.email);

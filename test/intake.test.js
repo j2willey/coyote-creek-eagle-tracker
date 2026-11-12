@@ -139,6 +139,12 @@ describe('Intake misc', () => {
     expect(Intake.purgeIndexes(rows, NOW.getTime(), 14)).toEqual([0, 1]);
   });
 
+  it('keeps an unfinished upload the committee emailed the family about', () => {
+    const old = new Date(NOW.getTime() - 15 * 864e5);
+    const rows = [{ status: 'Uploading', submitted: old, note: 'Emailed 11/12 (JW)' }, { status: 'Uploading', submitted: old, note: 'Upload failed: x' }];
+    expect(Intake.purgeIndexes(rows, NOW.getTime(), 14)).toEqual([1]);
+  });
+
   it('emails carry the link', () => {
     const url = Intake.confirmUrl('https://x.web.app/', 'abc');
     expect(url).toBe('https://x.web.app/confirm?c=abc');

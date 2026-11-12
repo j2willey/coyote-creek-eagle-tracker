@@ -16,7 +16,7 @@ var TemplateSamples = (function () {
     changes: ['Project coach phone updated', 'Beneficiary contact added'],
     type: 'Proposal Review', session: 'Proposal Review',
     when: 'Tue 11/17 7:00 PM', was: 'Mon 11/16 7:00 PM', wasWhere: 'Grace Church, 1 Old Road, San Jose', change: 'moved', changeText: 'new date', boardLink: SITE + '/signin', where: 'Community Church, 123 Main St, San Jose (Room 4)', with: 'Pat Example (district)',
-    meetLink: 'https://meet.google.com/abc-defg-hij',
+    meetLink: 'https://meet.google.com/abc-defg-hij', maxMB: '20',
     date: 'November 17, 2026', verifiedDate: 'November 3, 2026', signedBy: 'Pat Example',
     note: 'Please add the beneficiary\'s phone number on page 3, and a materials list with estimated costs.',
     notes: 'Second review: revisions were requested on 10/20.', status: 'Proposal Review: To Book',
