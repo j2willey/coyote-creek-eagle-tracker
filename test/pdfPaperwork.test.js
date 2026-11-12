@@ -59,12 +59,11 @@ describe('findRequirement7Page', () => {
 });
 
 describe('Requirement 7 date marks and signature fitting', () => {
-  it('gives three text marks in one group, inside the page', () => {
+  it('gives ONE text mark "MM    DD    YY" inside the page', () => {
     const marks = requirement7DateMarks({ mm: '03', dd: '07', yy: '26' }, 1, { width: 612, height: 792 }, 'black');
-    expect(marks.map(m => m.text)).toEqual(['03', '07', '26']);
-    expect(new Set(marks.map(m => m.group)).size).toBe(1);
-    expect(marks.every(m => m.pageIndex === 1 && m.x >= 0 && m.x + m.width <= 612)).toBe(true);
-    expect(marks[0].x + marks[0].width).toBeLessThan(marks[1].x);
+    expect(marks).toHaveLength(1);
+    expect(marks[0].text).toBe('03    07    26');
+    expect(marks[0].pageIndex === 1 && marks[0].x >= 0 && marks[0].x + marks[0].width <= 612).toBe(true);
   });
   it('fits a signature inside a field box, aspect kept, centered', () => {
     const r = fitSignatureToBox(4, { x: 60, y: 200, width: 160, height: 25 }, { x: 0, y: 0 }, { width: 612, height: 792 });

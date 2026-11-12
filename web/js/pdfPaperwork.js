@@ -29,8 +29,12 @@ export function findRequirement7Page(pageTexts) {
   return { index: -1, how: 'ask' };
 }
 
+/** Spaces between month, day and year in the Requirement 7 date (Jim: one text, 3–4 spaces apart). */
+export const R7_DATE_GAP = '    ';
+
 /**
- * Three text marks MM, DD, YY side by side (one group: they drag together onto the form's three boxes).
+ * The Requirement 7 date as ONE text mark "MM    DD    YY" (2026-11-11: three separate boxes sat too far apart):
+ * drag it onto the form's three boxes, resize it to spread or tighten.
  * @param {{ mm: string, dd: string, yy: string }} date
  * @param {number} pageIndex
  * @param {{ width: number, height: number }} pageSize  viewer size
@@ -38,15 +42,14 @@ export function findRequirement7Page(pageTexts) {
  * @returns {Array<import('./pdfView.js').ViewMark>}
  */
 export function requirement7DateMarks(date, pageIndex, pageSize, ink) {
-  const w = 30, h = 16, gap = 22;
-  const total = w * 3 + gap * 2;
-  const x0 = Math.max(0, pageSize.width * 0.62 - total / 2);
+  const text = [date.mm, date.dd, date.yy].join(R7_DATE_GAP);
+  const w = 96, h = 16;
+  const x0 = Math.max(0, pageSize.width * 0.62 - w / 2);
   const y0 = pageSize.height * 0.42;
-  return [['mm', date.mm, 'MM'], ['dd', date.dd, 'DD'], ['yy', date.yy, 'YY']].map(([id, text, label], i) =>
-    clampItemToPage({
-      id: `r7date-${id}`, kind: /** @type {'text'} */ ('text'), pageIndex, x: x0 + i * (w + gap), y: y0, width: w, height: h,
-      label: `Date ${label}`, text, ink, group: 'r7date'
-    }, pageSize));
+  return [clampItemToPage({
+    id: 'r7date', kind: /** @type {'text'} */ ('text'), pageIndex, x: x0, y: y0, width: w, height: h,
+    label: 'Date (MM DD YY)', text, ink, group: 'r7date'
+  }, pageSize)];
 }
 
 /**

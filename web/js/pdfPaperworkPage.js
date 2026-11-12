@@ -156,15 +156,15 @@ export function initPaperwork(deps) {
       closeSig({ dataUrl: '', ink: drawn });
     }
   };
-  /** @param {string} title @param {string} name @returns {Promise<SigResult | null>} a typed signature's PNG or a drawn one's strokes; null when cancelled */
-  async function askSignature(title, name) {
+  /** @param {string} title @param {string} name @param {string} [mode] 'type' (default) or 'draw' @returns {Promise<SigResult | null>} a typed signature's PNG or a drawn one's strokes; null when cancelled */
+  async function askSignature(title, name, mode = 'type') {
     ensureGoogleScriptFonts();
     $('sigTitle').textContent = title;
     $('sigWho').textContent = `Signer: ${name}`;
     sigText.value = name;
     sigFont.value = SCRIPT_FONTS.some(f => f.key === fontKey) ? fontKey : 'dancing';
     sigPad.clear();
-    setSigMode(sigMode);
+    setSigMode(mode === 'draw' ? 'draw' : 'type');   // opens on Type (name + font + colour) unless asked for Draw
     inkSyncs.forEach(f => f());
     sigDialogOpen = true;
     dlg.showModal();
@@ -238,7 +238,7 @@ export function initPaperwork(deps) {
         name.setAttribute('list', 'boardNames');
         name.setAttribute('aria-label', `Name of the signer: ${s.label}`);
         const rep = el('input', { type: 'checkbox', checked: s.rep });
-        const sign = el('button', { type: 'button', textContent: 'Sign…' });
+        const sign = el('button', { type: 'button', textContent: 'Type signature…', title: 'Your name in a script font and the colour you pick (or draw it with the mouse)' });
         const pen = el('button', { type: 'button', textContent: '✍ Sign with pen…', title: 'A large pad for a pen tablet, stylus, finger or mouse' });
         const place = el('button', { type: 'button' });
         const thumb = el('img', { className: 'ep-thumb', alt: 'Signature', hidden: true });
@@ -253,7 +253,7 @@ export function initPaperwork(deps) {
           pen.disabled = s.name.trim().length < 2;
           thumb.hidden = !s.dataUrl;
           if (s.dataUrl && thumb.getAttribute('src') !== s.dataUrl) thumb.src = s.dataUrl;
-          sign.textContent = s.dataUrl ? 'Sign again…' : 'Sign…';
+          sign.textContent = s.dataUrl ? 'Type again…' : 'Type signature…';
           place.disabled = !s.dataUrl;
           place.textContent = placed ? 'Move to its line' : (d.kind === 'report' && d.sigRects[s.key] ? 'Place on the form' : 'Place on the page…');
           status.textContent = !s.dataUrl ? 'Not signed yet.' : placed ? 'Placed. Drag it to adjust.' : 'Signed. Place it on the page.';
