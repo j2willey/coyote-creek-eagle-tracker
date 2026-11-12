@@ -3,7 +3,8 @@
  * Small PNG / canvas helpers shared by the Sign Workshop (`pdfWorkshop.js`), the draw pad (`pdfDraw.js`) and the EBoR
  * paperwork page (`pdfPaperwork.js`): trim a signature to its ink, measure it, turn a data URL into bytes.
  */
-import { inkBoundingBox } from './pdfPlan.js';
+import { inkBoundingBox, inkHex } from './pdfPlan.js';
+import { renderPlan, paintInk } from './pdfStrokes.js';
 
 /**
  * A PNG data URL of `canvas` cropped to its ink (pixels that are not transparent) plus a small margin, so a signature
@@ -83,3 +84,24 @@ export function dataUrlToBytes(dataUrl) {
   return out;
 }
 
+
+/**
+ * Render strokes (see `pdfStrokes.js`) to a transparent PNG data URL cropped to the ink, `widthPx` wide, in the ink
+ * colour `inkKey`. This is how a pen signature gets its picture: always from the strokes, so a new colour or a new size
+ * is a sharp re-render, never a tinted or stretched bitmap. '' for empty ink.
+ * @param {import('./pdfStrokes.js').Ink} ink
+ * @param {string} inkKey an INK_COLORS key
+ * @param {number} widthPx
+ * @returns {string}
+ */
+export function inkToPngDataUrl(ink, inkKey, widthPx) {
+  const plan = renderPlan(ink, widthPx);
+  if (!plan) return '';
+  const c = document.createElement('canvas');
+  c.width = plan.width;
+  c.height = plan.height;
+  const ctx = c.getContext('2d');
+  if (!ctx) return '';
+  paintInk(ctx, ink, plan, inkHex(inkKey));
+  return c.toDataURL('image/png');
+}

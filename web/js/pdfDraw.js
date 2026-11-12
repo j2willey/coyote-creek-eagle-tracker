@@ -1,44 +1,49 @@
 // @ts-check
 /**
- * The signature draw pad, shared by the Sign Workshop and the EBoR paperwork page (Task 12).
+ * The pen pad engine, shared by the signing overlay (`pdfSignPad.js`), the Sign Workshop's small Draw tab and the
+ * EBoR paperwork page's dialog (Task 12, reworked in Task 13).
  *
  * Built for a cheap tablet as well as a mouse: pointer events with `touch-action: none` (the page does not scroll or
  * zoom under the pen), one pointer draws at a time (a second finger or a resting palm is ignored, see
- * `acceptPadPointer`), strokes are smoothed (quadratic curves through the midpoints, coalesced events when the browser
- * has them), a stylus's pressure thickens the line, and Undo / Clear work stroke by stroke. Strokes are kept as points
- * and redrawn, so changing the ink colour recolours what is already drawn.
+ * `acceptPadPointer`), coalesced events give smooth curves, a pen's pressure varies the line, and Undo / Clear work
+ * stroke by stroke. What is drawn is kept as DATA (`Ink` in `pdfStrokes.js`: points normalised to the pad width) and
+ * painted from it, so a new ink colour, a new canvas size or a different output size all re-render sharply.
  */
-import { acceptPadPointer, strokeWidth, inkHex, DEFAULT_INK } from './pdfPlan.js';
-import { canvasToTrimmedPngDataUrl } from './pdfInk.js';
+import { acceptPadPointer, inkHex, DEFAULT_INK } from './pdfPlan.js';
+import { inkToPngDataUrl } from './pdfInk.js';
+import { DEFAULT_PEN_WIDTH, hasInk as inkHasInk, normalizePoint, pressureOf, paintInk } from './pdfStrokes.js';
 
 /**
- * @typedef {Object} PadPoint
- * @property {number} x
- * @property {number} y
- * @property {number} w  line width at this point (canvas px)
+ * @typedef {import('./pdfStrokes.js').Ink} Ink
+ * @typedef {import('./pdfStrokes.js').InkPoint} InkPoint
  *
  * @typedef {Object} DrawPad
  * @property {() => void} clear
  * @property {() => void} undo
  * @property {() => boolean} hasInk
- * @property {() => string} toPngDataUrl  trimmed to the ink; '' when empty
+ * @property {() => Ink | null} getInk  a copy of the strokes; null when empty
+ * @property {(ink: Ink | null) => void} setInk  replace the strokes (e.g. a signature made on a bigger pad)
+ * @property {() => string} toPngDataUrl  trimmed to the ink, as wide as the canvas; '' when empty
  * @property {() => void} redraw  after the ink colour changed
+ * @property {() => void} fit  after the canvas's CSS size changed: match the pixel size to it (x device pixel ratio)
  * @property {() => void} destroy
  */
 
 /**
  * @param {HTMLCanvasElement} canvas
- * @param {{ getInk?: () => string, lineWidth?: number, onChange?: () => void }} [opts]
+ * @param {{ getInk?: () => string, penWidth?: number, onChange?: () => void }} [opts]
+ *   `getInk` returns the ink colour key; `penWidth` is the base line width in pad-width units.
  * @returns {DrawPad}
  */
 export function createDrawPad(canvas, opts = {}) {
   const getInk = opts.getInk || (() => DEFAULT_INK);
-  const baseWidth = opts.lineWidth || Math.max(2.5, canvas.width / 170);
+  let base = opts.penWidth || DEFAULT_PEN_WIDTH;
   const ctx = canvas.getContext('2d');
-  /** @type {PadPoint[][]} */
+  /** @type {InkPoint[][]} */
   let strokes = [];
-  /** @type {PadPoint[] | null} */
+  /** @type {InkPoint[] | null} */
   let current = null;
+  let startMs = 0;
   /** @type {number | null} */
   let activeId = null;
   let lastPenMs = 0;
@@ -48,57 +53,28 @@ export function createDrawPad(canvas, opts = {}) {
   canvas.style.setProperty('-webkit-user-select', 'none');
   canvas.style.setProperty('-webkit-touch-callout', 'none');
 
-  const mid = (/** @type {PadPoint} */ a, /** @type {PadPoint} */ b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-
-  /** Draw one stroke: dots for a tap, else quadratic curves through the midpoints (width per segment). */
-  function paintStroke(/** @type {PadPoint[]} */ pts) {
-    if (!ctx || !pts.length) return;
-    ctx.strokeStyle = inkHex(getInk());
-    ctx.fillStyle = inkHex(getInk());
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    if (pts.length === 1) {
-      ctx.beginPath();
-      ctx.arc(pts[0].x, pts[0].y, pts[0].w / 2, 0, Math.PI * 2);
-      ctx.fill();
-      return;
-    }
-    for (let i = 1; i < pts.length; i++) {
-      const a = i === 1 ? pts[0] : mid(pts[i - 2], pts[i - 1]);
-      const b = i === pts.length - 1 ? pts[i] : mid(pts[i - 1], pts[i]);
-      ctx.lineWidth = pts[i].w;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.quadraticCurveTo(pts[i - 1].x, pts[i - 1].y, b.x, b.y);
-      ctx.stroke();
-    }
-  }
+  const asInk = (/** @type {InkPoint[][]} */ list) => ({ w: base, strokes: list.map(points => ({ points })) });
 
   function redraw() {
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const s of strokes) paintStroke(s);
-    if (current) paintStroke(current);
+    const all = current ? [...strokes, current] : strokes;
+    if (!all.length) return;
+    paintInk(ctx, asInk(all), { width: canvas.width, height: canvas.height, scale: canvas.width, offsetX: 0, offsetY: 0 }, inkHex(getInk()));
   }
 
   function changed() { if (opts.onChange) opts.onChange(); }
 
-  function coords(/** @type {PointerEvent} */ ev, /** @type {string} */ type) {
+  function pointOf(/** @type {PointerEvent} */ ev) {
     const r = canvas.getBoundingClientRect();
-    return {
-      x: ((ev.clientX - r.left) / Math.max(1, r.width)) * canvas.width,
-      y: ((ev.clientY - r.top) / Math.max(1, r.height)) * canvas.height,
-      w: strokeWidth(baseWidth, ev.pressure, type)
-    };
+    return normalizePoint(ev.clientX - r.left, ev.clientY - r.top, r.width, pressureOf(ev), ev.timeStamp - startMs);
   }
 
   function addPoint(/** @type {PointerEvent} */ ev) {
     if (!current) return;
-    const pt = coords(ev, ev.pointerType);
+    const pt = pointOf(ev);
     const last = current[current.length - 1];
-    if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 0.8) return;
-    // Light smoothing of the width so a pressure jump does not show as a step.
-    if (last) pt.w = Math.round((last.w * 0.5 + pt.w * 0.5) * 100) / 100;
+    if (last && Math.hypot(pt.x - last.x, pt.y - last.y) < 0.0008) return;
     current.push(pt);
   }
 
@@ -107,8 +83,9 @@ export function createDrawPad(canvas, opts = {}) {
     if (!acceptPadPointer(ev, { activePointerId: activeId, lastPenMs, nowMs: Date.now() })) { ev.preventDefault(); return; }
     ev.preventDefault();
     activeId = ev.pointerId;
+    startMs = ev.timeStamp;
     try { canvas.setPointerCapture(ev.pointerId); } catch { /* not capturable: fine */ }
-    current = [coords(ev, ev.pointerType)];
+    current = [pointOf(ev)];
     redraw();
   };
   const onMove = (/** @type {PointerEvent} */ ev) => {
@@ -121,7 +98,7 @@ export function createDrawPad(canvas, opts = {}) {
   const onEnd = (/** @type {PointerEvent} */ ev) => {
     if (ev.pointerId !== activeId) return;
     activeId = null;
-    if (current && current.length) { strokes.push(current); }
+    if (current && current.length) strokes.push(current);
     current = null;
     redraw();
     changed();
@@ -138,8 +115,23 @@ export function createDrawPad(canvas, opts = {}) {
     clear() { strokes = []; current = null; activeId = null; redraw(); changed(); },
     undo() { if (!strokes.length) return; strokes.pop(); redraw(); changed(); },
     hasInk: () => strokes.length > 0,
-    toPngDataUrl: () => (strokes.length ? canvasToTrimmedPngDataUrl(canvas) : ''),
+    getInk: () => (strokes.length ? JSON.parse(JSON.stringify(asInk(strokes))) : null),
+    setInk(ink) {
+      current = null; activeId = null;
+      strokes = ink && inkHasInk(ink) ? ink.strokes.map(s => s.points.map(q => ({ ...q }))) : [];
+      if (ink && inkHasInk(ink)) base = ink.w;
+      redraw();
+    },
+    toPngDataUrl: () => (strokes.length ? inkToPngDataUrl(asInk(strokes), getInk(), canvas.width) : ''),
     redraw,
+    fit() {
+      const r = canvas.getBoundingClientRect();
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      if (r.width < 2 || r.height < 2) return;
+      canvas.width = Math.round(r.width * dpr);
+      canvas.height = Math.round(r.height * dpr);
+      redraw();
+    },
     destroy() {
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
