@@ -519,13 +519,24 @@ function menuMarkQueueSpam() {
 function menuPurgeIntake() {
   if (!councilAccountOk_()) return;
   var ui = SpreadsheetApp.getUi();
+  var plan = purgeIntakePlan_();
+  if (!plan.ids.length) { ui.alert('Nothing unconfirmed older than ' + plan.days + ' days.'); return; }
+  if (ui.alert('Purge ' + plan.ids.length + ' unconfirmed submission(s) older than ' + plan.days + ' days?',
+    'Their rows are deleted and their files go to the trash.', ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
+  purgeIntakeRun_(plan.ids);
+  ui.alert('Purged ' + plan.ids.length + '.');
+}
+
+/** What "Purge old unconfirmed" would remove (menu and Admin → System). -> {days, ids} */
+function purgeIntakePlan_() {
   var days = Number(getSettings_().intakePurgeDays) || 14;
   var rows = Tabs.read(QUEUE_TAB);
   var idx = Intake.purgeIndexes(rows.map(function (r) { return { status: r['Status'], submitted: r['Submitted'], note: r['Note'] }; }), Date.now(), days);
-  if (!idx.length) { ui.alert('Nothing unconfirmed older than ' + days + ' days.'); return; }
-  if (ui.alert('Purge ' + idx.length + ' unconfirmed submission(s) older than ' + days + ' days?',
-    'Their rows are deleted and their files go to the trash.', ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
-  var ids = idx.map(function (i) { return rows[i]['Queue ID']; });
+  return { days: days, ids: idx.map(function (i) { return rows[i]['Queue ID']; }) };
+}
+
+/** Delete those Intake Queue rows and their Uploads Log rows; their files go to the trash. */
+function purgeIntakeRun_(ids) {
   ids.forEach(trashUploads_);
   withLock_(function () {
     var cur = Tabs.read(QUEUE_TAB).filter(function (r) { return ids.indexOf(r['Queue ID']) >= 0; });
@@ -533,7 +544,6 @@ function menuPurgeIntake() {
     var logs = Tabs.read(UPLOADS_TAB).filter(function (r) { return ids.indexOf(r['Queue ID']) >= 0; });
     Tabs.remove(UPLOADS_TAB, logs.map(function (r) { return r._row; }));
   });
-  ui.alert('Purged ' + ids.length + '.');
 }
 
 /**

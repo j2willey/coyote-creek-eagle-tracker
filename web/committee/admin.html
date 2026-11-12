@@ -105,9 +105,9 @@
       </section>
       <section class="admsec" data-tab="settings">
         <h2>Settings</h2>
-        <p class="hint">Every setting the tool reads from the Settings tab, grouped, with what it does. District details and Scheduling can be edited
-          here (each change is logged on the Activity tab); the rest are read-only for now: change them on the spreadsheet's Settings tab
-          (it takes effect within 5 minutes). Values that differ from the
+        <p class="hint">Every setting the tool reads from the Settings tab, grouped, with what it does. Most groups can be edited here (each change is logged on the
+          Activity tab). Test mode, Internal wiring and the stages stay on the spreadsheet's Settings tab on purpose (a wrong value there
+          sends real email or breaks the sheet); changes there take effect within 5 minutes. Values that differ from the
           built-in default are marked.</p>
         <div id="setView"><p class="muted">Loading…</p></div>
       </section>
@@ -471,7 +471,10 @@
       ['setup', 'Setup / repair tabs', 'Adds missing tabs, columns and settings after an update (deletes nothing). Run it after each deploy that says so.', 'Run Setup / repair tabs now?'],
       ['templates', 'Templates: add missing tabs', 'Adds a tab to the template Doc for each new email (and creates the Doc if there is none).', 'Add the missing tabs to the template Doc?'],
       ['digest', 'Digest: send now', 'Sends the committee digest now, covering everything since the last one; the next scheduled digest starts from now.', 'Send the digest now?'],
-      ['scheduleCheck', 'Schedule: check against the tracking sheet', 'Links schedule rows to Scouts, fills empty tracking dates, lists differing ones on the "Schedule Check" tab. No emails.', 'Check the schedule against the tracking sheet?']
+      ['scheduleCheck', 'Schedule: check against the tracking sheet', 'Links schedule rows to Scouts, fills empty tracking dates, lists differing ones on the "Schedule Check" tab. No emails.', 'Check the schedule against the tracking sheet?'],
+      ['purge', 'Intake Queue: purge old unconfirmed', 'Deletes submissions never confirmed (or uploads never finished) older than Settings → intakePurgeDays, with their files. Shows the list first.', ''],
+      ['councilFetch', 'Council applications: fetch linked files', 'For Council application emails whose files were links: fetches them into the Scouts\' folders.', 'Fetch the linked files now?'],
+      ['triggers', 'Install sheet triggers', 'Re-creates the edit, change, hourly invite and digest triggers. Only needed after a reset or a new deployment account.', 'Re-install the triggers?']
     ];
     $('sysView').replaceChildren(...SYS.map(([op, label, help, ask]) => {
       const b = el('button', { type: 'button', textContent: label });
@@ -479,7 +482,15 @@
         if (ask && !confirm(ask + '\n\n' + help)) return;
         document.querySelectorAll('#sysView button').forEach(x => { x.disabled = true; });
         $('sysOut').hidden = false; $('sysOut').className = 'sysout'; $('sysOut').textContent = label + ': running…';
-        try { const r = await api('adminSystem', { session, op }); $('sysOut').textContent = r.title + '\n\n' + r.text; }
+        try {
+          let r = await api('adminSystem', { session, op });
+          if (r.needsConfirm) {
+            $('sysOut').textContent = r.title + '\n\n' + r.text;
+            if (confirm(r.text + '\n\nGo ahead?')) r = await api('adminSystem', { session, op, confirm: true });
+            else r = { title: r.title, text: 'Cancelled. Nothing was deleted.' };
+          }
+          $('sysOut').textContent = r.title + '\n\n' + r.text;
+        }
         catch (e) { $('sysOut').textContent = label + ': ' + e.message; $('sysOut').className = 'sysout err'; }
         document.querySelectorAll('#sysView button').forEach(x => { x.disabled = false; });
       };
@@ -537,8 +548,9 @@
         let input;
         if (i.type === 'boolean') { input = el('input', { type: 'checkbox', checked: i.value === 'TRUE' }); }
         else if (i.type === 'enum') {
-          input = el('select', {}, ...['Off', 'See', 'Assign'].map(o => el('option', { value: o, textContent: o })));
-          input.value = i.value || 'Off';
+          const opts = i.key === 'linkBrowserCheck' ? ['off', 'log', 'enforce'] : ['Off', 'See', 'Assign'];
+          input = el('select', {}, ...opts.map(o => el('option', { value: o, textContent: o })));
+          input.value = opts.find(o => o.toLowerCase() === String(i.value).toLowerCase()) || opts[0];
         } else {
           input = el('input', { type: i.type === 'number' ? 'number' : i.type === 'email' ? 'email' : 'text', value: i.value });
           if (i.type === 'number') input.min = '0';

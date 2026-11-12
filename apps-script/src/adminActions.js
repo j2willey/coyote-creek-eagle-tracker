@@ -11,7 +11,8 @@
  *   adminSettingsSave {session, group, values, was}      -> {message, view}   Admin role; editable groups only; logged on Activity
  *   adminPeople  {session}                              -> {members, me}   Admin role (lib/people.js)
  *   adminPeopleSave {session, row?, wasEmail?, member}  -> {message, members}   Admin role; add (no row) or update; logged on Activity
- *   adminSystem  {session, op}                          -> {title, text}   Admin role; op: selfCheck | setup | templates | digest | scheduleCheck
+ *   adminSystem  {session, op, confirm?}                -> {title, text, needsConfirm?}   Admin role; op: selfCheck | setup | templates | digest |
+ *                                                         scheduleCheck | purge (confirm) | councilFetch | triggers
  */
 function adminRecords_() {
   var eCol = getSettings_().eborDateColumn || 'ebor_date';
@@ -92,6 +93,24 @@ function actionAdminSystem_(req) {
       '• Scout not found / unclear: ' + r.count.notFound + '\n• Linked (Record ID written): ' + r.count.linked + '\n' +
       '• Tracking date filled in: ' + r.count.filled + '\n• Tracking date DIFFERENT: ' + r.count.differs + '\n• Already the same: ' + r.count.same +
       '\n\nDetails on the "Schedule Check" tab.';
+  } else if (op === 'purge') {
+    title = 'Intake Queue: purge old unconfirmed';
+    var plan = purgeIntakePlan_();
+    if (!plan.ids.length) return { title: title, text: 'Nothing unconfirmed (or unfinished, not emailed about) older than ' + plan.days + ' days.' };
+    if (!req.confirm) return { title: title, needsConfirm: true, text: plan.ids.length + ' submission(s) older than ' + plan.days +
+      ' days would be deleted (rows and files): ' + plan.ids.join(', ') + '. Unfinished uploads you emailed about are kept.' };
+    purgeIntakeRun_(plan.ids);
+    text = 'Purged ' + plan.ids.length + ': ' + plan.ids.join(', ') + '.';
+  } else if (op === 'councilFetch') {
+    title = 'Council applications: fetch linked files';
+    if (!digestTriggerInstalled_()) throw userError_('The hourly trigger is not installed for this account: the Formsite emails are in the inbox of the account that owns it.');
+    var f = councilFetchLinks_();
+    text = f.rows + ' row(s) with files not filed. ' + f.filed + ' file(s) fetched from Formsite links.' +
+      (f.problems.length ? '\n\nStill not filed:\n' + f.problems.slice(0, 15).join('\n') : '');
+  } else if (op === 'triggers') {
+    title = 'Install sheet triggers';
+    installTriggers_();
+    text = INSTALL_TRIGGERS_TEXT_;
   } else throw userError_('Unknown System action.');
   if (op !== 'selfCheck') adminLog_('System: ' + title, c.email);
   return { title: title, text: text };

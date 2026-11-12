@@ -218,9 +218,11 @@ function editTriggerInstalled_() {
 function menuInstallTriggers() {
   if (!councilAccountOk_()) return;
   installTriggers_();
-  SpreadsheetApp.getUi().alert('Installed. Edits to the Action and Notes columns are now handled by the script ' +
-    '(it runs as you; anyone editing the sheet triggers it).\n\nThe committee digest is checked every hour and sent at Settings → digestHours.');
+  SpreadsheetApp.getUi().alert(INSTALL_TRIGGERS_TEXT_);
 }
+
+var INSTALL_TRIGGERS_TEXT_ = 'Installed. Edits to the Action and Notes columns are now handled by the script ' +
+    '(it runs as you; anyone editing the sheet triggers it).\n\nThe committee digest is checked every hour and sent at Settings → digestHours.';
 
 function installTriggers_() {
   ScriptApp.getProjectTriggers().forEach(function (t) {

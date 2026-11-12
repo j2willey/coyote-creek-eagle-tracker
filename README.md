@@ -960,11 +960,14 @@ server (`adminMe_`, `SettingsView.isAdmin`).
 details, Scheduling, Reminders and email, Web submissions, Sign-in and security, Test mode, Internal wiring), with a help
 line, the default when the value differs, and links for folder / Doc / sheet IDs; keys not in a group show under
 "Other"; the stage table (Settings D–G) at the end. A test keeps every default key in exactly one group.
-**District details** and **Scheduling** are editable (2026-11-12): inputs by type, Save per group with a confirm
-listing old → new; the server rejects a value someone changed since the page loaded, validates (numbers ≥ 0, minutes
-5–600, emails, a time like 7:00 PM, onlineBooking via `Booking.parseOnline`, reservedForUnits Off | See | Assign),
-writes text with a leading `'` (so "7:00 PM" or a ZIP stays text) and logs each change on Activity. Other groups stay
-read-only until their turn (plan step 5).
+**Editable** (2026-11-12): District details, Scheduling, Reminders and email, Web submissions, Sign-in and security.
+Inputs by type, Save per group with a confirm listing old → new; the server rejects a value someone changed since the
+page loaded and validates with the tool's own parsers (`Booking.parseOnline`, `Digest.parseHours`,
+`Nudges.parseBookDays`), number ranges (`SettingsView` RANGES; minutes 5–600), emails (committeeGroupEmail and
+adminEmail can't be blank; digestTo a list) and enums (reservedForUnits, linkBrowserCheck). Text is written with a
+leading `'` (so "7:00 PM" or a ZIP stays text); each change is logged on Activity. **Not editable on purpose:** Test mode
+(a wrong click sends real email), Internal wiring, and the stage table (renaming a stage renames a tracking-tab section
+header): those stay on the sheet.
 
 **People** (Admin role; `lib/people.js`, `adminPeople`, `adminPeopleSave`; 2026-11-12): the Committee tab as a table.
 Add a member (Name, Initials 2–4 letters, Email, Active, Role) or edit one (Name, Email, Active, Role). Initials are
@@ -975,7 +978,8 @@ the page loaded is refused. Each change is logged on Activity; the committee cac
 
 **System** (Admin role; `adminSystem`; 2026-11-12): the sheet's Admin menu items most used after a deploy, run from the
 page as the deploying (Council) account with the same account check: Self-check, Setup / repair tabs, Templates: add
-missing tabs, Digest: send now, Schedule: check against the tracking sheet. Output shows on the page; every run but
+missing tabs, Digest: send now, Schedule: check against the tracking sheet, Intake Queue: purge old unconfirmed (lists
+what it would delete, then asks), Council applications: fetch linked files, Install sheet triggers. Output shows on the page; every run but
 Self-check is logged on Activity. The menu items call the same functions (`selfCheckLines_`, `setupRunText_`,
 `ensureTemplateDoc_`, `runDigest_`, `scheduleCheck_`). Migration, folders and staging tools stay in the sheet menu.
 

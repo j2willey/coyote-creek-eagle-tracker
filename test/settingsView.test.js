@@ -48,4 +48,27 @@ describe('SettingsView (Admin → Settings)', () => {
       expect(V.validate('scheduling', { eborMinutes: '60' }, { eborMinutes: '120' }, cur, M.DEFAULT_VALUES).errors[0].message).toMatch(/someone else/);
     });
   });
+
+  describe('editing (Reminders and email, Web submissions, Sign-in)', () => {
+    const cur = { ...M.DEFAULT_VALUES, committeeGroupEmail: 'group@example.org', adminEmail: 'admin@example.org' };
+    it('validates with the parsers the tool uses', () => {
+      const ok = V.validate('reminders', { digestHours: '6 AM, 6 PM', pleaseBookDays: 'Intake 7; EBoR 5,10', digestTo: 'A@example.org; b@example.org' }, {}, cur, M.DEFAULT_VALUES);
+      expect(ok.errors).toEqual([]);
+      expect(ok.changes.find(c => c.key === 'digestTo').to).toBe('a@example.org, b@example.org');
+      const bad = V.validate('reminders', { digestHours: '25 PM', pleaseBookDays: 'Lunch 7', digestTo: 'nope', committeeGroupEmail: '' }, {}, cur, M.DEFAULT_VALUES);
+      expect(bad.errors.map(e => e.key)).toEqual(['digestHours', 'pleaseBookDays', 'digestTo', 'committeeGroupEmail']);
+    });
+    it('keeps numbers in range and enums to their values', () => {
+      expect(V.validate('intake', { intakeLinkHours: '8' }, {}, cur, M.DEFAULT_VALUES).errors[0].message).toMatch(/from 1 to 6/);
+      expect(V.validate('intake', { maxUploadMB: '30', unitPipeline: false }, {}, cur, M.DEFAULT_VALUES).changes)
+        .toEqual([{ key: 'maxUploadMB', from: '20', to: 30 }, { key: 'unitPipeline', from: 'TRUE', to: false }]);
+      expect(V.validate('signin', { linkBrowserCheck: 'ENFORCE' }, {}, cur, M.DEFAULT_VALUES).changes).toEqual([{ key: 'linkBrowserCheck', from: 'log', to: 'enforce' }]);
+      expect(V.validate('signin', { linkBrowserCheck: 'maybe' }, {}, cur, M.DEFAULT_VALUES).errors).toHaveLength(1);
+    });
+    it('Test mode and Internal wiring stay on the sheet', () => {
+      expect(V.validate('test', { testMode: false }, {}, cur, M.DEFAULT_VALUES).errors).toHaveLength(1);
+      expect(V.validate('wiring', { webOrigin: 'x' }, {}, cur, M.DEFAULT_VALUES).errors).toHaveLength(1);
+    });
+  });
 });
+

@@ -8,11 +8,20 @@
 var SettingsView = (function () {
   function str(v) { return v == null ? '' : String(v).trim(); }
   function B() { return (typeof Booking !== 'undefined') ? Booking : require('./booking'); }
+  function D() { return (typeof Digest !== 'undefined') ? Digest : require('./digest'); }
+  function N() { return (typeof Nudges !== 'undefined') ? Nudges : require('./nudges'); }
 
-  // Groups an Admin can edit on the page (step 2b: District details + Scheduling; the rest later).
-  var EDITABLE = ['district', 'scheduling'];
-  var EMAIL_KEYS = { councilEaglesEmail: 1, approvalRepEmail: 1 };
-  var ENUMS = { reservedForUnits: ['Off', 'See', 'Assign'] };
+  // Groups an Admin can edit on the page. Test mode and Internal wiring stay on the sheet (a wrong click there sends
+  // real email or breaks production); stage labels too (renaming one renames a tracking-tab section header).
+  var EDITABLE = ['district', 'scheduling', 'reminders', 'intake', 'signin'];
+  var EMAIL_KEYS = { councilEaglesEmail: 1, approvalRepEmail: 1, committeeGroupEmail: 1, replyTo: 1, adminEmail: 1 };
+  var EMAIL_LISTS = { digestTo: 1 };
+  var ENUMS = { reservedForUnits: ['Off', 'See', 'Assign'], linkBrowserCheck: ['off', 'log', 'enforce'] };
+  // [min, max] for numbers (default: 0 and up; *Minutes keys 5 to 600).
+  var RANGES = { maxUploadMB: [1, 50], intakeLinkHours: [1, 6], intakeConfirmDays: [1, 60], intakePurgeDays: [1, 365],
+    linkMinutes: [5, 1440], sessionDays: [1, 365], committeeSessionDays: [1, 365], eborReminderDays: [0, 30],
+    signingNudgeDays: [1, 60], closeReviewDays: [30, 1095], closeSnoozeDays: [7, 730], councilAckDays: [1, 90] };
+  var MUST_HAVE = { committeeGroupEmail: 1, adminEmail: 1 };   // the tool can't work without these
 
   // [key, help]. Order = order on the page.
   var GROUPS = [
@@ -118,6 +127,7 @@ var SettingsView = (function () {
     if (typeof def === 'number') return 'number';
     if (typeof def === 'boolean') return 'boolean';
     if (EMAIL_KEYS[key]) return 'email';
+    if (EMAIL_LISTS[key]) return 'emails';
     if (ENUMS[key]) return 'enum';
     if (key === 'defaultStartTime') return 'time';
     return 'text';
@@ -153,14 +163,24 @@ var SettingsView = (function () {
       else {
         var t = str(raw);
         if (t.length > 300) { errors.push({ key: key, message: key + ': too long.' }); return; }
+        var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
         if (type === 'number') {
           var n = Number(t);
-          if (t === '' || !isFinite(n) || n < 0) { errors.push({ key: key, message: key + ': a number, 0 or more.' }); return; }
-          if (/Minutes$/.test(key) && (n < 5 || n > 600)) { errors.push({ key: key, message: key + ': between 5 and 600 minutes.' }); return; }
+          var range = RANGES[key] || (/Minutes$/.test(key) ? [5, 600] : [0, Infinity]);
+          if (t === '' || !isFinite(n) || n < range[0] || n > range[1]) {
+            errors.push({ key: key, message: key + ': a number' + (range[1] === Infinity ? ', ' + range[0] + ' or more.' : ' from ' + range[0] + ' to ' + range[1] + '.') });
+            return;
+          }
           to = n;
         } else if (type === 'email') {
-          if (t && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t)) { errors.push({ key: key, message: key + ': not an email address.' }); return; }
-          to = t;
+          if (!t && MUST_HAVE[key]) { errors.push({ key: key, message: key + ': can\'t be blank.' }); return; }
+          if (t && !EMAIL_RE.test(t)) { errors.push({ key: key, message: key + ': not an email address.' }); return; }
+          to = t.toLowerCase();
+        } else if (type === 'emails') {
+          var list = t.split(/[\s,;]+/).filter(Boolean);
+          var badE = list.filter(function (e) { return !EMAIL_RE.test(e); });
+          if (badE.length) { errors.push({ key: key, message: key + ': not an email address: ' + badE.join(', ') + '.' }); return; }
+          to = list.map(function (e) { return e.toLowerCase(); }).join(', ');
         } else if (type === 'enum') {
           var hit = ENUMS[key].filter(function (o) { return o.toLowerCase() === t.toLowerCase(); })[0];
           if (!hit) { errors.push({ key: key, message: key + ': one of ' + ENUMS[key].join(', ') + '.' }); return; }
@@ -171,6 +191,8 @@ var SettingsView = (function () {
           to = timeText(p);
         } else {
           if (key === 'onlineBooking') { var ob = B().parseOnline(t); if (ob.error) { errors.push({ key: key, message: ob.error }); return; } }
+          if (key === 'digestHours') { var dh = D().parseHours(t); if (dh.error) { errors.push({ key: key, message: dh.error }); return; } }
+          if (key === 'pleaseBookDays') { var pb = N().parseBookDays(t); if (pb.errors.length) { errors.push({ key: key, message: pb.errors.join(' ') }); return; } }
           to = t;
         }
       }
