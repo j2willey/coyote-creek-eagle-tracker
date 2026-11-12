@@ -80,6 +80,7 @@ var ACTIONS_ = {
   eborPaperworkStart: function (req) { return actionEborPaperworkStart_(req); },
   eborPaperworkUpload: function (req) { return actionEborPaperworkUpload_(req); },
   eborPaperworkFinish: function (req) { return actionEborPaperworkFinish_(req); },
+  eborPaperworkDemoReset: function (req) { return actionEborPaperworkDemoReset_(req); },
   // Sign Workshop stamps (stampActions.js)
   stampList: function (req) { return actionStampList_(req); },
   stampFetch: function (req) { return actionStampFetch_(req); },

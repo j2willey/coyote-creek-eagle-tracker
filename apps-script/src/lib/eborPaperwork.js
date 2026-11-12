@@ -219,10 +219,80 @@ var EborPaperwork = (function () {
       (emailDrafted ? '; Council email drafted in the Outbox' : '; no Council email drafted') + '.';
   }
 
+  // ---------- the Demo Scout (Task 14b) ----------
+
+  /**
+   * A fictional Scout for showing the committee the page. It is NOT a record: the server handles recordId 'DEMO' in explicit
+   * branches that never read or write the tracking tab or a Scout's log and never address Council.
+   */
+  var DEMO = {
+    recordId: 'DEMO',
+    label: '\uD83E\uDDEA Demo Scout (test: no email to Council)',
+    name: 'Theodore "Teddy" Sample', preferred: 'Teddy', unit: 'T999', stage: 'Demo (test)',
+    leaderName: 'Pat Q Leader', address: '1 Example Way', city: 'San Jose', state: 'CA', zip: '95100',
+    folderName: 'Demo Scout - T999 (test)', verifiedName: 'Verified Eagle Application (demo).pdf',
+    activity: 'EBoR paperwork demo run by ',
+    note: '[DEMO] A test run of the EBoR paperwork page with a fictional Scout. This is what Council would receive; nothing was sent to Council.'
+  };
+
+  function isDemo(recordId) { return str(recordId) === DEMO.recordId; }
+
+  /** The Scout dropdown with the Demo Scout first. ch: choices(...) -> same shape; `selected` is untouched. */
+  function withDemo(ch, todayYmd) {
+    var entry = { recordId: DEMO.recordId, name: DEMO.name, unit: DEMO.unit, section: 'demo', stage: DEMO.stage, label: DEMO.label,
+      boardYmd: str(todayYmd), boardTime: '', upcoming: false, start: 0, demo: true };
+    return { scouts: [entry].concat((ch && ch.scouts) || []), selected: ch ? ch.selected : '' };
+  }
+
+  /** Folder path under the Scouts folder: [<current year>, 'Demo Scout - T999 (test)']. */
+  function demoFolderPath(todayYmd) {
+    var p = parts(todayYmd);
+    return [String(p ? p.y : new Date().getFullYear()), DEMO.folderName];
+  }
+
+  /** Which signed documents are already at the top of a folder. files: [{name}] -> {application, report} */
+  function signedIn(files) {
+    var out = { application: false, report: false };
+    (files || []).forEach(function (f) {
+      var n = str(f && f.name);
+      if (/_EagleApplication-Signed\.pdf$/i.test(n)) out.application = true;
+      if (/_AdvancementReport-Signed\.pdf$/i.test(n)) out.report = true;
+    });
+    return out;
+  }
+
+  /** "Reset demo": the signed files at the top of the demo folder (they move to its Archive). top: [{id, name}] -> [id] */
+  function demoResetPlan(top) {
+    return (top || []).filter(function (f) { return OUR_SIGNED.test(str(f.name)); }).map(function (f) { return f.id; });
+  }
+
+  /** What the demo page shows for the Scout: the Report fill needs this one's leader and address. */
+  function demoReportInput(boardYmd, district, title) {
+    return { scout: DEMO.name, unit: DEMO.unit, district: district, title: title, leaderName: DEMO.leaderName, address: DEMO.address,
+      city: DEMO.city, state: DEMO.state, zip: DEMO.zip, boardYmd: boardYmd };
+  }
+
+  /**
+   * The Council email as a demo: the same subject and body, marked [DEMO], To the member who ran the demo ONLY (no Cc, no Bcc,
+   * whatever the original addressed). out: {to, cc, bcc, subject, body, htmlBody, ...}. -> a new object
+   */
+  function demoEmail(out, toEmail) {
+    var o = out || {};
+    var subject = str(o.subject).replace(/^\[DEMO\]\s*/, '');
+    var esc = function (t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    return { to: [str(toEmail)].filter(String), cc: '', bcc: '', kind: o.kind, subject: '[DEMO] ' + subject,
+      body: DEMO.note + '\n\n' + str(o.body), htmlBody: '<p><b>' + esc(DEMO.note) + '</b></p>' + str(o.htmlBody) };
+  }
+
+  /** The Activity line for a demo run. */
+  function demoActivity(by) { return DEMO.activity + str(by); }
+
   return { BADGE: BADGE, UNIT_GROUP: UNIT_GROUP, UNIT_ORDER: UNIT_ORDER, FIELD: FIELD, SIGNATURE_FIELDS: SIGNATURE_FIELDS, REP_LABEL: REP_LABEL,
     parts: parts, mmddyy: mmddyy, reportDate: reportDate, unitParts: unitParts, reportFields: reportFields,
     signerSlots: signerSlots, checkSigners: checkSigners, pickVerified: pickVerified, pdfChoices: pdfChoices, archivePlan: archivePlan,
-    boardFor: boardFor, choices: choices, logLine: logLine };
+    boardFor: boardFor, choices: choices, logLine: logLine,
+    DEMO: DEMO, isDemo: isDemo, withDemo: withDemo, demoFolderPath: demoFolderPath, signedIn: signedIn, demoResetPlan: demoResetPlan,
+    demoReportInput: demoReportInput, demoEmail: demoEmail, demoActivity: demoActivity };
 })();
 
 if (typeof module !== 'undefined') module.exports = EborPaperwork;

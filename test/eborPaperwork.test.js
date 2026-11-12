@@ -159,3 +159,46 @@ describe('EborPaperwork: log line', () => {
     expect(line).toMatch(/Filed A\.pdf and R\.pdf; 2 earlier file\(s\) to Archive; Council email drafted in the Outbox\./);
   });
 });
+
+describe('EborPaperwork: the Demo Scout', () => {
+  it('is the first dropdown entry, flagged, and does not change which real Scout is preselected', () => {
+    const ch = P.withDemo({ scouts: [{ recordId: 'R-1', name: 'A', unit: 'T1' }], selected: 'R-1' }, '2026-11-11');
+    expect(ch.scouts.map(s => s.recordId)).toEqual(['DEMO', 'R-1']);
+    expect(ch.scouts[0]).toMatchObject({ demo: true, boardYmd: '2026-11-11', unit: 'T999' });
+    expect(ch.scouts[0].label).toMatch(/Demo Scout \(test: no email to Council\)/);
+    expect(ch.selected).toBe('R-1');
+    expect(P.withDemo(undefined, '2026-11-11').scouts).toHaveLength(1);
+    expect(P.isDemo('DEMO')).toBe(true);
+    expect(P.isDemo('R-1')).toBe(false);
+    expect(P.isDemo('')).toBe(false);
+  });
+  it('is fictional: Report fill uses the demo leader and address, unit T999 is a Troop', () => {
+    const fill = P.reportFields(P.demoReportInput('2026-11-11', 'Coyote Creek', 'Coyote Creek Advancement'));
+    expect(fill.problems).toEqual([]);
+    expect(fill.text).toMatchObject({ '#1': 'Theodore "Teddy" Sample', No: '999', Leader: 'Pat Q Leader', Address: '1 Example Way', City: 'San Jose', State: 'CA', Zip: '95100' });
+    expect(fill.radio).toEqual({ group: 'Group16', index: 1 });
+  });
+  it('folder path is <year>/Demo Scout - T999 (test)', () => {
+    expect(P.demoFolderPath('2026-11-11')).toEqual(['2026', 'Demo Scout - T999 (test)']);
+  });
+  it('Reset demo moves only the signed files; signedIn reads the same names', () => {
+    const top = [{ id: 'a', name: 'Theodore_Teddy_Sample-T999_EagleApplication-Signed.pdf' }, { id: 'r', name: 'x-T999_AdvancementReport-Signed.PDF' },
+      { id: 'v', name: 'Verified Eagle Application (demo).pdf' }, { id: 'n', name: 'notes.txt' }];
+    expect(P.demoResetPlan(top)).toEqual(['a', 'r']);
+    expect(P.signedIn(top)).toEqual({ application: true, report: true });
+    expect(P.signedIn([top[2]])).toEqual({ application: false, report: false });
+  });
+  it('the demo email goes To the member only, no Cc or Bcc, whatever the original addressed', () => {
+    const out = P.demoEmail({ to: ['council@example.org'], cc: 'group@example.org, leader@example.org', bcc: 'x@example.org', kind: 'x',
+      subject: 'Eagle paperwork', body: 'Hello Council', htmlBody: '<p>Hello Council</p>' }, 'ab@example.org');
+    expect(out.to).toEqual(['ab@example.org']);
+    expect(out.cc).toBe('');
+    expect(out.bcc).toBe('');
+    expect(out.subject).toBe('[DEMO] Eagle paperwork');
+    expect(out.body).toMatch(/^\[DEMO\] A test run/);
+    expect(out.body).toMatch(/Hello Council$/);
+    expect(out.htmlBody).toMatch(/Hello Council/);
+    expect(P.demoEmail({ subject: '[DEMO] Again', body: '' }, 'ab@example.org').subject).toBe('[DEMO] Again');
+    expect(P.demoActivity('AB')).toBe('EBoR paperwork demo run by AB');
+  });
+});

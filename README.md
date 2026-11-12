@@ -108,7 +108,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     stats.js              Stats page: this year live (months, ages, female, pipeline, speed, units, sessions); history rows
     templateSamples.js    email preview: sample values for every placeholder, TEST banners
     emailMenu.js          "Email…" action: which emails fit a stage, what each needs, recently sent
-    eborPaperwork.js      EBoR paperwork: field map, MM/DD/YY, signer rules, Verified file picking, archive plan
+    eborPaperwork.js      EBoR paperwork: field map, MM/DD/YY, signer rules, Verified file picking, archive plan, Demo Scout rules
     formTemplates.js      Form Templates folder: which folder (formTemplatesFolderId / stampsFolderId), which PDF is the blank report / application
     unitDirectory.js      unit contacts on the web: Key 3 rows vs unit-provided, directory, validation
     unitBroadcast.js      "Email the units": recipients by unit type and role, unique, Bcc batches
@@ -600,7 +600,18 @@ only; nothing leaves the browser until **Save both**. Saving files `<Name>-<Unit
 `_AdvancementReport-Signed.pdf` in the Scout's folder, moves the Verified Application and earlier versions to Archive,
 drafts "Council: Eagle paperwork" in the Outbox (the existing path), and logs it. **The row does not move**: use
 *Eagle earned…* afterwards; it (and *Send signed paperwork to Council…*) now find files already filed this way instead of asking
-for scans again. Actions: `eborPaperworkChoices`, `Scout`, `Template`, `Start`, `Upload`, `Finish`.
+for scans again. Actions: `eborPaperworkChoices`, `Scout`, `Template`, `Start`, `Upload`, `Finish`, `DemoReset`.
+
+**Demo Scout** (first entry in the Scout list, "Demo Scout (test: no email to Council)"): for showing the committee the page.
+Fictional Teddy Sample of T999, Unit Leader Pat Q Leader, board date = today, name suggestions = the committee. Files live in
+`<Scouts folder>/<year>/Demo Scout - T999 (test)/`; if that folder has no "verified" PDF, the blank Eagle Application from the
+Form Templates folder (name has "Eagle Application", not "Verified") is copied in as `Verified Eagle Application (demo).pdf`. Save
+works as for a real Scout (two `-Signed.pdf` files, earlier versions to Archive) but there is **no tracking-row lookup, no Scout
+log and no Council email**: instead a **[DEMO]** draft with both files attached waits in the Outbox, To the member who ran it only
+(no Cc), and the Activity tab gets "EBoR paperwork demo run by <initials>". **Reset demo** (link under the list) moves the demo
+folder's signed files to its Archive. The demo is the fixed key `recordId: 'DEMO'`, handled by explicit branches
+(`eborDemoActions.js`; `mailFromTemplate_` refuses `demo` messages that are not a one-recipient Outbox draft); `test/eborDemo.test.js` runs the whole
+path against a fake Drive and fails on any tracking, Scout-log or Council call.
 
 After deploying: put the blank form in the Form Templates folder (or set `advancementReportTemplateId`; forms stay in Drive, outside this repo), check `districtName` and
 `advancementTitle`, run Setup / repair tabs (adds the Key 3 address headers).

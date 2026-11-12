@@ -85,6 +85,8 @@ function docParas_(body) {
 var FORCE_OUTBOX_ = null;
 
 function mailFromTemplate_(key, vars, msg) {
+  // msg.demo (EBoR paperwork Demo Scout): always an Outbox draft, To msg.demoTo only, no Cc / Bcc, marked [DEMO].
+  if (msg.demo && !(msg.outbox && msg.committee && String(msg.demoTo || '').trim())) throw new Error('A demo email must be an Outbox draft to one member.');
   if (FORCE_OUTBOX_ && msg.kind !== 'signin') msg = Object.assign({}, msg, { outbox: true, committee: true, by: FORCE_OUTBOX_.by || msg.by });
   var tabs = null;
   try { tabs = templateTabs_(); } catch (e) { templateProblem_(key, 'Could not read the template Doc: ' + e.message); }
@@ -109,6 +111,7 @@ function mailFromTemplate_(key, vars, msg) {
   // A committee member caused it and the tab says Review (or the caller always wants a draft, msg.outbox):
   // wait in the Outbox (committee page) instead of sending.
   if ((tab.mode === 'review' || msg.outbox) && msg.committee && msg.kind !== 'signin') {
+    if (msg.demo) out = EborPaperwork.demoEmail(out, msg.demoTo);
     var id = queueOutbox_(key, out, msg);
     return { send: false, queued: true, id: id, reason: 'waiting in the Outbox' };
   }
@@ -119,6 +122,7 @@ function mailFromTemplate_(key, vars, msg) {
 function queueBuiltIn_(key, msg) {
   var group = getSettings_().committeeGroupEmail || '';
   var out = { to: msg.to, cc: msg.cc ? msg.cc : MailPlan.merge(msg.keepCc, group), subject: msg.subject, body: msg.body, htmlBody: Outbox.textToHtml(msg.body) };
+  if (msg.demo) out = EborPaperwork.demoEmail(out, msg.demoTo);
   var id = queueOutbox_(key, out, msg);
   return { send: false, queued: true, id: id, reason: 'waiting in the Outbox' };
 }

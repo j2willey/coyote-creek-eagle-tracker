@@ -10,6 +10,7 @@
  *                                                  -> {uploadToken}   (signer: {name, rep, signed})
  *   eborPaperworkUpload   {uploadToken, kind: application|report, name, data (base64)} -> {stored}
  *   eborPaperworkFinish   {session, uploadToken}   -> {message, outboxId}
+ *   eborPaperworkDemoReset {session}               -> {message}   Demo Scout (recordId 'DEMO', eborDemoActions.js): signed files to Archive
  *
  * Finish: both signed PDFs go to the Scout's folder as <Name>-<Unit>_EagleApplication-Signed.pdf and
  * _AdvancementReport-Signed.pdf (the names Eagle earned uses); the Verified Application and earlier versions move to
@@ -33,7 +34,7 @@ function actionEborPaperworkChoices_(req) {
     var rows = readSchedule_().rows;
     recs.forEach(function (r) { boards[r.recordId] = EborPaperwork.boardFor(rows, r.recordId, today); });
   } catch (e) { console.warn('ebor paperwork schedule: ' + e); }
-  var ch = EborPaperwork.choices(recs, boards, function (k) { return SettingsModel.sectionLabel(s, k); });
+  var ch = EborPaperwork.withDemo(EborPaperwork.choices(recs, boards, function (k) { return SettingsModel.sectionLabel(s, k); }), today);   // the Demo Scout first (Task 14b)
   return {
     me: { name: String(c.me.name || ''), initials: String(c.me.initials || ''), email: c.email },
     today: today, scouts: ch.scouts, selected: ch.selected,
@@ -74,6 +75,7 @@ function paperworkFiles_(folder) {
 }
 
 function actionEborPaperworkScout_(req) {
+  if (EborPaperwork.isDemo(req.recordId)) return actionEborPaperworkDemoScout_(req);   // the fictional Scout: never a tracking row
   committeeMe_(req.session);
   var rec = Records.get(String(req.recordId || ''));
   if (!rec || EBOR_SECTIONS_.indexOf(rec.section) < 0) throw userError_('That Scout is no longer at EBoR Booked or EBoR Paused. Reload the page.');
@@ -137,8 +139,9 @@ function eborPaperworkContext_(token) {
 
 function actionEborPaperworkStart_(req) {
   var c = committeeMe_(req.session);
-  var rec = Records.get(String(req.recordId || ''));
-  if (!rec || EBOR_SECTIONS_.indexOf(rec.section) < 0) throw userError_('That Scout is no longer at EBoR Booked or EBoR Paused. Reload the page.');
+  var demo = EborPaperwork.isDemo(req.recordId);
+  var rec = demo ? { recordId: EborPaperwork.DEMO.recordId } : Records.get(String(req.recordId || ''));
+  if (!demo && (!rec || EBOR_SECTIONS_.indexOf(rec.section) < 0)) throw userError_('That Scout is no longer at EBoR Booked or EBoR Paused. Reload the page.');
   var boardYmd = String(req.boardYmd || '');
   if (!EborPaperwork.parts(boardYmd)) throw userError_('The EBoR date is missing. Pick it on the page.');
   var app = EborPaperwork.checkSigners('application', req.application);
@@ -158,7 +161,8 @@ function actionEborPaperworkUpload_(req) {
   if (['application', 'report'].indexOf(kind) < 0) throw userError_('Unknown file.');
   var name = String(req.name || '');
   if (!/\.pdf$/i.test(name)) throw userError_('The signed documents must be PDFs.');
-  var rec = Records.get(ctx.recordId);
+  var D = EborPaperwork.DEMO, demo = EborPaperwork.isDemo(ctx.recordId);
+  var rec = demo ? { recordId: '', fields: { scout_name: D.name, unit: D.unit } } : Records.get(ctx.recordId);
   if (!rec) throw userError_('Record not found.');
   ctx.uploads = ctx.uploads.filter(function (u) { return u.kind !== kind; });          // a second try replaces the first
   var id = storeUpload_(ctx.batchId, rec.fields.scout_name, rec.fields.unit, rec.recordId, { name: name, tag: 'Other', data: req.data });
@@ -167,22 +171,12 @@ function actionEborPaperworkUpload_(req) {
   return { stored: name };
 }
 
-function actionEborPaperworkFinish_(req) {
-  var c = committeeMe_(req.session);
-  var ctx = eborPaperworkContext_(req.uploadToken);
-  var rec = Records.get(ctx.recordId);
-  if (!rec || EBOR_SECTIONS_.indexOf(rec.section) < 0) throw userError_('That Scout is no longer at EBoR Booked or EBoR Paused. Reload the page.');
-  var up = {};
-  ctx.uploads.forEach(function (u) { up[u.kind] = u; });
-  if (!up.application || !up.report) throw userError_('Both signed PDFs must arrive before filing. Please try again.');
-  CacheService.getScriptCache().remove('ep:' + req.uploadToken);
-  var s = getSettings_();
-  var scout = String(rec.fields.scout_name || '');
-  var by = c.me.initials || c.email;
-
-  // 1. File both under the standard names; the Verified Application and earlier versions go to Archive.
-  var folder = folderForRecord_(rec, true);
-  var names = EagleDone.fileNames(scout, rec.fields.unit, ctx.boardYmd, Intake.namePart, Intake.unitPart);
+/**
+ * Both signed PDFs into `folder` under the standard names; the Verified Application used and earlier versions go to the
+ * folder's Archive. Shared by the real Scouts and the Demo Scout. -> {names, filed: {application, report}, toArchive: [id]}
+ */
+function fileSignedPair_(folder, ctx, up, scout, unit) {
+  var names = EagleDone.fileNames(scout, unit, ctx.boardYmd, Intake.namePart, Intake.unitPart);
   var filed = {}, newIds = [];
   ['application', 'report'].forEach(function (kind) {
     var f = DriveApp.getFileById(up[kind].fileId);
@@ -197,6 +191,28 @@ function actionEborPaperworkFinish_(req) {
     var archive = childFolder_(folder, ScoutFiles.ARCHIVE);
     top.forEach(function (x) { if (toArchive.indexOf(x.id) >= 0) x.file.moveTo(archive); });
   }
+  return { names: names, filed: filed, toArchive: toArchive };
+}
+
+function actionEborPaperworkFinish_(req) {
+  var c = committeeMe_(req.session);
+  var ctx = eborPaperworkContext_(req.uploadToken);
+  var demo = EborPaperwork.isDemo(ctx.recordId);
+  var rec = demo ? null : Records.get(ctx.recordId);
+  if (!demo && (!rec || EBOR_SECTIONS_.indexOf(rec.section) < 0)) throw userError_('That Scout is no longer at EBoR Booked or EBoR Paused. Reload the page.');
+  var up = {};
+  ctx.uploads.forEach(function (u) { up[u.kind] = u; });
+  if (!up.application || !up.report) throw userError_('Both signed PDFs must arrive before filing. Please try again.');
+  CacheService.getScriptCache().remove('ep:' + req.uploadToken);
+  if (demo) return eborDemoFinish_(c, ctx, up);                                        // fictional Scout: no tracking row, no Council email
+  var s = getSettings_();
+  var scout = String(rec.fields.scout_name || '');
+  var by = c.me.initials || c.email;
+
+  // 1. File both under the standard names; the Verified Application and earlier versions go to Archive.
+  var folder = folderForRecord_(rec, true);
+  var fp = fileSignedPair_(folder, ctx, up, scout, rec.fields.unit);
+  var names = fp.names, filed = fp.filed, toArchive = fp.toArchive;
 
   // 2. The Council email, as an Outbox draft (the existing path); "signed paperwork sent" is filled when it is sent.
   var unit = Units.find(units_(), rec.fields.unit);

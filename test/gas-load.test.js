@@ -231,7 +231,7 @@ describe('Apps Script bundle', () => {
     ctx.readSchedule_ = () => ({ rows: [{ record_id: 'R-1', slot_type: 'EBoR', date: '2026-03-14', time: '7:00 PM', reps: 'AB' }] });
     const ch = vm.runInContext("dispatch_({action:'eborPaperworkChoices', session:'s'})", ctx);
     expect(ch.ok).toBe(true);
-    expect(ch.scouts.map(x => [x.recordId, x.boardYmd])).toEqual([['R-1', '2026-03-14'], ['R-2', '']]);
+    expect(ch.scouts.map(x => [x.recordId, x.boardYmd])).toEqual([['DEMO', '2026-02-01'], ['R-1', '2026-03-14'], ['R-2', '']]);   // the Demo Scout is first (14b)
     expect(ch.selected).toBe('R-1');
     expect(ch.settings.templateSet).toBe(true);
     expect(ch.slots.report).toHaveLength(3);

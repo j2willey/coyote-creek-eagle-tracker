@@ -461,6 +461,7 @@ export function initPaperwork(deps) {
         sc.folderUrl ? el('span', {}, ' · ', el('a', { href: sc.folderUrl, target: '_blank', rel: 'noopener', textContent: 'Scout\'s folder ↗' })) : ''),
       district.length || unit.length ? el('div', { className: 'muted' }, 'Board (suggestions for the signers\' names): ' + [
         district.length ? 'district / council: ' + district.join(', ') : '', unit.length ? 'unit: ' + unit.join(', ') : ''].filter(Boolean).join(' · ')) : '',
+      sc.demo ? el('div', { className: 'hint', textContent: 'Demo with a fictional Scout: nothing is sent to Council and no Scout record changes. Save files the two PDFs in the demo folder and drafts a [DEMO] email To you only.' }) : '',
       signed.length ? el('div', { className: 'warnbox', textContent: `Signed ${signed.join(' and ')} already in the folder: saving again moves the earlier version to Archive.` }) : '');
     const probs = sc.problems || [];
     $('problems').hidden = !probs.length;
@@ -599,10 +600,17 @@ export function initPaperwork(deps) {
     /** @param {string} ymd */
     const nice = ymd => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || ''); return m ? `${+m[2]}/${+m[3]}/${m[1]}` : ''; };
     $('fScout').replaceChildren(el('option', { value: '', textContent: data.scouts.length ? '— Pick a Scout —' : '— No Scouts at EBoR Booked or Paused —' }),
-      ...data.scouts.map((/** @type {any} */ s) => el('option', { value: s.recordId, textContent: `${s.name} (${s.unit}) · ${s.stage}${s.boardYmd ? ' · board ' + nice(s.boardYmd) + (s.boardTime ? ' ' + s.boardTime : '') : ' · no board on the schedule'}` })));
+      ...data.scouts.map((/** @type {any} */ s) => el('option', { value: s.recordId, textContent: s.label || `${s.name} (${s.unit}) · ${s.stage}${s.boardYmd ? ' · board ' + nice(s.boardYmd) + (s.boardTime ? ' ' + s.boardTime : '') : ' · no board on the schedule'}` })));
     const want = new URLSearchParams(location.search).get('r');
     $('fScout').value = (want && data.scouts.some((/** @type {any} */ s) => s.recordId === want)) ? want : (data.selected || '');
-    $('fScout').addEventListener('change', () => void loadScout());
+    const syncDemoLink = () => { $('demoReset').hidden = $('fScout').value !== 'DEMO'; };
+    $('fScout').addEventListener('change', () => { syncDemoLink(); void loadScout(); });
+    $('demoReset').addEventListener('click', async ev => {
+      ev.preventDefault();
+      if (!confirm('Reset the demo? The demo\'s signed files move to its Archive so it starts from scratch.')) return;
+      try { const r = await api('eborPaperworkDemoReset', { session }); dirty = false; await loadScout(); say(r.message, 'ok'); } catch (e) { fail(e); }
+    });
+    syncDemoLink();
     buildInkRow($('inkRow'));
     $('app').hidden = false; $('msg').hidden = true;
     if (!data.settings.templateSet) {
