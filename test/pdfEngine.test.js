@@ -11,6 +11,7 @@ import {
   extractEncryptKeyAsync,
   loadPdfWithDecrypt,
   flattenPagesUpTo,
+  repairFieldKidsCycles,
   inspectPdfWithPdfJs,
   applyPlacedItemsAndFlatten
 } from '../web/js/pdfEngine.js';
@@ -932,5 +933,41 @@ describe('pdfEngine: Task 9.2, image-only and rotated pages (fictional fixtures)
       signaturePngBytes: TINY_PNG, printedName: '', dateStr: ''
     });
     expect(out.flattenedPages).toEqual([2]);
+  });
+});
+
+describe('Field tree cycles (2026-11-11: second signer on a Workshop-signed copy, "Maximum call stack size exceeded")', () => {
+  /** A two-page doc whose page-2 field is a merged field/widget dict (no Kids), as in the BSA workbooks. */
+  async function mergedFieldDoc() {
+    const doc = await PDFLib.PDFDocument.create();
+    const p1 = doc.addPage([612, 792]);
+    const p2 = doc.addPage([612, 792]);
+    const form = doc.getForm();
+    form.createTextField('Proposal.Note').addToPage(p1, { x: 50, y: 700, width: 200, height: 20 });
+    const ctx = doc.context;
+    const merged = ctx.obj({ FT: 'Tx', T: PDFLib.PDFString.of('Plan.Note'), Type: 'Annot', Subtype: 'Widget',
+      Rect: [50, 700, 250, 720], P: p2.ref, F: 4 });
+    const ref = ctx.register(merged);
+    p2.node.addAnnot(ref);
+    form.acroForm.addField(ref);
+    return { doc, ref };
+  }
+  it('flattening one page does not give the other pages\' merged fields a Kids = [self] cycle', async () => {
+    const { doc, ref } = await mergedFieldDoc();
+    const helv = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+    flattenPagesUpTo(PDFLib, doc, [0], helv);
+    expect(doc.context.lookup(ref).get(PDFLib.PDFName.of('Kids'))).toBeUndefined();
+    const again = await loadPdfWithDecrypt(PDFLib, await doc.save());
+    expect(again.getForm().getFields().map(f => f.getName())).toEqual(['Plan.Note']);
+  });
+  it('loading repairs a copy that already carries Kids = [self] (signed by an earlier version)', async () => {
+    const { doc, ref } = await mergedFieldDoc();
+    doc.context.lookup(ref).set(PDFLib.PDFName.of('Kids'), doc.context.obj([ref]));
+    const bytes = await doc.save({ updateFieldAppearances: false });
+    const plain = await PDFLib.PDFDocument.load(bytes);
+    expect(() => plain.getForm().getFields()).toThrow();               // the bug: endless recursion in pdf-lib
+    const fixed = await loadPdfWithDecrypt(PDFLib, bytes);
+    expect(fixed.getForm().getFields().length).toBe(2);
+    expect(repairFieldKidsCycles(PDFLib, fixed)).toBe(0);              // nothing left to repair
   });
 });

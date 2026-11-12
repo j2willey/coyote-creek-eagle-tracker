@@ -417,6 +417,48 @@ function withDecryptLock(fn) {
 }
 
 /**
+ * Remove cycles from the AcroForm field tree before pdf-lib walks it: a field whose /Kids contains itself or one of its
+ * ancestors (copies signed by Workshop versions before 0.65.1 carry Kids = [self] on every field they didn't flatten).
+ * Such entries are dropped; an emptied /Kids is removed (the dict is a merged field/widget again). Returns the number
+ * of entries removed.
+ * @param {any} PDFLib
+ * @param {any} pdfDoc
+ * @returns {number}
+ */
+export function repairFieldKidsCycles(PDFLib, pdfDoc) {
+  const { PDFName, PDFArray, PDFDict, PDFRef } = PDFLib;
+  const ctx = pdfDoc.context;
+  const acro = pdfDoc.catalog.lookup(PDFName.of('AcroForm'));
+  if (!(acro instanceof PDFDict)) return 0;
+  const fields = acro.lookup(PDFName.of('Fields'));
+  if (!(fields instanceof PDFArray)) return 0;
+  let removed = 0;
+  /** @type {Set<string>} */
+  const done = new Set();
+  /** @param {any} ref @param {Set<string>} path */
+  const walk = (ref, path) => {
+    if (!(ref instanceof PDFRef)) return;
+    const key = ref.toString();
+    if (path.has(key) || done.has(key)) return;
+    done.add(key);
+    const dict = ctx.lookup(ref);
+    if (!(dict instanceof PDFDict)) return;
+    const kids = dict.lookup(PDFName.of('Kids'));
+    if (!(kids instanceof PDFArray)) return;
+    const inPath = new Set(path);
+    inPath.add(key);
+    for (let i = kids.size() - 1; i >= 0; i--) {
+      const k = kids.get(i);
+      if (k instanceof PDFRef && inPath.has(k.toString())) { kids.remove(i); removed++; }
+    }
+    if (kids.size() === 0) dict.delete(PDFName.of('Kids'));
+    else for (let i = 0; i < kids.size(); i++) walk(kids.get(i), inPath);
+  };
+  for (let i = 0; i < fields.size(); i++) walk(fields.get(i), new Set());
+  return removed;
+}
+
+/**
  * Load a PDF into `pdf-lib`, transparently decrypting empty-user-password `/V 5` (`AESV3`) encrypted PDFs (such as the
  * official 2023a and 2026 BSA workbooks) and stripping the `/Encrypt` trailer entry so the saved output is a normal
  * unencrypted PDF.
@@ -429,7 +471,9 @@ export async function loadPdfWithDecrypt(PDFLib, pdfBytes) {
   const info = await extractEncryptKeyAsync(u8);
   if (!info) {
     try {
-      return await PDFLib.PDFDocument.load(u8);
+      const plain = await PDFLib.PDFDocument.load(u8);
+      repairFieldKidsCycles(PDFLib, plain);
+      return plain;
     } catch (err) {
       if (err && /encrypt/i.test(String(err.message || err.name || err))) {
         throw new Error(UNSUPPORTED_ENCRYPT_MSG);
@@ -463,6 +507,7 @@ export async function loadPdfWithDecrypt(PDFLib, pdfBytes) {
     try {
       const doc = await PDFLib.PDFDocument.load(u8, { ignoreEncryption: true });
       delete doc.context.trailerInfo.Encrypt;
+      repairFieldKidsCycles(PDFLib, doc);
       return doc;
     } finally {
       PDFParser.prototype.parseIndirectObjectHeader = origParseHeader;
@@ -622,7 +667,12 @@ export function flattenPagesUpTo(PDFLib, pdfDoc, pages, fallbackFont) {
   for (const field of fields) {
     const widgets = field.acroField.getWidgets();
     let keptWidgets = 0;
-    const kidsArray = field.acroField.normalizedEntries().Kids;
+    // Read Kids WITHOUT normalizedEntries(): on a merged field/widget dict pdf-lib's normalizedEntries() ADDS
+    // Kids = [itself], which a saved file then carries as a self-cycle; the next pdf-lib load recurses forever in
+    // getFields ("Maximum call stack size exceeded", 2026-11-11: a second signer on a Workshop-signed copy).
+    const kidsRaw = field.acroField.dict.get(PDFName.of('Kids'));
+    const kidsLooked = kidsRaw ? pdfDoc.context.lookup(kidsRaw) : undefined;
+    const kidsArray = kidsLooked instanceof PDFLib.PDFArray ? kidsLooked : undefined;
     const hasVal = !(field instanceof PDFSignature) && fieldHasNonEmptyValue(PDFLib, field);
     for (const widget of widgets) {
       let page;
