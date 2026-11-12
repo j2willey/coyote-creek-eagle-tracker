@@ -88,11 +88,14 @@ function actionEborPaperworkScout_(req) {
   var boardYmd = (EborPaperwork.parts(req.boardYmd) ? String(req.boardYmd) : '') || (board && board.ymd) || (cols.ebor ? Intake.dateKey(rec.fields[cols.ebor]) : '') || '';
   var committee = [];
   try { committee = committee_(); } catch (e) { /* suggestions only */ }
-  var suggestions = { district: [], unit: [] };
+  var suggestions = { district: [], unit: [], people: [] };
   if (board) {
     suggestions.district = Booking.resolveWho(board.reps, committee).names;
     suggestions.unit = Units.parseBoard(board.boardMembers).map(function (m) { return m.name; }).filter(String);
+    // Remote signing (Send for signatures): name → email for the board's unit members.
+    suggestions.people = Units.parseBoard(board.boardMembers).filter(function (m) { return m.name && m.email; }).map(function (m) { return { name: m.name, email: String(m.email).toLowerCase() }; });
   }
+  committee.forEach(function (m) { if (m.name && m.email) suggestions.people.push({ name: String(m.name), email: String(m.email).toLowerCase() }); });
   var leader = unitLeaderFor_(unit);
   var fill = EborPaperwork.reportFields({ scout: scout, unit: unit, district: s.districtName, title: s.advancementTitle, leaderName: leader.name,
     address: leader.address, city: leader.city, state: leader.state, zip: leader.zip, boardYmd: boardYmd });

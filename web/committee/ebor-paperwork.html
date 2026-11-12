@@ -24,7 +24,8 @@
     <div id="app" hidden>
       <p class="hint">At the Board of Review, on one device: sign the <b>Verified Eagle Application</b> (Requirement 7) and the <b>Advancement Report</b>.
         Each signer types their name and signs (typed or drawn). Nothing leaves this browser until <b>Save both</b>, which files the two signed PDFs
-        in the Scout's folder and drafts the email to Council in the Outbox. The Scout's row does not move: use <i>Eagle earned…</i> on the dashboard afterwards.</p>
+        in the Scout's folder and drafts the email to Council in the Outbox. The Scout's row does not move: use <i>Eagle earned…</i> on the dashboard afterwards.
+        <b>Can't all sign here?</b> <i>Save partial</i> keeps what is signed; then ask the other signers to sign in their own browser (below).</p>
 
       <label for="fScout">Scout</label>
       <select id="fScout"></select>
@@ -34,6 +35,7 @@
 
       <div class="ws-ink-row" id="inkRow" role="radiogroup" aria-label="Ink colour for signatures and the date"></div>
       <datalist id="boardNames"></datalist>
+      <datalist id="boardEmails"></datalist>
 
       <div class="ep-tabs" role="tablist">
         <button type="button" class="ep-tab on" id="tabApplication" role="tab" data-doc="application">1. Verified Eagle Application <span class="ep-ok" hidden>✓</span></button>
@@ -66,8 +68,10 @@
 
       <div class="ep-savebar">
         <button type="button" class="primary" id="saveBtn">Save both…</button>
+        <button type="button" id="partialBtn" title="Can't all sign here? Save what is signed, then ask the others to sign by email">Save partial…</button>
         <span id="saveMsg" role="status" class="muted"></span>
       </div>
+      <section id="sigPanel" class="ep-sigpanel" hidden></section>
     </div>
 
     <dialog id="sigDlg" class="ep-sigdlg">

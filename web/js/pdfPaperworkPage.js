@@ -41,6 +41,12 @@ const STORE_KEY = 'ccacEborPaperwork_v1';
 /** @param {any} deps */
 export function initPaperwork(deps) {
   const { api, $, el, session, meLine, meText, needSignIn, isSignedOut, readBase64, sizeText } = deps;
+  // /sign (remote signing, Jim W., 2026-11-12): one signer on their own device, their own boxes only, on the Partial copies.
+  const signer = deps.mode === 'signer';
+  /** @type {any} the Scout's signatures outside the room (committee page) */
+  let sigStatus = null;
+  /** @type {Record<string, string>} name (lower case) -> email, for "Send for signatures" */
+  let emailFor = {};
 
   /** @type {any} */
   let data = null;
@@ -387,8 +393,11 @@ export function initPaperwork(deps) {
   /** @param {DocState} d */
   function renderSlots(d) {
     d.slotsBox.replaceChildren(
-      el('h3', { textContent: d.kind === 'application' ? 'Requirement 7: two signatures' : 'Advancement Report: three signatures' }),
-      el('p', { className: 'hint', textContent: 'Each signer types their name, then signs. At least one signer on each document must be a District Advancement Committee / Council representative.' }),
+      el('h3', { textContent: signer ? (d.slots.length ? 'Your signature' + (d.slots.length > 1 ? 's' : '') : 'Nothing for you to sign here')
+        : d.kind === 'application' ? 'Requirement 7: two signatures' : 'Advancement Report: three signatures' }),
+      el('p', { className: 'hint', textContent: signer
+        ? (d.slots.length ? 'Check your name, sign, and place the signature on its line. Signatures already on the document stay as they are.' : 'This document is shown so you can read it.')
+        : 'Each signer types their name, then signs. At least one signer on each document must be a District Advancement Committee / Council representative.' }),
       ...d.slots.map(s => {
         const name = el('input', { type: 'text', value: s.name, placeholder: 'Signer\'s name (type it)', autocomplete: 'off' });
         name.setAttribute('list', 'boardNames');
@@ -401,7 +410,7 @@ export function initPaperwork(deps) {
         const status = el('span', { className: 'hint' });
         const box = el('div', { className: 'ep-slot' },
           el('h4', { textContent: s.label }), name,
-          el('label', { className: 'choice' }, rep, ' ' + (data.repLabel || 'District Advancement Committee / Council representative')),
+          signer ? '' : el('label', { className: 'choice' }, rep, ' ' + (data.repLabel || 'District Advancement Committee / Council representative')),
           el('div', { className: 'ep-actions' }, sign, pen, thumb, place, status));
         const sync = () => {
           const placed = slotPlaced(d, s);
@@ -611,6 +620,9 @@ export function initPaperwork(deps) {
     const district = sc.suggestions.district || [], unit = sc.suggestions.unit || [];
     const names = [...new Set([...district, ...unit, ...data.committee.map((/** @type {any} */ m) => m.name)])];
     $('boardNames').replaceChildren(...names.map(n => el('option', { value: n })));
+    emailFor = {};
+    for (const p of (sc.suggestions.people || [])) if (!emailFor[p.name.toLowerCase()]) emailFor[p.name.toLowerCase()] = p.email;
+    if ($('boardEmails')) $('boardEmails').replaceChildren(...[...new Set(Object.values(emailFor))].map(e => el('option', { value: e })));
     const dateIn = el('input', { type: 'date', value: sc.boardYmd || '' });
     dateIn.onchange = () => { if (dateIn.value && dateIn.value !== sc.boardYmd) void loadScout(dateIn.value); };
     const signed = [sc.alreadySigned.application && 'application', sc.alreadySigned.report && 'Advancement Report'].filter(Boolean);
@@ -644,9 +656,11 @@ export function initPaperwork(deps) {
     }
     updateTabs();
     $('appNote').textContent = ''; $('repNote').textContent = ''; $('repLocalRow').hidden = true;
+    if (!signer) renderSignatures(null);
     if (!recordId) return;
     say('Loading…', 'muted');
     try {
+      if (signer) { await loadSignerScout(seq, recordId); return; }
       sc = await api('eborPaperworkScout', { session, recordId, ...(boardYmd ? { boardYmd } : {}) });
       if (seq !== loadSeq) return;
       /** @param {any} s @returns {Slot} */
@@ -658,6 +672,7 @@ export function initPaperwork(deps) {
       renderSlots(docs.application); renderSlots(docs.report);
       dirty = false;
       say('', 'muted');
+      if (!sc.demo) api('eborSignatureStatus', { session, recordId: sc.recordId }).then(st => { if (seq === loadSeq) renderSignatures(st); }).catch(() => { /* panel only */ });
       if (sc.verifiedId) {
         const f = sc.pdfs.find((/** @type {any} */ x) => x.id === sc.verifiedId);
         await loadVerified(sc.verifiedId, f ? f.name : 'Verified Application', seq);
@@ -689,6 +704,7 @@ export function initPaperwork(deps) {
   // ---- save ----
   /** @returns {string} the first problem, or '' */
   function problemBeforeSave() {
+    if (signer) return problemBeforeSignerSave();
     if (!sc) return 'Pick a Scout.';
     if (!sc.boardYmd) return 'Pick the Board of Review date.';
     for (const d of Object.values(docs)) {
@@ -718,6 +734,7 @@ export function initPaperwork(deps) {
     return new File([res.pdfBytes.slice()], `${d.kind}-signed.pdf`, { type: 'application/pdf' });
   }
   $('saveBtn').addEventListener('click', async () => {
+    if (signer) { await saveSigner(); return; }
     const p = problemBeforeSave();
     if (p) { say(p, 'err'); return; }
     if (!docs.application.marks.some(m => m.kind === 'text') && !confirm('The date is not on Requirement 7 (the date boxes were removed). Save anyway?')) return;
@@ -751,8 +768,260 @@ export function initPaperwork(deps) {
   });
   window.addEventListener('beforeunload', ev => { if (dirty) { ev.preventDefault(); ev.returnValue = ''; } });
 
+  // ---- signing outside the room: committee side (Save partial, Send for signatures, Finish) ----
+  /** @returns {string} the first problem, or '' */
+  function problemBeforePartial() {
+    if (!sc) return 'Pick a Scout.';
+    if (sc.demo) return 'The Demo Scout can\'t be saved partly signed (it has no tracking row). Use a staging Scout.';
+    if (!sc.boardYmd) return 'Pick the Board of Review date.';
+    for (const d of Object.values(docs)) {
+      const label = d.kind === 'application' ? 'the Verified Eagle Application' : 'the Advancement Report';
+      if (!d.baseBytes) return `${label} is not open yet.`;
+      for (const s of d.slots) {
+        if (!s.dataUrl) continue;
+        if (s.name.trim().length < 2) return `Type the name of the signer on ${label}: ${s.label}.`;
+        if (!slotPlaced(d, s)) return `Place the signature of ${s.label} on ${label} (or remove it).`;
+      }
+    }
+    return '';
+  }
+  const partialBtn = $('partialBtn');
+  if (partialBtn) partialBtn.addEventListener('click', async () => {
+    const p = problemBeforePartial();
+    if (p) { say(p, 'err'); return; }
+    if (sigStatus && sigStatus.requestId && !confirm('Partly signed paperwork is already in progress for this Scout. Start over with these copies? (Its pending requests are cancelled.)')) return;
+    if (!sigStatus || !sigStatus.requestId) {
+      if (!confirm('Save the documents as they are now (partly signed), then ask the other signers to sign by email?')) return;
+    }
+    partialBtn.disabled = true;
+    try {
+      /** @param {DocState} d */
+      const signers = d => d.slots.map(s => ({ name: s.name, rep: s.rep, signed: !!s.dataUrl && slotPlaced(d, s) }));
+      const st = await api('eborPaperworkStart', { session, recordId: sc.recordId, boardYmd: sc.boardYmd, partial: true,
+        application: signers(docs.application), report: signers(docs.report), verifiedId: docs.application.verifiedId || '' });
+      say('Flattening the pages…', 'muted');
+      const fApp = await pdfFileFor(docs.application), fRep = await pdfFileFor(docs.report);
+      say(`Uploading (${sizeText(fApp.size + fRep.size)})…`, 'muted');
+      await api('eborPaperworkUpload', { uploadToken: st.uploadToken, kind: 'application', name: fApp.name, data: await readBase64(fApp) });
+      await api('eborPaperworkUpload', { uploadToken: st.uploadToken, kind: 'report', name: fRep.name, data: await readBase64(fRep) });
+      say('Filing…', 'muted');
+      const r = await api('eborPaperworkSavePartial', { session, uploadToken: st.uploadToken, layout: { report: docs.report.sigRects } });
+      dirty = false;
+      say(r.message, 'ok');
+      renderSignatures(r.status);
+      $('sigPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) { fail(e); }
+    finally { partialBtn.disabled = false; }
+  });
+
+  /** @param {string} t @param {string} [c] */
+  const sigSay = (t, c) => { const m = $('sigPanelMsg'); if (m) { m.textContent = t; m.className = c || 'muted'; } };
+  /**
+   * A button that runs an action and re-draws the panel from its answer ({message, status}); null = nothing to do.
+   * @param {string} label @param {() => Promise<any> | any} fn @param {boolean} [primary] @param {boolean} [disabled]
+   */
+  const sigBtn = (label, fn, primary, disabled) => {
+    const b = el('button', { type: 'button', textContent: label, className: primary ? 'primary' : '', disabled: !!disabled });
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await fn();
+        if (r) {
+          if ('status' in r) renderSignatures(r.status);   // re-drawn first: the message goes into the new panel
+          if (r.message) { if (r.status === null) say(r.message, 'ok'); else sigSay(r.message, 'ok'); }
+        }
+      } catch (e) { if (isSignedOut(e)) fail(e); else sigSay(e && e.message ? e.message : String(e), 'err'); }
+      finally { b.disabled = false; }
+    };
+    return b;
+  };
+  /** @param {boolean} [confirmed] @returns {Promise<any>} */
+  async function finishPartial(confirmed) {
+    const r = await api('eborPaperworkFinishPartial', { session, recordId: sc.recordId, confirm: !!confirmed });
+    if (r.needsConfirm) return confirm(r.warnings.join('\n') + '\n\nFinish anyway?') ? finishPartial(true) : null;
+    dirty = false;
+    try { localStorage.removeItem('ccacHome'); } catch { /* ignore */ }
+    if (r.outboxId) {
+      try { sessionStorage.setItem('ccacReviewDone', r.message); } catch { /* ignore */ }
+      location.href = '/committee/outbox?id=' + encodeURIComponent(r.outboxId);
+      return null;
+    }
+    return { message: r.message, status: null };
+  }
+  /** The "Signatures outside the room" panel. @param {any} st */
+  function renderSignatures(st) {
+    sigStatus = st;
+    const box = $('sigPanel');
+    if (!box) return;
+    if (!st || !st.requestId) { box.hidden = true; box.replaceChildren(); return; }
+    box.hidden = false;
+    const shown = st.rows.filter((/** @type {any} */ r) => !r.room || r.slots.length);
+    const table = el('table', { className: 'admtable' },
+      el('thead', {}, el('tr', {}, ...['Signer', 'Email', 'Boxes', 'Status', ''].map(t => el('th', { textContent: t })))),
+      el('tbody', {}, ...shown.map((/** @type {any} */ r) => {
+        const open = r.status === 'Pending' || r.status === 'Expired';
+        const email = open ? el('input', { type: 'email', value: r.email, title: 'Fix a wrong address: the old one loses access and the new one gets the email' })
+          : el('span', { textContent: r.room ? '(signed in the room)' : r.email });
+        const when = r.status === 'Pending' ? ` (until ${r.expires})` : r.status === 'Signed' && r.signed ? ` ${r.signed}` : r.status === 'Expired' ? ` (${r.expires})` : '';
+        const acts = open ? [
+          sigBtn('Save email', () => api('eborSignatureEdit', { session, rowId: r.id, email: /** @type {any} */ (email).value })), ' ',
+          sigBtn('Resend', () => api('eborSignatureEdit', { session, rowId: r.id, resend: true })), ' ',
+          sigBtn('Cancel', () => (confirm(`Cancel the request to ${r.name}?`) ? api('eborSignatureEdit', { session, rowId: r.id, cancel: true }) : null))] : [];
+        return el('tr', {}, el('td', { textContent: r.name }), el('td', {}, email), el('td', { textContent: r.slots.join('; ') }),
+          el('td', { textContent: r.status + when }), el('td', {}, ...acts));
+      })));
+    // Boxes nobody signed and nobody is asked for.
+    const asked = new Set();
+    st.rows.forEach((/** @type {any} */ r) => { if (r.status === 'Pending') (r.keys || []).forEach((/** @type {string} */ k) => asked.add(k)); });
+    const free = st.slots.filter((/** @type {any} */ s) => !s.signedBy && !asked.has(s.key));
+    /** @type {Array<{ name: any, email: any, rep: any, checks: Array<{ key: string, box: any }> }>} */
+    const lines = [];
+    const linesBox = el('div');
+    const addLine = () => {
+      const name = el('input', { type: 'text', placeholder: 'Name', autocomplete: 'off' });
+      name.setAttribute('list', 'boardNames');
+      const email = el('input', { type: 'email', placeholder: 'email@example.org', autocomplete: 'off' });
+      email.setAttribute('list', 'boardEmails');
+      name.addEventListener('change', () => { const e = emailFor[name.value.trim().toLowerCase()]; if (e && !email.value) email.value = e; });
+      const rep = el('input', { type: 'checkbox' });
+      const checks = free.map((/** @type {any} */ s) => ({ key: s.key, box: el('input', { type: 'checkbox' }), label: s.label }));
+      lines.push({ name, email, rep, checks });
+      linesBox.append(el('div', { className: 'ep-slot' }, el('div', { className: 'file-row' }, name, email),
+        el('div', {}, ...checks.map(c => el('label', { className: 'choice', style: 'display:block' }, c.box, ' ' + c.label))),
+        el('label', { className: 'choice' }, rep, ' ' + (data.repLabel || 'District Advancement Committee / Council representative'))));
+    };
+    if (free.length) addLine();
+    const send = sigBtn('Send for signatures', async () => {
+      const signers = lines.filter(l => l.name.value.trim() || l.email.value.trim() || l.checks.some(c => c.box.checked))
+        .map(l => ({ name: l.name.value, email: l.email.value, rep: l.rep.checked, slots: l.checks.filter(c => c.box.checked).map(c => c.key) }));
+      if (!signers.length) { sigSay('Fill in a signer first.', 'err'); return null; }
+      return api('eborSignatureRequest', { session, recordId: sc.recordId, signers });
+    }, true);
+    const more = el('button', { type: 'button', textContent: '+ Another signer' });
+    more.onclick = () => addLine();
+    box.replaceChildren(
+      el('h3', { textContent: 'Signatures outside the room' }),
+      el('p', { className: 'hint', textContent: (st.summary || 'Nobody has signed yet.') + '. Saving on this page again (Save both / Save partial) starts over.' }),
+      shown.length ? table : '',
+      free.length ? el('div', {}, el('h4', { textContent: 'Ask for signatures' }),
+        el('p', { className: 'hint', textContent: 'Each signer gets an email, to them only, with a link to sign in their own browser (nothing to print). Pick the box(es) each one signs. Any address can be typed: a last-minute board member, or a corrected address.' }),
+        linesBox, el('div', { className: 'ep-actions' }, more, ' ', send))
+        : el('p', { className: 'hint', textContent: st.complete ? 'Every box is signed.' : 'Every empty box has been asked of someone.' }),
+      el('div', { className: 'ep-actions' }, sigBtn(st.complete ? 'Finish: file the signed paperwork…' : 'Finish with the signatures we have…', () => finishPartial(), st.complete),
+        ' ', el('span', { id: 'sigPanelMsg', role: 'status', className: 'muted' })));
+  }
+
+  // ---- signing outside the room: the signer's page (/sign) ----
+  /** @param {number} seq @param {string} recordId */
+  async function loadSignerScout(seq, recordId) {
+    sc = await api('signerDocs', { session, recordId });
+    if (seq !== loadSeq) return;
+    /** @param {'application' | 'report'} kind @param {string} key */
+    const label = (kind, key) => ((sc.labels[kind] || []).find((/** @type {any} */ x) => x.key === key) || { label: key }).label;
+    for (const kind of /** @type {Array<'application' | 'report'>} */ (['application', 'report'])) {
+      docs[kind].slots = sc.slots[kind].map((/** @type {string} */ key) => ({ key, label: label(kind, key), rep: !!sc.rep, name: sc.name,
+        dataUrl: '', aspect: 0, ink: null, px: 0, typed: null }));
+    }
+    const box = $('scoutBox');
+    box.hidden = false;
+    $('boardNames').replaceChildren(el('option', { value: sc.name }));
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(sc.boardYmd || '');
+    box.replaceChildren(el('div', {}, el('b', { textContent: sc.scout }), ` · ${sc.unit}` + (m ? ` · Board of Review ${+m[2]}/${+m[3]}/${m[1]}` : '')),
+      sc.signedBy.length ? el('div', { className: 'muted', textContent: 'Already signed: ' + sc.signedBy.map((/** @type {any} */ x) => `${x.name} (${x.label})`).join('; ') }) : '');
+    renderSlots(docs.application); renderSlots(docs.report);
+    dirty = false;
+    say('', 'muted');
+    await openSignerDocs(seq);
+    showTab(docs.application.slots.length ? 'application' : 'report');
+  }
+  /** Open the current Partial copies; `base` (what was opened) goes with the save. @param {number} seq */
+  async function openSignerDocs(seq) {
+    for (const kind of /** @type {Array<'application' | 'report'>} */ (['application', 'report'])) {
+      const d = docs[kind], note = kind === 'application' ? $('appNote') : $('repNote');
+      note.className = 'hint'; note.textContent = 'Opening…';
+      const r = await api('signerFetch', { session, recordId: sc.recordId, kind });
+      if (seq !== loadSeq) return;
+      sc.files[kind] = { id: r.id, modified: r.modified };
+      await openPdf(d, toBytes(r.data));
+      if (kind === 'report') {
+        d.sigRects = {};
+        for (const s of d.slots) d.sigRects[s.key] = (sc.layout && sc.layout.report && sc.layout.report[s.key]) || null;
+        refreshSlots(d);
+      }
+      note.textContent = d.slots.length ? 'Sign, then place your signature on its line (drag to adjust; zoom in to line it up).' : 'Nothing for you to sign on this document: shown for reference.';
+    }
+  }
+  /** @returns {string} */
+  function problemBeforeSignerSave() {
+    if (!sc) return 'Pick the Scout.';
+    for (const d of Object.values(docs)) {
+      if (!d.slots.length) continue;
+      const label = d.kind === 'application' ? 'the Eagle Application' : 'the Advancement Report';
+      if (!d.baseBytes) return 'The documents are not open yet.';
+      for (const s of d.slots) {
+        if (s.name.trim().length < 2) return `Type your name (${s.label}).`;
+        if (!s.dataUrl) return `Sign first: ${s.label} on ${label}.`;
+        if (!slotPlaced(d, s)) return `Place your signature (${s.label}) on ${label}.`;
+      }
+    }
+    return '';
+  }
+  /** After "someone else saved": the newest copies, with this signer's placed signatures put back. */
+  async function reloadKeepingSignatures() {
+    const keep = { application: docs.application.marks.slice(), report: docs.report.marks.slice() };
+    await openSignerDocs(loadSeq);
+    for (const kind of /** @type {Array<'application' | 'report'>} */ (['application', 'report'])) { docs[kind].marks = keep[kind]; afterMarksChanged(docs[kind]); }
+  }
+  async function saveSigner() {
+    const p = problemBeforeSave();
+    if (p) { say(p, 'err'); return; }
+    const btn = $('saveBtn');
+    btn.disabled = true;
+    try {
+      say('Starting…', 'muted');
+      const first = docs.application.slots[0] || docs.report.slots[0];
+      const st = await api('signerStart', { session, recordId: sc.recordId, base: { application: sc.files.application, report: sc.files.report }, name: first ? first.name : sc.name });
+      for (const kind of st.kinds) {
+        say(`Preparing the ${kind === 'application' ? 'Eagle Application' : 'Advancement Report'}…`, 'muted');
+        const f = await pdfFileFor(docs[/** @type {'application' | 'report'} */ (kind)]);
+        say(`Uploading (${sizeText(f.size)})…`, 'muted');
+        await api('signerUpload', { uploadToken: st.uploadToken, kind, name: f.name, data: await readBase64(f) });
+      }
+      say('Saving…', 'muted');
+      const r = await api('signerFinish', { session, uploadToken: st.uploadToken });
+      dirty = false;
+      say(r.message, 'ok');
+      btn.hidden = true;
+    } catch (e) {
+      if (/Someone else saved/.test(String(e && /** @type {any} */ (e).message))) {
+        say(/** @type {any} */ (e).message, 'err');
+        try { await reloadKeepingSignatures(); say('Reloaded with the newest copies; your signature is still placed. Check it, then save again.', 'muted'); }
+        catch (e2) { fail(e2); }
+      } else fail(e);
+    } finally { btn.disabled = false; }
+  }
+
   // ---- start ----
+  async function startSigner() {
+    const r = await api('signerChoices', { session });
+    data = { repLabel: '', committee: [], maxUploadMB: 20, items: r.items };
+    meLine.textContent = 'Signed in as ' + r.email;
+    if (!r.items.length) {
+      $('msg').hidden = false; $('msg').className = 'muted';
+      $('msg').textContent = 'Nothing is waiting for your signature right now (it may have been signed, cancelled or expired).';
+      return;
+    }
+    $('fScout').replaceChildren(...r.items.map((/** @type {any} */ x) => el('option', { value: x.recordId, textContent: `${x.scout} (${x.unit}) · ${x.boxes.join('; ')}` })));
+    const want = new URLSearchParams(location.search).get('r');
+    if (want && r.items.some((/** @type {any} */ x) => x.recordId === want)) $('fScout').value = want;
+    $('fScout').addEventListener('change', () => { void loadScout(); });
+    buildInkRow($('inkRow'));
+    $('app').hidden = false; $('msg').hidden = true;
+    await loadScout();
+  }
+
   async function start() {
+    if (signer) { await startSigner(); return; }
     data = await api('eborPaperworkChoices', { session });
     meLine.textContent = meText(data.me, data.testMode);
     /** @param {string} ymd */

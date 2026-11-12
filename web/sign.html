@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Sign Eagle paperwork · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+</head>
+<body>
+  <!-- Remote EBoR signing (Jim W., 2026-11-12; vault ebor-remote-signing-design.md): a board member signs their own
+       box(es) on the Scout's partly signed paperwork. The page and its ids follow committee/ebor-paperwork.html. -->
+  <main class="wide">
+    <header class="brand" data-site-header></header><script src="/js/header.js"></script>
+    <h1>Sign Eagle Scout paperwork</h1>
+    <p class="muted" id="meLine"></p>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+
+    <div id="app" hidden>
+      <p class="hint">A District Advancement Committee member asked you to sign the Eagle Scout paperwork from a Board of Review.
+        Check your name, sign (type it or draw it), place the signature on its line and click <b>Save my signature</b>.
+        Nothing leaves this browser until you save.</p>
+
+      <label for="fScout">Scout</label>
+      <select id="fScout"></select>
+      <a href="#" id="demoReset" hidden></a>
+      <div id="scoutBox" class="ep-board" hidden></div>
+      <div id="problems" class="warnbox" hidden></div>
+
+      <div class="ws-ink-row" id="inkRow" role="radiogroup" aria-label="Ink colour for your signature"></div>
+      <datalist id="boardNames"></datalist>
+
+      <div class="ep-tabs" role="tablist">
+        <button type="button" class="ep-tab on" id="tabApplication" role="tab" data-doc="application">1. Eagle Application <span class="ep-ok" hidden>✓</span></button>
+        <button type="button" class="ep-tab" id="tabReport" role="tab" data-doc="report">2. Advancement Report <span class="ep-ok" hidden>✓</span></button>
+      </div>
+
+      <section id="panelApplication" class="ep-panel" data-doc="application">
+        <div>
+          <div class="file-row" hidden><select id="fVerified"></select><input type="file" id="fVerifiedLocal" hidden></div>
+          <p class="hint" id="appNote"></p>
+          <div class="ws-canvas-wrap" id="hostApplication"></div>
+          <div class="ws-pagebar" id="pagesApplication" style="margin-top:.3rem"></div>
+        </div>
+        <div id="slotsApplication"></div>
+      </section>
+
+      <section id="panelReport" class="ep-panel" data-doc="report" hidden>
+        <div>
+          <p class="hint" id="repNote"></p>
+          <div class="file-row" id="repLocalRow" hidden><input type="file" id="fReportLocal"></div>
+          <div class="ws-canvas-wrap" id="hostReport"></div>
+          <div class="ws-pagebar" id="pagesReport" style="margin-top:.3rem"></div>
+        </div>
+        <div id="slotsReport"></div>
+      </section>
+
+      <div class="ep-savebar">
+        <button type="button" class="primary" id="saveBtn">Save my signature</button>
+        <span id="saveMsg" role="status" class="muted"></span>
+      </div>
+      <p class="hint">Not you, or not on this board? Reply to the email you received. <a href="/signin">Your sign-in page</a></p>
+    </div>
+
+    <dialog id="sigDlg" class="ep-sigdlg">
+      <h3 id="sigTitle" style="margin-top:0">Sign</h3>
+      <p class="hint" id="sigWho"></p>
+      <div class="ws-tabs" role="tablist"><button type="button" class="ws-tab active" data-mode="type">Type</button><button type="button" class="ws-tab" data-mode="draw">Draw</button></div>
+      <div id="sigType" class="ws-tab-pane">
+        <div class="ws-row">
+          <div><label for="sigText">Typed signature</label><input type="text" id="sigText" autocomplete="off"></div>
+          <div><label for="sigFont">Script font</label><select id="sigFont" class="ws-font-select"></select></div>
+        </div>
+        <div class="ws-sig-preview-box"><img id="sigPreview" alt="Typed signature preview"></div>
+      </div>
+      <div id="sigDraw" class="ws-tab-pane" hidden>
+        <canvas id="sigPad" width="900" height="260" class="ws-draw-pad"></canvas>
+        <div class="ws-pad-actions"><span class="hint">Sign above with a finger, a stylus or a mouse.</span>
+          <span><button type="button" class="ws-linkbtn" id="sigUndo">Undo</button> <button type="button" class="ws-linkbtn" id="sigClear">Clear</button></span></div>
+      </div>
+      <div class="ws-ink-row" id="sigInk" role="radiogroup" aria-label="Ink colour"></div>
+      <p id="sigMsg" class="hint err" role="alert"></p>
+      <div class="actions"><button type="button" class="primary" id="sigUse">Use this signature</button><button type="button" id="sigCancel">Cancel</button></div>
+    </dialog>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, isSignedOut } from '/js/committee.js';
+    import { readBase64, sizeText } from '/js/files.js';
+    import { initPaperwork } from '/js/pdfPaperworkPage.js';
+    /** No session (or expired): sign in with the address the request was sent to, then come back here. */
+    const needSignIn = (msgEl, error) => {
+      try { localStorage.setItem('ccacNext', location.pathname + location.search); } catch {}
+      msgEl.hidden = false;
+      msgEl.className = error ? 'err' : 'muted';
+      msgEl.replaceChildren((error ? error + ' ' : '') + 'Sign in with the email address the request was sent to: ',
+        el('a', { href: '/signin', textContent: 'Sign in →' }), ' (we email you a link; open it in this browser).');
+    };
+    initPaperwork({ mode: 'signer', api, $, el, session, meLine: $('meLine'), meText: () => '', needSignIn, isSignedOut, readBase64, sizeText });
+  </script>
+</body>
+</html>

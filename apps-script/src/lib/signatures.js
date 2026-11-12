@@ -198,7 +198,26 @@ var Signatures = (function () {
     return Object.keys(by).map(function (k) { return by[k]; });
   }
 
-  return { TAB: TAB, HEADERS: HEADERS, STATUS: STATUS, DOCS: DOCS, DOC_LABEL: DOC_LABEL, slotKeys: slotKeys, slotLabel: slotLabel,
+  /**
+   * Where the Advancement Report's signature boxes are (the Partial copy is flattened, so its form fields are gone): kept as
+   * the Partial files' Drive description. layout: {report: {Signature1: {pageIndex, x, y, width, height}, ...}} -> JSON or ''.
+   */
+  function layoutText(layout) {
+    var rep = layout && layout.report, out = {};
+    if (!rep || typeof rep !== 'object') return '';
+    ['Signature1', 'Signature2', 'Signature3'].forEach(function (k) {
+      var r = rep[k];
+      if (!r) return;
+      var n = ['pageIndex', 'x', 'y', 'width', 'height'].map(function (f) { return Number(r[f]); });
+      if (n.every(function (v) { return isFinite(v) && v >= 0 && v < 5000; })) out[k] = { pageIndex: n[0], x: n[1], y: n[2], width: n[3], height: n[4] };
+    });
+    return Object.keys(out).length ? JSON.stringify({ eborLayout: 1, report: out }) : '';
+  }
+  function parseLayout(text) {
+    try { var o = JSON.parse(str(text)); return o && o.eborLayout === 1 && o.report ? { report: o.report } : { report: {} }; } catch (e) { return { report: {} }; }
+  }
+
+  return { layoutText: layoutText, parseLayout: parseLayout, TAB: TAB, HEADERS: HEADERS, STATUS: STATUS, DOCS: DOCS, DOC_LABEL: DOC_LABEL, slotKeys: slotKeys, slotLabel: slotLabel,
     parseSlots: parseSlots, slotsText: slotsText, list: list, isOpen: isOpen, openFor: openFor, series: series, state: state,
     roomSigners: roomSigners, checkRequest: checkRequest, newRows: newRows, baseChanged: baseChanged, partialNames: partialNames,
     slotsOf: slotsOf, summary: summary, waiting: waiting };

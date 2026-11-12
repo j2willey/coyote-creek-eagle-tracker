@@ -386,6 +386,11 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .ep-board { margin: .4rem 0; font-size: .9rem; }
 .ep-board ul { margin: .2rem 0; padding-left: 1.2rem; }
 .ep-savebar { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-top: 1rem; }
+.ep-sigpanel { border: 1px solid var(--line); border-radius: 10px; padding: .6rem .9rem; margin-top: 1rem; background: var(--card); }
+.ep-sigpanel h3 { margin: .2rem 0 .3rem; }
+.ep-sigpanel table input[type=email] { width: 100%; min-width: 12rem; }
+.ep-sigpanel .ep-slot input[type=email] { flex: 1 1 14rem; }
+.ep-sigpanel .ep-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .5rem; }
 
 /* Signing overlay (Task 13): a nearly full-screen pen pad, shared by the Sign Workshop and the EBoR paperwork page */
 .sp-overlay { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;

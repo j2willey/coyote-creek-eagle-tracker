@@ -655,6 +655,14 @@ paperwork page.
    email is drafted as for an in-room Finish. Missing boxes or no DAC/Council rep: listed, Finish needs a confirm. An
    in-room Finish also closes an open series.
 
+Pages: the paperwork page has **Save partial…** beside Save both, and a **Signatures outside the room** panel (who
+signed, who is asked, fix email / Resend / Cancel, Ask for signatures with name → email suggestions from the board and
+the committee, Finish). **`/sign`** (`web/sign.html`, `initPaperwork({mode: 'signer'})`) is the same page for one signer:
+their boxes only, no Verified / template pickers; the Advancement Report's box positions travel with the Partial copies
+(Drive file description), so "Place on the form" still works on the flattened copy. A save refused because someone else
+saved reloads the newest copies and puts the signer's placed signature back. `/signin` sends a signer-only address
+straight to `/sign` and shows "paperwork waiting for your signature" to everyone else who has some.
+
 Actions: `eborPaperworkStart {partial: true}` + `eborPaperworkSavePartial`, `eborSignatureStatus`, `eborSignatureRequest`,
 `eborSignatureEdit`, `eborPaperworkFinishPartial`; signer: `signerChoices`, `signerDocs`, `signerFetch`, `signerStart`,
 `signerUpload`, `signerFinish`. `test/remoteSigning.test.js` runs the whole path against a fake Drive.

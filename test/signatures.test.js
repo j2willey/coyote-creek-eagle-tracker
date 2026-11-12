@@ -102,3 +102,13 @@ describe('Signatures (remote EBoR signing ledger)', () => {
     expect(S.waiting(rows, NOW, 3)).toEqual([]);
   });
 });
+
+describe('Signatures: the report layout kept with the Partial copies', () => {
+  it('keeps only well-formed boxes, and reads back', () => {
+    const t = S.layoutText({ report: { Signature1: { pageIndex: 0, x: 40, y: 100, width: 180, height: 20 }, Signature2: { x: 'bad' }, Other: { x: 1 } } });
+    expect(JSON.parse(t)).toEqual({ eborLayout: 1, report: { Signature1: { pageIndex: 0, x: 40, y: 100, width: 180, height: 20 } } });
+    expect(S.parseLayout(t).report.Signature1.width).toBe(180);
+    expect(S.layoutText(null)).toBe('');
+    expect(S.parseLayout('not json')).toEqual({ report: {} });
+  });
+});

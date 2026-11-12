@@ -61,6 +61,7 @@
       <p id="committeeLine" hidden></p>
       <ul id="recs"></ul>
       <p id="unitLine" hidden></p>
+      <p id="signLine" hidden></p>
       <p><button id="out" style="font:inherit;padding:.4rem 1rem;border-radius:8px">Sign out</button></p>
     </section>
   </main>
@@ -99,6 +100,12 @@
         $('unitLine').replaceChildren('Unit contact for ' + r.units.map(u => u.unit).join(', ') + ' · ',
           Object.assign(document.createElement('a'), { href: '/unit', textContent: 'Eagle Boards of Review for your unit(s)' }));
       }
+      const sigs = r.signatures || [];
+      $('signLine').hidden = !sigs.length;
+      if (sigs.length) {
+        $('signLine').replaceChildren('Eagle Scout paperwork waiting for your signature (' + sigs.map(x => x.scout).join(', ') + ') · ',
+          Object.assign(document.createElement('a'), { href: '/sign', textContent: 'Sign it →' }));
+      }
       $('committeeLine').hidden = !r.committee;
       if (r.committee) {
         $('committeeLine').replaceChildren('Committee member' + (r.committee.initials ? ' (' + r.committee.initials + ')' : '') + ' · ',
@@ -119,7 +126,10 @@
       let next = null;
       try { next = localStorage.getItem('ccacNext'); localStorage.removeItem('ccacNext'); } catch {}
       const only = r.committee && !r.records.length && !(r.units && r.units.length);
+      const sigs = r.signatures || [];                   // EBoR paperwork waiting for this address's signature (remote signing)
       if (next && /^\/committee(\/[a-z]+)?(\?[\w=&%-]*)?$/.test(next) && r.committee) { location.replace(next); return true; }
+      if (next && /^\/sign(\?[\w=&%-]*)?$/.test(next) && sigs.length) { location.replace(next); return true; }
+      if (arrived && sigs.length && !r.committee && !r.records.length && !(r.units && r.units.length)) { location.replace('/sign'); return true; }
       if (only && arrived) { location.replace('/committee'); return true; }
       // A Scout with one record (and no unit/committee role) goes straight to their page after the emailed link.
       const scoutOnly = r.records.length === 1 && !r.committee && !(r.units && r.units.length);

@@ -8,7 +8,8 @@
  * Finish (the paperwork page) files the copies as the standard -Signed names and drafts the Council email.
  *
  * Committee (EBoR paperwork page, Dev):
- *   eborPaperworkSavePartial {session, uploadToken}           -> {message, status}   after eborPaperworkStart {partial: true} + Uploads
+ *   eborPaperworkSavePartial {session, uploadToken, layout?}  -> {message, status}   after eborPaperworkStart {partial: true} + Uploads;
+ *                                                                layout: {report: {Signature1: rect}} kept on the Partial copies (Drive description)
  *   eborSignatureStatus      {session, recordId}              -> status (see signatureStatus_)
  *   eborSignatureRequest     {session, recordId, signers: [{name, email, slots, rep}]} -> {message, status}
  *   eborSignatureEdit        {session, rowId, email?, name?, cancel?, resend?}       -> {message, status}
@@ -16,7 +17,7 @@
  * Signer (/sign):
  *   signerChoices {session}                                     -> {email, items: [{recordId, scout, unit, boxes}]}
  *   signerDocs    {session, recordId}                           -> {scout, unit, boardYmd, name, slots, files, signedBy}
- *   signerFetch   {session, recordId, kind}                     -> {name, mime, data}
+ *   signerFetch   {session, recordId, kind}                     -> {id, name, mime, modified, data}
  *   signerStart   {session, recordId, base, name}               -> {uploadToken}
  *   signerUpload  {uploadToken, kind, name, data}               -> {stored}
  *   signerFinish  {session, uploadToken}                        -> {message, complete}
@@ -71,7 +72,7 @@ function signatureStatus_(rec) {
     missing: st.missing.map(function (k) { return { key: k, label: Signatures.slotLabel(k) }; }),
     slots: Signatures.slotKeys().map(function (k) { return { key: k, label: Signatures.slotLabel(k), signedBy: st.signed[k] ? st.signed[k].name : '' }; }),
     rows: rows.map(function (r) {
-      return { id: r.id, name: r.name, email: r.email, slots: r.slots.map(Signatures.slotLabel), status: r.status === 'Pending' && !(r.expires > now) ? 'Expired' : r.status,
+      return { id: r.id, name: r.name, email: r.email, keys: r.slots, slots: r.slots.map(Signatures.slotLabel), status: r.status === 'Pending' && !(r.expires > now) ? 'Expired' : r.status,
         asked: fmt(r.asked), signed: fmt(r.signed), expires: fmt(r.expires), room: !r.email };
     }),
     files: { application: files.application ? { id: files.application.id, name: files.application.name } : null,
@@ -99,10 +100,12 @@ function actionEborPaperworkSavePartial_(req) {
   var res = withLock_(function () {
     // 1. The two Partial copies (an earlier Partial goes to Archive; the Verified Application stays until Finish).
     var newIds = [];
+    var layout = Signatures.layoutText(req.layout);
     ['application', 'report'].forEach(function (kind) {
       var f = DriveApp.getFileById(up[kind].fileId);
       f.setName(names[kind]);
       f.moveTo(folder);
+      if (layout && f.setDescription) f.setDescription(layout);   // where the empty signature boxes are, for the signers' page
       newIds.push(f.getId());
     });
     var top = listFolder_(folder);
@@ -295,7 +298,8 @@ function actionSignerDocs_(req) {
     slots: slots, labels: { application: EborPaperwork.signerSlots('application'), report: EborPaperwork.signerSlots('report') },
     files: { application: { id: files.application.id, name: files.application.name, modified: files.application.modified },
       report: { id: files.report.id, name: files.report.name, modified: files.report.modified } },
-    signedBy: signedBy, maxUploadMB: Number(getSettings_().maxUploadMB) || 20
+    signedBy: signedBy, maxUploadMB: Number(getSettings_().maxUploadMB) || 20,
+    layout: Signatures.parseLayout(files.report.file.getDescription ? files.report.file.getDescription() : '')
   };
 }
 
@@ -306,7 +310,7 @@ function actionSignerFetch_(req) {
   var rec = eborRecord_(req.recordId);
   var folder = folderForRecord_(rec, false), f = folder ? partialFiles_(folder)[kind] : null;
   if (!f) throw userError_('The paperwork is not ready to sign yet.');
-  return { name: f.name, mime: 'application/pdf', modified: f.modified, data: Utilities.base64Encode(f.file.getBlob().getBytes()) };
+  return { id: f.id, name: f.name, mime: 'application/pdf', modified: f.modified, data: Utilities.base64Encode(f.file.getBlob().getBytes()) };
 }
 
 function actionSignerStart_(req) {
@@ -363,6 +367,7 @@ function actionSignerFinish_(req) {
       var f = DriveApp.getFileById(up[kind].fileId);
       f.setName(files[kind].name);
       f.moveTo(folder);
+      try { var desc = files[kind].file.getDescription && files[kind].file.getDescription(); if (desc && f.setDescription) f.setDescription(desc); } catch (e) { /* layout is a convenience */ }
       archive = archive || childFolder_(folder, ScoutFiles.ARCHIVE);
       files[kind].file.moveTo(archive);
     });
