@@ -104,6 +104,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     closing.js            Closed records: reasons, close / reopen plans, the _closed cell, "Close?" suggestions, January archive rows (no contact details), closures by reason
     nudges.js             hourly nudges (4.1.h, 6.2.b, 6.2.c), _stage_since, the digest's "Awaiting action" list
     settingsView.js       Admin → Settings: settings grouped with help; the Admin role
+    people.js             Admin → People: committee member list, add / edit checks
     adminRules.js         Admin page: held web submissions and their actions; January archive (years, rows to delete)
     sectionSort.js        EBoR Booked in EBoR Date order (latest at the top): wanted order + row moves
     stats.js              Stats page: this year live (months, ages, female, pipeline, speed, units, sessions); history rows
@@ -964,6 +965,13 @@ listing old → new; the server rejects a value someone changed since the page l
 5–600, emails, a time like 7:00 PM, onlineBooking via `Booking.parseOnline`, reservedForUnits Off | See | Assign),
 writes text with a leading `'` (so "7:00 PM" or a ZIP stays text) and logs each change on Activity. Other groups stay
 read-only until their turn (plan step 5).
+
+**People** (Admin role; `lib/people.js`, `adminPeople`, `adminPeopleSave`; 2026-11-12): the Committee tab as a table.
+Add a member (Name, Initials 2–4 letters, Email, Active, Role) or edit one (Name, Email, Active, Role). Initials are
+fixed once a member exists (schedule rows refer to them); nobody is deleted (untick Active). Only those five columns are
+written, other columns on the tab are left alone; a new row's Active cell gets a checkbox. Unique email and initials;
+an Admin can't remove their own role, deactivate themselves or change their own email; a row changed on the sheet since
+the page loaded is refused. Each change is logged on Activity; the committee cache is cleared.
 
 - **Web submissions that need a person** (Intake Queue): never confirmed (link expired), possible duplicates, errors,
   stuck. Attach to an existing Scout (likely matches first), add as a new Scout, resend the confirmation link,

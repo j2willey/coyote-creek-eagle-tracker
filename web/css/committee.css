@@ -425,3 +425,7 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .settable tr.setchanged td:nth-child(2) { font-weight: 600; }
 .settable input[type=text], .settable input[type=email] { min-width: 16rem; }
 .settable input[type=number] { width: 7rem; }
+.ppltable td { vertical-align: middle; }
+.ppltable input[type=text], .ppltable input[type=email] { min-width: 10rem; }
+.ppltable input.ppl-ini { width: 4.5rem; min-width: 0; text-transform: uppercase; }
+.ppltable tr.ppl-inactive td { opacity: .7; }

@@ -9,6 +9,8 @@
  *   adminRequestDone {session, id}                       -> {message}   unit host-a-board request handled
  *   adminSettings {session}                              -> {groups, sections}   Admin role only (lib/settingsView.js)
  *   adminSettingsSave {session, group, values, was}      -> {message, view}   Admin role; editable groups only; logged on Activity
+ *   adminPeople  {session}                              -> {members, me}   Admin role (lib/people.js)
+ *   adminPeopleSave {session, row?, wasEmail?, member}  -> {message, members}   Admin role; add (no row) or update; logged on Activity
  */
 function adminRecords_() {
   var eCol = getSettings_().eborDateColumn || 'ebor_date';
@@ -57,6 +59,41 @@ function actionAdminData_(req) {
 function actionAdminSettings_(req) {
   adminMe_(req.session);
   return SettingsView.view(readSettingsTab_(false), SettingsModel.DEFAULT_VALUES);
+}
+
+/** Admin → People: the Committee tab's members (Admin role). */
+function actionAdminPeople_(req) {
+  var c = adminMe_(req.session);
+  return { members: People.list(Tabs.read('Committee')), me: c.email };
+}
+
+/**
+ * Admin → People: add a member (no row) or update one (row + the email the page showed). Initials are fixed once a
+ * member exists; nobody is deleted (untick Active). Only Name / Initials / Email / Active / Role are written.
+ */
+function actionAdminPeopleSave_(req) {
+  var c = adminMe_(req.session);
+  var row = Number(req.row) || 0;
+  var line = withLock_(function () {
+    var members = People.list(Tabs.read('Committee'));
+    var r = People.validate(req.member || {}, members, { row: row, wasEmail: req.wasEmail, meEmail: c.email });
+    if (r.errors.length) throw userError_(r.errors.join(' '));
+    var cur = row ? members.filter(function (x) { return x.row === row; })[0] : null;
+    if (cur) Tabs.update('Committee', row, r.fields);
+    else {
+      var at = Tabs.append('Committee', r.fields);
+      try {   // the Active column holds checkboxes: give the new row one
+        var sh = Tabs.sheet('Committee');
+        var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (h) { return String(h).trim(); });
+        var col = head.indexOf('Active') + 1;
+        if (col > 0) sh.getRange(at, col).insertCheckboxes().setValue(r.fields['Active']);
+      } catch (e) { console.warn('Committee checkbox: ' + e); }
+    }
+    return People.logLine(cur, r.fields);
+  });
+  uncache_('c:committee');
+  if (line) adminLog_(line, c.email);
+  return { message: line ? line.replace(/^Committee: /, 'Saved: ') : 'Nothing changed.', members: People.list(Tabs.read('Committee')) };
 }
 
 /**

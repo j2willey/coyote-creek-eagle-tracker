@@ -88,6 +88,14 @@
         <p class="hint">Closed records from a past year are cleared once a year. For each: a row (no contact details) goes to the "Closed Archive" tab next to the tracking sheet, the Scout's folder moves to <b id="clFolder">Archive/Closed</b> (Settings → closedFolder), and the row leaves the tracking tab. Nothing happens until you press Archive; the list below is what it would do.</p>
         <div id="closedArch"></div>
       </section>
+      <section class="admsec" data-tab="people">
+        <h2>Committee members</h2>
+        <p class="hint">The Committee tab: who can sign in to the committee pages, their initials on the schedule, and the Admin role
+          (People, Settings and System tabs). Inactive = occasional helper: still put on slots and still signs in, listed under
+          "Occasional". Nobody is deleted here: untick Active. Initials can't change once a member exists (the schedule refers to them).
+          Every change is logged on the Activity tab.</p>
+        <div id="pplView"><p class="muted">Loading…</p></div>
+      </section>
       <section class="admsec" data-tab="settings">
         <h2>Settings</h2>
         <p class="hint">Every setting the tool reads from the Settings tab, grouped, with what it does. District details and Scheduling can be edited
@@ -426,8 +434,8 @@
     }
 
     // ---------- sub-tabs ----------
-    const TABS = [['attention', 'Needs attention'], ['email', 'Email'], ['yearend', 'Year-end'], ['settings', 'Settings']];
-    const ADMIN_ONLY = ['settings'];   // the Admin role (Committee tab → Role); the server checks it too
+    const TABS = [['attention', 'Needs attention'], ['email', 'Email'], ['yearend', 'Year-end'], ['people', 'People'], ['settings', 'Settings']];
+    const ADMIN_ONLY = ['people', 'settings'];   // the Admin role (Committee tab → Role); the server checks it too
     const tabBtns = TABS.map(([key, label]) => {
       const b = el('button', { type: 'button', className: 'admtab', textContent: label });
       b.setAttribute('role', 'tab');
@@ -437,17 +445,57 @@
       if (ADMIN_ONLY.includes(key)) b.hidden = true;
       return b;
     });
-    let isAdmin = false, settingsLoaded = false;
+    let isAdmin = false, settingsLoaded = false, peopleLoaded = false;
     $('admTabs').replaceChildren(...tabBtns);
     function showTab(key, push) {
       if (!TABS.some(t => t[0] === key) || (ADMIN_ONLY.includes(key) && data && !isAdmin)) key = 'attention';
       if (key === 'settings' && data && !settingsLoaded) { settingsLoaded = true; loadSettings(); }
+      if (key === 'people' && data && !peopleLoaded) { peopleLoaded = true; loadPeople(); }
       tabBtns.forEach(b => { const on = b.dataset.tab === key; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
       document.querySelectorAll('#app section[data-tab]').forEach(sec => { sec.hidden = sec.dataset.tab !== key; });
       if (push && location.hash !== '#' + key) history.replaceState(null, '', '#' + key);
     }
     showTab(location.hash.slice(1), false);
     window.addEventListener('hashchange', () => showTab(location.hash.slice(1), false));
+
+    // ---------- People (Committee tab; Admin role) ----------
+    async function loadPeople() {
+      try { renderPeople(await api('adminPeople', { session })); }
+      catch (e) { peopleLoaded = false; $('pplView').replaceChildren(el('p', { className: 'err', textContent: e.message })); }
+    }
+    function renderPeople(r) {
+      const me = String(r.me || '').toLowerCase();
+      const roleSel = (v) => { const x = el('select', { title: 'Role' }, el('option', { value: '', textContent: '(member)' }), el('option', { value: 'Admin', textContent: 'Admin' })); x.value = v || ''; return x; };
+      const row = (m) => {
+        const name = el('input', { type: 'text', value: m ? m.name : '', placeholder: 'Name' });
+        const ini = el('input', { type: 'text', value: m ? m.initials : '', placeholder: 'AB', maxLength: 4, readOnly: !!m, title: m ? 'Initials can\'t change once a member exists' : '2 to 4 letters' });
+        ini.className = 'ppl-ini';
+        const email = el('input', { type: 'email', value: m ? m.email : '', placeholder: 'email@example.org' });
+        const active = el('input', { type: 'checkbox', checked: m ? m.active : true, title: 'Active (unticked = occasional helper)' });
+        const role = roleSel(m ? m.role : '');
+        const save = el('button', { type: 'button', className: m ? '' : 'primary', textContent: m ? 'Save' : 'Add member', disabled: !!m });
+        const out = el('span', { role: 'status' });
+        const dirty = () => { if (m) save.disabled = name.value.trim() === m.name && email.value.trim().toLowerCase() === m.email.toLowerCase() && active.checked === m.active && role.value === m.role; };
+        [name, email, role].forEach(x => x.addEventListener('input', dirty)); active.addEventListener('change', dirty); role.addEventListener('change', dirty);
+        save.onclick = async () => {
+          save.disabled = true; out.textContent = 'Saving…'; out.className = 'muted';
+          try {
+            const res = await api('adminPeopleSave', { session, row: m ? m.row : 0, wasEmail: m ? m.email : '',
+              member: { name: name.value, initials: ini.value, email: email.value, active: active.checked, role: role.value } });
+            renderPeople({ members: res.members, me: r.me });
+            flash(res.message);
+          } catch (e) { out.textContent = e.message; out.className = 'err'; save.disabled = false; }
+        };
+        const tr = el('tr', { className: m && !m.active ? 'ppl-inactive' : '' },
+          el('td', {}, name, ...(m && m.email.toLowerCase() === me ? [el('span', { className: 'muted', textContent: ' (you)' })] : [])),
+          el('td', {}, ini), el('td', {}, email), el('td', {}, active), el('td', {}, role), el('td', {}, save, ' ', out));
+        return tr;
+      };
+      const list = [...r.members].sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name));
+      const head = el('tr', {}, ...['Name', 'Initials', 'Email', 'Active', 'Role', ''].map(t => el('th', { textContent: t })));
+      $('pplView').replaceChildren(el('div', { className: 'boardwrap' }, el('table', { className: 'admtable ppltable' },
+        el('thead', {}, head), el('tbody', {}, ...list.map(row), row(null)))));
+    }
 
     // ---------- Settings (read-only; Admin role) ----------
     async function loadSettings() {
