@@ -81,7 +81,7 @@ function eborDemoFinish_(c, ctx, up) {
   var queued = !!(res && res.queued);
   if (res && !queued) note = ' No [DEMO] email was drafted (' + (res.reason || 'template Off') + ').';
   try {
-    Tabs.append(ACTIVITY_TAB, { 'When': new Date(), 'Scout': D.name, 'Unit': D.unit, 'Record ID': '', 'Entry': EborPaperwork.demoActivity(by), 'By': by });
+    Tabs.append(ACTIVITY_TAB, { 'When': new Date(), 'Scout': D.name, 'Unit': D.unit, 'Record ID': D.recordId, 'Entry': EborPaperwork.demoActivity(by), 'By': by });
   } catch (e) { console.warn('Demo activity not recorded: ' + e); }
   return { message: 'Demo: signed Eagle application and Advancement Report filed in the demo folder' +
     (f.toArchive.length ? ' (' + f.toArchive.length + ' earlier file(s) to Archive)' : '') + '.' +

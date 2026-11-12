@@ -165,7 +165,8 @@ function actionEborPaperworkUpload_(req) {
   var rec = demo ? { recordId: '', fields: { scout_name: D.name, unit: D.unit } } : Records.get(ctx.recordId);
   if (!rec) throw userError_('Record not found.');
   ctx.uploads = ctx.uploads.filter(function (u) { return u.kind !== kind; });          // a second try replaces the first
-  var id = storeUpload_(ctx.batchId, rec.fields.scout_name, rec.fields.unit, rec.recordId, { name: name, tag: 'Other', data: req.data });
+  var id = storeUpload_(ctx.batchId, rec.fields.scout_name, rec.fields.unit, rec.recordId, { name: name, tag: 'Other', data: req.data },
+    demo ? { noLog: true } : null);
   ctx.uploads.push({ kind: kind, fileId: id, name: name });
   CacheService.getScriptCache().put('ep:' + req.uploadToken, JSON.stringify(ctx), EBOR_PAPERWORK_TOKEN_SECONDS);
   return { stored: name };

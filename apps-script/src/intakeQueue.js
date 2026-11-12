@@ -109,7 +109,7 @@ function actionUploadIntakeFile_(req) {
  * One uploaded file → _Intake Queue folder + Uploads Log row. batchId is the
  * Queue ID (intake) or U-… (Scout Update). Shared by intake and updates.
  */
-function storeUpload_(batchId, scoutName, unit, recordId, req) {
+function storeUpload_(batchId, scoutName, unit, recordId, req, opts) {
   var s = getSettings_();
   var name = String(req.name || '').slice(0, 200);
   var bytes = Utilities.base64Decode(String(req.data || ''));
@@ -120,6 +120,7 @@ function storeUpload_(batchId, scoutName, unit, recordId, req) {
   var stored = Intake.queueFileName(batchId, scoutName, unit, req.tag, name);
   var file = DriveApp.getFolderById(s.intakeFolderId)
     .createFile(Utilities.newBlob(bytes, Intake.mimeFor(name), stored));
+  if (opts && opts.noLog) return file.getId();                       // EBoR paperwork demo: no Uploads Log row
   withLock_(function () {
     Tabs.append(UPLOADS_TAB, { 'Received': new Date(), 'Record ID': recordId || '', 'Queue ID': batchId, 'File type': req.tag,
       'Stored name': stored, 'Drive file ID': file.getId(), 'Bytes': bytes.length, 'Original name': name });

@@ -87,6 +87,11 @@ describe('digest email', () => {
     expect(ev.map(e => e['Record ID'])).toEqual(['R1', 'R2', 'R1']);   // 8:00 itself was in the previous digest
   });
 
+  it('leaves EBoR paperwork demo runs (Record ID DEMO) out of the digest', () => {
+    const demo = { When: t(10, 0), Scout: 'Theodore Sample', Unit: 'T999', 'Record ID': 'DEMO', Entry: 'EBoR paperwork demo run by AB' };
+    expect(Digest.select(rows.concat([demo]), since, until).map(e => e['Record ID'])).toEqual(['R1', 'R2', 'R1']);
+  });
+
   it('groups by Scout, one line each, time instead of the date prefix', () => {
     const m = Digest.build(Digest.select(rows, since, until), d => d.getHours() + ':00',
       { sinceLabel: 'Fri 10/16 6:00 PM', sheetUrl: 'https://sheet', scheduleLabel: 'daily at 6 PM' });

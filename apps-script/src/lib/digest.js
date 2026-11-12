@@ -82,7 +82,8 @@ var Digest = (function () {
   function select(rows, sinceMs, untilMs) {
     return (rows || []).filter(function (r) {
       var t = r.When instanceof Date ? r.When.getTime() : new Date(r.When).getTime();
-      return !isNaN(t) && t > sinceMs && t <= untilMs && str(r.Entry) && !isNoise(r.Entry);
+      // EBoR paperwork demo runs (Record ID "DEMO") stay on the Activity tab but never reach the digest.
+      return !isNaN(t) && t > sinceMs && t <= untilMs && str(r.Entry) && !isNoise(r.Entry) && str(r['Record ID']) !== 'DEMO';
     }).sort(function (a, b) { return new Date(a.When) - new Date(b.When); });
   }
 

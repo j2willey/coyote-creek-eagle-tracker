@@ -159,11 +159,11 @@ describe('EBoR paperwork: the Demo Scout never touches real records or Council',
     // no tracking / Scout log / Council path touched
     expect(log.forbidden).toEqual([]);
     // tabs written: the Uploads Log (the same upload path) and one Activity line
-    expect(log.tabs.map(t => t.tab).sort()).toEqual(['Activity', 'Uploads Log', 'Uploads Log']);
+    expect(log.tabs.map(t => t.tab).sort()).toEqual(['Activity']);   // no Uploads Log rows for the demo
     const act = log.tabs.find(t => t.tab === 'Activity').row;
     expect(act.Entry).toBe('EBoR paperwork demo run by AB');
-    expect(act['Record ID']).toBe('');
-    expect(log.tabs.filter(t => t.tab === 'Uploads Log').every(t => t.row['Record ID'] === '')).toBe(true);
+    expect(act['Record ID']).toBe('DEMO');                            // kept out of the digest by Digest.select
+    expect(log.tabs.filter(t => t.tab === 'Uploads Log')).toEqual([]);
   });
 
   it('a Template tab saying Review/Off or a Doc with a Cc line still cannot widen the demo email', () => {
