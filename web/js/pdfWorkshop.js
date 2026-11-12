@@ -50,10 +50,13 @@ import {
   canvasToTrimmedPngDataUrl,
   trimPngDataUrl,
   pngAspect,
-  dataUrlToBytes
+  dataUrlToBytes,
+  inkToPngDataUrl
 } from './pdfInk.js';
 
 import { createDrawPad } from './pdfDraw.js';
+import { openSigningOverlay } from './pdfSignPad.js';
+import { parseInk, serializeInk, fitInkInto, pixelWidthForBox } from './pdfStrokes.js';
 
 import { CDN_SCRIPTS } from './cdnIntegrity.js';
 
@@ -77,6 +80,7 @@ import {
  * @property {number} signatureScale
  * @property {number} textFontSize
  * @property {string} ink  an INK_COLORS key (default black)
+ * @property {string} [strokes]  a pen signature kept as strokes (JSON from `serializeInk`) instead of a PNG
  * @property {boolean} [hasSaved]
  *
  * @typedef {Object} WorkshopOpenOptions
@@ -245,6 +249,7 @@ export function loadSavedSignature(fallbackName) {
           signatureScale,
           textFontSize,
           ink: normalizeInk(parsed.ink),
+          strokes: typeof parsed.strokes === 'string' ? parsed.strokes : '',
           hasSaved: true
         };
       }
@@ -259,6 +264,7 @@ export function loadSavedSignature(fallbackName) {
     signatureScale: 1,
     textFontSize: 0,
     ink: DEFAULT_INK,
+    strokes: '',
     hasSaved: false
   };
 }
@@ -435,7 +441,13 @@ export async function openSignWorkshop(opts) {
   const maxBytes = Number(opts.maxBytes) || MAX_BYTES;
   const defaultName = String(opts.signerName || '').trim();
   const savedSig = loadSavedSignature(defaultName);
-  if (savedSig.mode === 'type' && savedSig.typedText) {
+  /** The pen signature as strokes (from "Sign with pen..." or a remembered one): the picture is always drawn from it. */
+  /** @type {import('./pdfStrokes.js').Ink | null} */
+  let sigInk = savedSig.strokes ? parseInk(savedSig.strokes) : null;
+  if (sigInk) {
+    savedSig.mode = 'draw';
+    savedSig.pngDataUrl = inkToPngDataUrl(sigInk, savedSig.ink, pixelWidthForBox(SIGNATURE_BASE_WIDTH_PT * savedSig.signatureScale));
+  } else if (savedSig.mode === 'type' && savedSig.typedText) {
     savedSig.pngDataUrl = await renderTypedSignaturePngAsync(savedSig.typedText, savedSig.fontKey, savedSig.ink);
   } else if (savedSig.pngDataUrl) {
     savedSig.pngDataUrl = await trimPngDataUrl(savedSig.pngDataUrl); // a signature saved before trimming existed
@@ -545,6 +557,7 @@ export async function openSignWorkshop(opts) {
                 <button type="button" class="ws-tab" data-mode="upload">Upload Image</button>
               </div>
             </div>
+            <button type="button" class="ws-pen-btn" id="wsPenBtn" title="A large pad for a pen tablet, stylus, finger or mouse">✍ Sign with pen…</button>
 
             <div id="wsTabType" class="ws-tab-pane">
               <div class="ws-row">
@@ -662,6 +675,7 @@ export async function openSignWorkshop(opts) {
     const fontSelect = /** @type {HTMLSelectElement} */ (q('#wsFontSelect'));
     const typePreviewImg = /** @type {HTMLImageElement} */ (q('#wsTypePreviewImg'));
     const drawPad = /** @type {HTMLCanvasElement} */ (q('#wsDrawPad'));
+    const penBtn = /** @type {HTMLButtonElement} */ (q('#wsPenBtn'));
     const clearPadBtn = /** @type {HTMLButtonElement} */ (q('#wsClearPadBtn'));
     const undoPadBtn = /** @type {HTMLButtonElement} */ (q('#wsUndoPadBtn'));
     const uploadSigInput = /** @type {HTMLInputElement} */ (q('#wsUploadSigInput'));
@@ -982,6 +996,8 @@ export async function openSignWorkshop(opts) {
       if (mode === 'type') {
         savedSig.pngDataUrl = await renderTypedSignaturePngAsync(typedSigInput.value, fontSelect.value, savedSig.ink);
         typePreviewImg.src = savedSig.pngDataUrl || '';
+      } else if (mode === 'draw') {
+        savedSig.pngDataUrl = renderSigPng();
       }
       await signatureImageChanged();
     }
@@ -1011,6 +1027,7 @@ export async function openSignWorkshop(opts) {
         Object.assign(sel, setImageItemWidth(sel, SIGNATURE_BASE_WIDTH_PT * signatureScale, pageSizeOf(sel.pageIndex)));
         renderPageItems(sel.pageIndex);
       }
+      void rerenderSigPng(false);
     }
     /** Show the selected signature's current size on the control (without touching the item). */
     function syncScaleFromItem(/** @type {PlacedItem} */ it) {
@@ -1039,15 +1056,46 @@ export async function openSignWorkshop(opts) {
     textAutoBtn.onclick = () => setTextFontSize(0);
 
     // Draw pad (pdfDraw.js: touch / stylus friendly, Undo / Clear, recolours with the ink)
+    // A pen signature is strokes (pdfStrokes.js): its picture is re-rendered from them for the ink colour and for the
+    // size it is placed at (3x the box in points: sharp on screen and in the PDF), never tinted or stretched.
+    let sigPngWidth = 0;
+    function sigPngPx() {
+      const widest = items.reduce((m, it) => (it.kind === 'signature' ? Math.max(m, it.width) : m), SIGNATURE_BASE_WIDTH_PT * signatureScale);
+      return pixelWidthForBox(widest);
+    }
+    function renderSigPng() {
+      sigPngWidth = sigPngPx();
+      return sigInk ? inkToPngDataUrl(sigInk, savedSig.ink, sigPngWidth) : '';
+    }
+    /** Re-render the pen signature when the placed size changed enough to need it (or `force`). */
+    async function rerenderSigPng(/** @type {boolean} */ force) {
+      if (!sigInk || savedSig.mode !== 'draw') return;
+      const need = sigPngPx();
+      if (!force && need <= sigPngWidth * 1.15 && need >= sigPngWidth / 1.5) return;
+      savedSig.pngDataUrl = renderSigPng();
+      await signatureImageChanged();
+    }
     const pad = createDrawPad(drawPad, {
       getInk: () => savedSig.ink,
       onChange: () => {
-        savedSig.pngDataUrl = pad.hasInk() ? pad.toPngDataUrl() : '';
+        sigInk = pad.getInk();
+        savedSig.pngDataUrl = sigInk ? renderSigPng() : '';
         void signatureImageChanged();
       }
     });
     clearPadBtn.onclick = () => pad.clear();
     undoPadBtn.onclick = () => pad.undo();
+    // "Sign with pen...": the big overlay (pdfSignPad.js). Done makes it the current signature (Draw); Place drops it.
+    penBtn.onclick = async () => {
+      const res = await openSigningOverlay({ title: 'Sign with pen', who: printedNameInput.value.trim(), inkKey: savedSig.ink });
+      if (!res) return;
+      savedSig.ink = res.inkKey;
+      syncInkButtons();
+      sigInk = res.ink;
+      pad.setInk(fitInkInto(res.ink, 1, drawPad.height / drawPad.width));
+      await setSigMode('draw');
+      renderOverlayBoxes();
+    };
 
     // Ink colour (typed, drawn and the placed name / date)
     const inkBtns = /** @type {NodeListOf<HTMLButtonElement>} */ (modal.querySelectorAll('.ws-ink'));
@@ -1059,7 +1107,7 @@ export async function openSignWorkshop(opts) {
         savedSig.ink = normalizeInk(b.dataset.ink);
         syncInkButtons();
         pad.redraw();
-        if (savedSig.mode === 'draw' && pad.hasInk()) { savedSig.pngDataUrl = pad.toPngDataUrl(); await signatureImageChanged(); }
+        if (savedSig.mode === 'draw' && sigInk) { savedSig.pngDataUrl = renderSigPng(); await signatureImageChanged(); }
         else if (savedSig.mode === 'type') await updateTypedSig();
         renderOverlayBoxes();
       };
@@ -1294,6 +1342,7 @@ export async function openSignWorkshop(opts) {
             if (box.kind === 'signature') syncScaleFromItem(box);
           };
           const onResizeUp = () => {
+            if (box.kind === 'signature') void rerenderSigPng(false);
             handle.removeEventListener('pointermove', onResizeMove);
             handle.removeEventListener('pointerup', onResizeUp);
             handle.removeEventListener('pointercancel', onResizeUp);
@@ -1428,11 +1477,13 @@ export async function openSignWorkshop(opts) {
           savedSig.pngDataUrl = await renderTypedSignaturePngAsync(typedSigInput.value, fontSelect.value, savedSig.ink);
         }
         if (rememberSigCheck.checked) {
+          const strokesJson = savedSig.mode === 'draw' ? serializeInk(sigInk) : ''; // strokes instead of a PNG (<= ~50 KB)
           saveSignatureToStorage({
             mode: savedSig.mode,
             typedText: typedSigInput.value,
             fontKey: normalizeFontKey(fontSelect.value),
-            pngDataUrl: savedSig.pngDataUrl,
+            pngDataUrl: strokesJson ? '' : savedSig.pngDataUrl,
+            strokes: strokesJson,
             printedName: printedNameInput.value.trim(),
             signatureScale,
             textFontSize,
@@ -1442,6 +1493,7 @@ export async function openSignWorkshop(opts) {
           try { localStorage.removeItem(SIG_STORAGE_KEY); } catch {}
         }
 
+        if (sigInk && savedSig.mode === 'draw') savedSig.pngDataUrl = renderSigPng(); // sharp at the final placed size
         const sigBytes = dataUrlToBytes(savedSig.pngDataUrl);
         /** @type {Record<string, Uint8Array>} */
         const stampPngs = {};
@@ -1488,7 +1540,8 @@ export async function openSignWorkshop(opts) {
     if (savedSig.mode === 'upload' && savedSig.pngDataUrl) {
       uploadPreviewImg.src = savedSig.pngDataUrl;
     }
-    void setSigMode(savedSig.mode === 'upload' && savedSig.pngDataUrl ? 'upload' : 'type');
+    if (sigInk) pad.setInk(fitInkInto(sigInk, 1, drawPad.height / drawPad.width));
+    void setSigMode(savedSig.mode === 'upload' && savedSig.pngDataUrl ? 'upload' : sigInk ? 'draw' : 'type');
     updateValidationState();
     // Open scrolled to the default target (the last approval page, else the last scan); otherwise at the top.
     if (defaultTarget >= 0) {

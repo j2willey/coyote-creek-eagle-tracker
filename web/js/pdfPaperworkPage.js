@@ -9,19 +9,23 @@
  * type-checked without importing the untyped committee.js.
  */
 import { ensurePdfLibs, ensureGoogleScriptFonts, renderTypedSignaturePngAsync, loadSavedSignature } from './pdfWorkshop.js';
-import { SCRIPT_FONTS, INK_COLORS, DEFAULT_INK, normalizeInk } from './pdfPlan.js';
+import { SCRIPT_FONTS, INK_COLORS, DEFAULT_INK, normalizeInk, SIGNATURE_BASE_WIDTH_PT } from './pdfPlan.js';
 import { inspectPdfWithPdfJs, applyMarksAndFlatten } from './pdfEngine.js';
 import { createPageView } from './pdfView.js';
 import { createDrawPad } from './pdfDraw.js';
-import { pngAspect, dataUrlToBytes } from './pdfInk.js';
+import { pngAspect, dataUrlToBytes, inkToPngDataUrl } from './pdfInk.js';
+import { openSigningOverlay } from './pdfSignPad.js';
+import { inkAspect, pixelWidthForBox } from './pdfStrokes.js';
 import { findRequirement7Page, requirement7DateMarks, fitSignatureToBox, fillAdvancementReport } from './pdfPaperwork.js';
 
 // Ink, font and Type / Draw only: never a signature (several people sign on one device).
 const STORE_KEY = 'ccacEborPaperwork_v1';
 
 /**
+ * @typedef {{ dataUrl: string, ink: import('./pdfStrokes.js').Ink | null }} SigResult
  * @typedef {import('./pdfView.js').ViewMark & { slotKey?: string }} Mark
- * @typedef {{ key: string, label: string, rep: boolean, name: string, dataUrl: string, aspect: number }} Slot
+ * @typedef {{ key: string, label: string, rep: boolean, name: string, dataUrl: string, aspect: number,
+ *   ink: import('./pdfStrokes.js').Ink | null, px: number }} Slot  `ink`: a pen signature as strokes (its picture is drawn from them)
  * @typedef {{ pageIndex: number, x: number, y: number, width: number, height: number }} Rect
  * @typedef {{
  *   kind: 'application' | 'report', host: any, pagesBar: any, slotsBox: any,
@@ -94,7 +98,13 @@ export function initPaperwork(deps) {
     saveSettings();
     inkSyncs.forEach(f => f());
     // The date follows the ink; a finished signature keeps the colour it was made in.
-    for (const d of Object.values(docs)) { d.marks.forEach(m => { if (m.kind === 'text') m.ink = ink; }); if (d.view) d.view.refresh(); }
+    // A pen signature is strokes, so it is re-drawn in the new colour; a typed one keeps the colour it was made in.
+    for (const d of Object.values(docs)) {
+      d.marks.forEach(m => { if (m.kind === 'text') m.ink = ink; });
+      for (const s of d.slots) if (s.ink) redrawSlot(d, s);
+      if (d.view) d.view.refresh();
+      refreshSlots(d);
+    }
     if (sigDialogOpen) { sigPad.redraw(); void renderTyped(); }
   }
 
@@ -105,7 +115,7 @@ export function initPaperwork(deps) {
   const sigPreview = $('sigPreview');
   const sigPad = createDrawPad($('sigPad'), { getInk: () => ink, onChange: () => { $('sigMsg').textContent = ''; } });
   let sigDialogOpen = false;
-  /** @type {((r: string | null) => void) | null} */
+  /** @type {((r: SigResult | null) => void) | null} */
   let sigResolve = null;
   buildInkRow($('sigInk'));
   sigFont.replaceChildren(...SCRIPT_FONTS.map(f => { const o = el('option', { value: f.key, textContent: f.label }); o.style.fontFamily = `'${f.family}', cursive`; return o; }));
@@ -127,7 +137,7 @@ export function initPaperwork(deps) {
   dlg.querySelectorAll('.ws-tab').forEach((/** @type {any} */ b) => { b.onclick = () => setSigMode(b.dataset.mode || 'type'); });
   $('sigUndo').onclick = () => sigPad.undo();
   $('sigClear').onclick = () => sigPad.clear();
-  /** @param {string | null} result */
+  /** @param {SigResult | null} result */
   function closeSig(result) {
     if (!sigResolve) return;
     const r = sigResolve; sigResolve = null; sigDialogOpen = false;
@@ -139,13 +149,14 @@ export function initPaperwork(deps) {
   $('sigUse').onclick = async () => {
     if (sigMode === 'type') {
       if (!sigText.value.trim()) { $('sigMsg').textContent = 'Type the signature first.'; return; }
-      closeSig(await renderTypedSignaturePngAsync(sigText.value, sigFont.value, ink));
+      closeSig({ dataUrl: await renderTypedSignaturePngAsync(sigText.value, sigFont.value, ink), ink: null });
     } else {
-      if (!sigPad.hasInk()) { $('sigMsg').textContent = 'Draw the signature first.'; return; }
-      closeSig(sigPad.toPngDataUrl());
+      const drawn = sigPad.getInk();
+      if (!drawn) { $('sigMsg').textContent = 'Draw the signature first.'; return; }
+      closeSig({ dataUrl: '', ink: drawn });
     }
   };
-  /** @param {string} title @param {string} name @returns {Promise<string | null>} a PNG data URL, or null when cancelled */
+  /** @param {string} title @param {string} name @returns {Promise<SigResult | null>} a typed signature's PNG or a drawn one's strokes; null when cancelled */
   async function askSignature(title, name) {
     ensureGoogleScriptFonts();
     $('sigTitle').textContent = title;
@@ -176,7 +187,7 @@ export function initPaperwork(deps) {
     d.view = createPageView(d.host, {
       pdfjsDoc: d.pdfjsDoc, pageSizes: d.pageSizes, getMarks: () => d.marks,
       onRemove: m => { d.marks = d.marks.filter(x => x !== m); afterMarksChanged(d); },
-      onChange: () => { dirty = true; },
+      onChange: () => { dirty = true; refreshInkMarks(d); },
       onPageClick: (pageIndex, point) => placeAtPoint(d, pageIndex, point),
       onCurrentPage: () => drawPageBar(d)
     });
@@ -228,16 +239,20 @@ export function initPaperwork(deps) {
         name.setAttribute('aria-label', `Name of the signer: ${s.label}`);
         const rep = el('input', { type: 'checkbox', checked: s.rep });
         const sign = el('button', { type: 'button', textContent: 'Sign…' });
+        const pen = el('button', { type: 'button', textContent: '✍ Sign with pen…', title: 'A large pad for a pen tablet, stylus, finger or mouse' });
         const place = el('button', { type: 'button' });
         const thumb = el('img', { className: 'ep-thumb', alt: 'Signature', hidden: true });
         const status = el('span', { className: 'hint' });
         const box = el('div', { className: 'ep-slot' },
           el('h4', { textContent: s.label }), name,
           el('label', { className: 'choice' }, rep, ' ' + (data.repLabel || 'District Advancement Committee / Council representative')),
-          el('div', { className: 'ep-actions' }, sign, thumb, place, status));
+          el('div', { className: 'ep-actions' }, sign, pen, thumb, place, status));
         const sync = () => {
           const placed = slotPlaced(d, s);
           sign.disabled = s.name.trim().length < 2;
+          pen.disabled = s.name.trim().length < 2;
+          thumb.hidden = !s.dataUrl;
+          if (s.dataUrl && thumb.getAttribute('src') !== s.dataUrl) thumb.src = s.dataUrl;
           sign.textContent = s.dataUrl ? 'Sign again…' : 'Sign…';
           place.disabled = !s.dataUrl;
           place.textContent = placed ? 'Move to its line' : (d.kind === 'report' && d.sigRects[s.key] ? 'Place on the form' : 'Place on the page…');
@@ -247,14 +262,19 @@ export function initPaperwork(deps) {
         name.oninput = () => { s.name = name.value; dirty = true; refreshSlots(d); };
         rep.onchange = () => { s.rep = rep.checked; };
         sign.onclick = async () => {
-          const url = await askSignature(s.label, s.name.trim());
-          if (!url) return;
-          s.dataUrl = url; s.aspect = await pngAspect(url); dirty = true;
-          thumb.src = url; thumb.hidden = false;
-          // A signature already on the page is replaced in place (same width, new picture).
-          const m = d.marks.find(x => x.slotKey === s.key);
-          if (m) { m.dataUrl = url; m.height = Math.round((m.width / (s.aspect || 4)) * 10) / 10; if (d.view) d.view.refresh(); }
-          refreshSlots(d);
+          const got = await askSignature(s.label, s.name.trim());
+          if (!got) return;
+          if (got.ink) setSlotInk(d, s, got.ink);
+          else {
+            s.ink = null; s.dataUrl = got.dataUrl; s.aspect = await pngAspect(got.dataUrl);
+            signatureChanged(d, s);
+          }
+        };
+        pen.onclick = async () => {
+          const res = await openSigningOverlay({ title: s.label, who: `Signer: ${s.name.trim()}`, inkKey: ink });
+          if (!res) return;
+          if (res.inkKey !== ink) setInk(res.inkKey);
+          setSlotInk(d, s, res.ink);
         };
         place.onclick = () => placeSlot(d, s);
         box.sync = sync;
@@ -264,12 +284,51 @@ export function initPaperwork(deps) {
     updateTabs();
   }
 
+  // ---- pen signatures: strokes in, a picture of the right colour and size out ----
+  /** The picture's width: 3x the placed box in points (sharp on screen and in the PDF). */
+  const slotPx = (/** @type {DocState} */ d, /** @type {Slot} */ s) => {
+    const m = d.marks.find(x => x.slotKey === s.key);
+    return pixelWidthForBox(m ? m.width : SIGNATURE_BASE_WIDTH_PT);
+  };
+  /** Re-draw a stroke signature from its strokes in the current ink and size; updates the placed mark's picture. */
+  function redrawSlot(/** @type {DocState} */ d, /** @type {Slot} */ s) {
+    if (!s.ink) return;
+    s.px = slotPx(d, s);
+    s.dataUrl = inkToPngDataUrl(s.ink, ink, s.px);
+    const m = d.marks.find(x => x.slotKey === s.key);
+    if (m) m.dataUrl = s.dataUrl;
+  }
+  /** After a mark was moved or resized: re-draw stroke signatures whose size changed enough to need a new picture. */
+  function refreshInkMarks(/** @type {DocState} */ d) {
+    let any = false;
+    for (const s of d.slots) {
+      if (!s.ink) continue;
+      const need = slotPx(d, s);
+      if (need > s.px * 1.15 || need < s.px / 1.5) { redrawSlot(d, s); any = true; }
+    }
+    if (any && d.view) d.view.refresh();
+  }
+  /** A new signature picture for a slot: a signature already on the page is replaced in place (same width). */
+  function signatureChanged(/** @type {DocState} */ d, /** @type {Slot} */ s) {
+    dirty = true;
+    const m = d.marks.find(x => x.slotKey === s.key);
+    if (m) { m.dataUrl = s.dataUrl; m.height = Math.round((m.width / (s.aspect || 4)) * 10) / 10; if (d.view) d.view.refresh(); }
+    refreshSlots(d);
+  }
+  function setSlotInk(/** @type {DocState} */ d, /** @type {Slot} */ s, /** @type {import('./pdfStrokes.js').Ink} */ strokes) {
+    s.ink = strokes;
+    s.aspect = inkAspect(strokes);
+    redrawSlot(d, s);
+    signatureChanged(d, s);
+  }
+
   /** @param {DocState} d @param {Slot} s @param {number} pageIndex @param {{x:number,y:number,width:number,height:number}} box */
   function putSignature(d, s, pageIndex, box) {
     d.marks = d.marks.filter(m => m.slotKey !== s.key);
     const id = `sig-${d.kind}-${s.key}`;
     d.marks.push({ id, slotKey: s.key, kind: 'image', pageIndex, x: box.x, y: box.y, width: box.width, height: box.height,
       label: `Signature: ${s.label}`, dataUrl: s.dataUrl });
+    if (s.ink) redrawSlot(d, s);
     afterMarksChanged(d);
     if (d.view) { d.view.scrollToPage(pageIndex); d.view.select(id); }
   }
@@ -432,7 +491,7 @@ export function initPaperwork(deps) {
       sc = await api('eborPaperworkScout', { session, recordId, ...(boardYmd ? { boardYmd } : {}) });
       if (seq !== loadSeq) return;
       /** @param {any} s @returns {Slot} */
-      const slotOf = s => ({ key: s.key, label: s.label, rep: !!s.rep, name: '', dataUrl: '', aspect: 0 });
+      const slotOf = s => ({ key: s.key, label: s.label, rep: !!s.rep, name: '', dataUrl: '', aspect: 0, ink: null, px: 0 });
       docs.application.slots = data.slots.application.map(slotOf);
       docs.report.slots = data.slots.report.map(slotOf);
       showScoutInfo();
@@ -488,6 +547,7 @@ export function initPaperwork(deps) {
   /** @param {DocState} d */
   async function pdfFileFor(d) {
     const { PDFLib } = await ensurePdfLibs();
+    for (const s of d.slots) if (s.ink) redrawSlot(d, s); // sharp at the final placed size
     /** @type {import('./pdfEngine.js').FreeMark[]} */
     const marks = d.marks.map(m => m.kind === 'image'
       ? { id: m.id, kind: 'image', pageIndex: m.pageIndex, x: m.x, y: m.y, width: m.width, height: m.height, png: dataUrlToBytes(m.dataUrl || '') }

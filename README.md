@@ -172,7 +172,8 @@ web/                      Firebase Hosting: index, intake, confirm, proposal-gui
                           pdfEngine.js (pdf.js inspection, BSA workbook decryption, sign + flatten with pdf-lib),
                           pdfWorkshop.js (Sign Workshop dialog on the Review page; libraries and fonts loaded on demand),
                           pdfInk.js (signature image helpers), pdfDraw.js (touch / stylus draw pad), pdfView.js (page viewer with draggable marks),
-                          pdfPaperwork.js (EBoR paperwork: Requirement 7 page and date boxes, form fill), pdfPaperworkPage.js (that page)
+                          pdfPaperwork.js (EBoR paperwork: Requirement 7 page and date boxes, form fill), pdfPaperworkPage.js (that page),
+                          pdfStrokes.js (pen strokes as data, pure), pdfDraw.js (pad engine), pdfSignPad.js (the signing overlay)
 test/                     vitest (+ tsconfig.json: type check of web/js/pdf*.js)
 tools/deploy-api.mjs      npm run deploy:api[:staging|:prod]
 docs/                     overview, glossary, process flow
@@ -602,6 +603,23 @@ for scans again. Actions: `eborPaperworkChoices`, `Scout`, `Template`, `Start`, 
 
 After deploying: set `advancementReportTemplateId` (upload the blank form to Drive, outside this repo), check `districtName` and
 `advancementTitle`, run Setup / repair tabs (adds the Key 3 address headers).
+
+### Signing with a pen tablet or touchscreen (`web/js/pdfStrokes.js`, `pdfDraw.js`, `pdfSignPad.js`; Task 13)
+
+**✍ Sign with pen…** (in the Sign Workshop's signature section and on each signer slot of the EBoR paperwork page) opens a
+nearly full-screen pad: a screenless USB pen tablet maps to the whole screen, so a big area lines up with the tablet; a
+phone or tablet gets the whole screen too. It has a baseline, **Undo** (last stroke), **Clear**, **Cancel**, **Done**, an
+ink palette, and Esc cancels. The page does not scroll or select text while it is open, one pointer draws at a time and a
+resting palm or a second finger is ignored. **Done** crops to the ink: in the Workshop it becomes the current signature
+(Draw) and **✍ Signature** drops it; on the paperwork page it fills that signer's slot.
+- **Pressure:** a pen's pressure thickens and thins the line; a mouse or finger (which report no pressure, or a fixed 0.5)
+  draws a constant width. For pressure on a pen tablet **enable Windows Ink in the tablet's driver** (XP-Pen: "Use Windows
+  Ink" in the driver's settings; without it the browser sees the tablet as a mouse and the line is constant).
+- **Strokes are data:** points `{x, y, p, t}` normalised to the pad width, drawn as smoothed curves. The picture is rendered
+  from the strokes for the ink colour and for the size it is placed at (3x the box in points, between 600 and 3000 px), so
+  changing the colour or resizing a placed signature re-draws it sharply, and the PDF gets the high-resolution picture. A
+  typed or uploaded signature keeps its own picture.
+- **Remember my signature** keeps a pen signature as strokes (JSON, thinned to fit about 50 KB) instead of a PNG.
 
 ### Review page: the Scout's files and the Sign Workshop (`web/js/pdfPlan.js`, `pdfEngine.js`, `pdfWorkshop.js`)
 
