@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.75.0';
+var API_VERSION = '0.76.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -82,6 +82,18 @@ var ACTIONS_ = {
   eborPaperworkUpload: function (req) { return actionEborPaperworkUpload_(req); },
   eborPaperworkFinish: function (req) { return actionEborPaperworkFinish_(req); },
   eborPaperworkDemoReset: function (req) { return actionEborPaperworkDemoReset_(req); },
+  // Remote EBoR signing (remoteSigningActions.js; vault ebor-remote-signing-design.md)
+  eborPaperworkSavePartial: function (req) { return actionEborPaperworkSavePartial_(req); },
+  eborSignatureStatus: function (req) { return actionEborSignatureStatus_(req); },
+  eborSignatureRequest: function (req) { return actionEborSignatureRequest_(req); },
+  eborSignatureEdit: function (req) { return actionEborSignatureEdit_(req); },
+  eborPaperworkFinishPartial: function (req) { return actionEborPaperworkFinishPartial_(req); },
+  signerChoices: function (req) { return actionSignerChoices_(req); },
+  signerDocs: function (req) { return actionSignerDocs_(req); },
+  signerFetch: function (req) { return actionSignerFetch_(req); },
+  signerStart: function (req) { return actionSignerStart_(req); },
+  signerUpload: function (req) { return actionSignerUpload_(req); },
+  signerFinish: function (req) { return actionSignerFinish_(req); },
   // Sign Workshop stamps (stampActions.js)
   stampList: function (req) { return actionStampList_(req); },
   stampFetch: function (req) { return actionStampFetch_(req); },

@@ -6,7 +6,7 @@
  *   eborPaperworkChoices  {session}                -> {me, today, scouts, selected, slots, repLabel, committee, settings, testMode}
  *   eborPaperworkScout    {session, recordId}      -> {name, unit, board, suggestions, fields, verified, pdfs, folderUrl, ...}
  *   eborPaperworkTemplate {session}                -> {name, mime, data (base64)}   the blank Advancement Report (Settings)
- *   eborPaperworkStart    {session, recordId, boardYmd, application: [signer], report: [signer], verifiedId}
+ *   eborPaperworkStart    {session, recordId, boardYmd, application: [signer], report: [signer], verifiedId, partial?}
  *                                                  -> {uploadToken}   (signer: {name, rep, signed})
  *   eborPaperworkUpload   {uploadToken, kind: application|report, name, data (base64)} -> {stored}
  *   eborPaperworkFinish   {session, uploadToken}   -> {message, outboxId}
@@ -144,13 +144,15 @@ function actionEborPaperworkStart_(req) {
   if (!demo && (!rec || EBOR_SECTIONS_.indexOf(rec.section) < 0)) throw userError_('That Scout is no longer at EBoR Booked or EBoR Paused. Reload the page.');
   var boardYmd = String(req.boardYmd || '');
   if (!EborPaperwork.parts(boardYmd)) throw userError_('The EBoR date is missing. Pick it on the page.');
-  var app = EborPaperwork.checkSigners('application', req.application);
-  var rep = EborPaperwork.checkSigners('report', req.report);
+  var partial = !!req.partial;   // Save partial (remote signing): unsigned boxes allowed
+  var app = EborPaperwork.checkSigners('application', req.application, { partial: partial });
+  var rep = EborPaperwork.checkSigners('report', req.report, { partial: partial });
   var errors = app.errors.concat(rep.errors);
   if (errors.length) throw userError_(errors.join(' '));
   var token = Identity.makeToken(Utilities.getUuid);
   CacheService.getScriptCache().put('ep:' + token, JSON.stringify({ recordId: rec.recordId, boardYmd: boardYmd, email: c.email,
-    sign: { application: app.clean, report: rep.clean }, verifiedId: String(req.verifiedId || ''), batchId: 'EP-' + Date.now().toString(36).toUpperCase(), uploads: [] }),
+    sign: { application: app.clean, report: rep.clean }, verifiedId: String(req.verifiedId || ''), batchId: 'EP-' + Date.now().toString(36).toUpperCase(), uploads: [],
+    partial: partial }),
     EBOR_PAPERWORK_TOKEN_SECONDS);
   return { uploadToken: token };
 }
@@ -223,6 +225,9 @@ function actionEborPaperworkFinish_(req) {
   var queued = !!(res && res.queued);
   if (res && !queued) note = ' No Council email was drafted (' + (res.reason || 'template Off') + ').';
   if (!String(s.councilEaglesEmail || '').trim()) note += ' Settings → councilEaglesEmail is empty: add the address in the Outbox.';
+
+  // A partly signed run in progress (remote signing) is closed: its pending requests end.
+  closeSignatureSeries_(rec.recordId, by);
 
   // 3. Log (Notes cell + Life to Eagle Log + digest).
   addRecordNote_(rec.recordId, EborPaperwork.logLine(Intake.shortDate(new Date()), by, ctx.boardYmd, ctx.sign,

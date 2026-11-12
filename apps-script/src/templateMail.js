@@ -107,7 +107,7 @@ function mailFromTemplate_(key, vars, msg) {
   var group = getSettings_().committeeGroupEmail || '';
   // Cc line of the tab: none = only the addresses that always go (msg.keepCc: the parent/guardian); group = add the group.
   if (tab.cc === 'none') out.cc = MailPlan.merge(msg.keepCc);
-  else if (tab.cc === 'group' && msg.kind !== 'signin' && group) out.cc = MailPlan.merge(out.cc, group);
+  else if (tab.cc === 'group' && msg.kind !== 'signin' && msg.kind !== 'private' && group) out.cc = MailPlan.merge(out.cc, group);
   // A committee member caused it and the tab says Review (or the caller always wants a draft, msg.outbox):
   // wait in the Outbox (committee page) instead of sending.
   if ((tab.mode === 'review' || msg.outbox) && msg.committee && msg.kind !== 'signin') {

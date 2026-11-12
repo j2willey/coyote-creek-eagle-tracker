@@ -28,6 +28,7 @@ var MailPlan = (function () {
   /**
    * msg: { to, cc, bcc, subject, body, htmlBody?, kind? }
    *   kind 'signin' = carries a working credential: never cc'd to the Committee Group.
+   *   kind 'private' = to one person about a minor's paperwork (remote EBoR signing): never cc'd to the Committee Group either.
    * returns { send: bool, reason?, to, cc, bcc, subject, body, htmlBody }
    */
   function plan(msg, settings) {
@@ -36,7 +37,7 @@ var MailPlan = (function () {
     var bcc = uniq(list(msg.bcc));
     var group = (settings.committeeGroupEmail || '').trim();
 
-    if (msg.kind === 'signin' && group) {
+    if ((msg.kind === 'signin' || msg.kind === 'private') && group) {
       var g = group.toLowerCase();
       var strip = function (a) { return a.toLowerCase() !== g; };
       to = to.filter(strip); cc = cc.filter(strip); bcc = bcc.filter(strip);

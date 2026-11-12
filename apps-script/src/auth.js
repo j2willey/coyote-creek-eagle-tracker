@@ -170,7 +170,7 @@ function whoIs_(email) {
   var e = Identity.normalizeEmail(email);
   var s = getSettings_();
   return Access.whoIs({ email: e, records: e ? Records.findByEmail(e) : [], units: e ? Units.forEmail(units_(), e) : [],
-    committee: committeeAll_(), settings: s, signatures: [] });
+    committee: committeeAll_(), settings: s, signatures: e ? openSignaturesFor_(e) : [] });
 }
 
 /** New browser session for a proven email address. Returns the token (only its hash is stored). */
@@ -208,7 +208,10 @@ function mePayload_(email) {
   });
   var units = w.units.map(function (u) { return { unit: u.unit, underReview: u.underReview }; });
   var m = w.member;
-  return { email: email, records: records, units: units,
+  // EBoR paperwork waiting for this address's signature (remote signing): one entry per Scout, for /sign.
+  var sig = {};
+  w.signatures.forEach(function (r) { sig[r.recordId] = sig[r.recordId] || { recordId: r.recordId, scout: r.scout }; });
+  return { email: email, records: records, units: units, signatures: Object.keys(sig).map(function (k) { return sig[k]; }),
     committee: m ? { name: String(m.name || ''), initials: String(m.initials || ''), admin: w.admin, support: w.support } : null };
 }
 

@@ -24,7 +24,9 @@ var TemplateSamples = (function () {
     members: 'Pat Example, Chris Sample', dayOfContact: 'Text Pat Example at 408-555-0100.',
     folderLink: 'https://drive.google.com/drive/folders/SAMPLE', logLink: 'https://docs.google.com/document/d/SAMPLE/edit',
     photosLine: 'Photos from your Board of Review are attached.', senderName: 'Pat Example',
-    description: 'Added the beneficiary letter, fixed the materials list and moved the project date to March.'
+    description: 'Added the beneficiary letter, fixed the materials list and moved the project date to March.',
+    signer: 'Jordan Test', boardDate: '11/17/2026', member: 'Pat Example',
+    boxes: '- Advancement Report: Board member\n- Eagle Application (Requirement 7): Board of review chair'
   };
 
   /** Sample values for a catalog entry's placeholders (unknown names get "[name]"). */

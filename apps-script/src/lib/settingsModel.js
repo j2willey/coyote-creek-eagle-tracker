@@ -65,6 +65,7 @@ var SettingsModel = (function () {
     councilAppFrom: '',           // Council Formsite application emails filed into Scout folders from this date (YYYY-MM-DD); blank = off
     pleaseBookDays: 'Intake 7,14; ESSPPR 7,14; EBoR 7',   // "Please book" reminders: days in the To Book stage per session type; a type with no days = none
     signingNudgeDays: 3,          // Proposal signatures in progress: listed in the digest after this many days waiting on a signer
+    signatureDays: 14,            // EBoR paperwork signed outside the room: a signer's request is open this many days (lib/signatures.js)
     eborReminderDays: 3,          // EBoR reminder (4.3.c, Scout + board) is drafted this many days before the board
     dayOfContact: '',             // "Running late?" line in the EBoR reminder, e.g. "text 408-555-0100"; blank = line left out            // paperwork sent this many days ago without SVMBC Received = overdue (amber, digest)          // {scheduleLink} in the Proposal Review booking email while reviews aren't booked online; blank = eborSignupUrl            // link for {scheduleLink} in the EBoR next-steps email (today: the old schedule sheet)       // machine name of the Approved Date column; blank = the column named approved_date (Review page)
     cancelCutoffHours: 24,        // Scouts can cancel up to this long before

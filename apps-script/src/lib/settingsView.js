@@ -20,7 +20,7 @@ var SettingsView = (function () {
   // [min, max] for numbers (default: 0 and up; *Minutes keys 5 to 600).
   var RANGES = { maxUploadMB: [1, 50], intakeLinkHours: [1, 6], intakeConfirmDays: [1, 60], intakePurgeDays: [1, 365],
     linkMinutes: [5, 1440], sessionDays: [1, 365], committeeSessionDays: [1, 365], eborReminderDays: [0, 30],
-    signingNudgeDays: [1, 60], closeReviewDays: [30, 1095], closeSnoozeDays: [7, 730], councilAckDays: [1, 90] };
+    signingNudgeDays: [1, 60], signatureDays: [1, 60], closeReviewDays: [30, 1095], closeSnoozeDays: [7, 730], councilAckDays: [1, 90] };
   var MUST_HAVE = { committeeGroupEmail: 1, adminEmail: 1 };   // the tool can't work without these
 
   // [key, help]. Order = order on the page.
@@ -48,7 +48,8 @@ var SettingsView = (function () {
       ['digestTo', 'Digest recipients; blank = the committee group'],
       ['pleaseBookDays', '"Please book" reminders: days in the To Book stage per session type'],
       ['eborReminderDays', 'EBoR reminder drafted this many days before the board'],
-      ['signingNudgeDays', 'Proposal signatures waiting this many days: listed in the digest'],
+      ['signingNudgeDays', 'Proposal signatures (and EBoR paperwork signatures) waiting this many days: listed in the digest'],
+      ['signatureDays', 'EBoR paperwork signed outside the room: each signer\'s request stays open this many days'],
       ['closeReviewDays', 'No log line or update for this long: "Close?" suggestion'],
       ['closeSnoozeDays', '"Keep open" hides the "Close?" suggestion for this long'],
       ['councilAckDays', 'Days after sending the signed paperwork to Council'],

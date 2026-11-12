@@ -242,6 +242,19 @@ var TemplateCatalog = (function () {
       'and the Advancement Report.', '',
       'Please reply to confirm that you received them.', '',
       '{senderName}', 'Coyote Creek District Advancement Committee'] });
+  // Remote EBoR signing (Jim W., 2026-11-12; vault ebor-remote-signing-design.md): To the signer only, never Cc the group
+  // (sent as kind 'private'). The link is the signing page, not a credential: the signer signs in there with this address.
+  LIST.push(t('Signature request', 'B', ['signer', 'scout', 'unit', 'boardDate', 'boxes', 'member', 'link', 'days'],
+    'Eagle Scout paperwork for {scout}: your signature is needed', [
+      'Hello {signer},', '',
+      '{member} of the Coyote Creek District Advancement Committee asks you to sign the Eagle Scout paperwork for {scout} ({unit}), ' +
+      'Board of Review on {boardDate}:', '', '{boxes}', '',
+      'To sign: open {link} , enter this email address, and click the sign-in link we email you. You sign in your browser: ' +
+      'nothing to print or scan.', '',
+      'This request is open for {days} days. If you were not on this board, or this reached the wrong person, reply to this email.'], 'none'));
+  LIST.push(t('Signatures complete', 'B', ['scout', 'link'], 'Eagle Scout paperwork for {scout}: all signatures are in', [
+    'Every signature on the Eagle Scout paperwork for {scout} is in.', '',
+    'Open the EBoR paperwork page, check both documents and click Finish to file them and draft the Council email: {link}'], 'none'));
   LIST.push(t('EBoR paused', 'B', ['scout', 'date', 'note', 'pageLink'], 'Eagle Board of Review: next steps ({scout})', [
     'Thank you, {scout}, for meeting with the Eagle Scout Board of Review on {date}. The board has paused (adjourned) so that the following can be completed:', '',
     '{note}', '',
@@ -316,6 +329,8 @@ var TemplateCatalog = (function () {
     'Open times: Eagle Board of Review': ['4.1.i', 'Application Verified', '(same)', 'Same as 1.4.d', 'all Scouts ready to book; Cc their parents/guardians + committee'],
     'Please book': ['6.2.c', 'any To Book stage (online booking)', '(same)', 'Hourly: Settings → pleaseBookDays in a To Book stage (default 7 + 14 days; EBoR 7): drafted into the Outbox', SF],
     'Session briefing': ['6.2.b', 'any Booked stage', '(same)', 'Hourly: the day before (within 24 h), sent automatically (a Follow-Up / Consult too)', 'committee members on the slot'],
+    'Signature request': ['4.4.a', 'EBoR Booked / EBoR Paused', '(same)', 'EBoR paperwork page: Save partial, then "Send for signatures" (signing outside the room)', 'the signer only (no Cc)'],
+    'Signatures complete': ['4.4.b', 'EBoR Booked / EBoR Paused', '(same)', 'The last asked signer signs', 'the member who asked'],
     'EBoR paused': ['4.2.a', 'EBoR Booked', 'EBoR Paused', 'Row action "EBoR paused" (with note)', SF],
     'Eagle not awarded': ['4.2.b', 'EBoR Booked / EBoR Paused', 'Eagle Not Awarded', 'Row action "Eagle not awarded" (with reasons)', SF],
     'New Eagle Scout': ['5.1.a', 'EBoR Booked', 'Eagle Earned', 'Row action "Eagle earned" (photos attached)', 'Scout; Cc parent/guardian, ' + UC + ', the board, others to invite'],

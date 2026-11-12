@@ -104,7 +104,8 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     closing.js            Closed records: reasons, close / reopen plans, the _closed cell, "Close?" suggestions, January archive rows (no contact details), closures by reason
     nudges.js             hourly nudges (4.1.h, 6.2.b, 6.2.c), _stage_since, the digest's "Awaiting action" list
     settingsView.js       Admin → Settings: settings grouped with help
-    access.js             who an email is, in one place: records, units, Committee row, Admin / Support (whoIs); the working committee
+    access.js             who an email is, in one place: records, units, Committee row, Admin / Support, pending signatures (whoIs)
+    signatures.js         remote EBoR signing ledger (_Signatures): series, who signs which box, request checks, conflict check
     people.js             Admin → People: committee member list, add / edit checks
     adminRules.js         Admin page: held web submissions and their actions; January archive (years, rows to delete)
     sectionSort.js        EBoR Booked in EBoR Date order (latest at the top): wanted order + row moves
@@ -298,6 +299,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `femaleColumn` | (blank) | Female column for the Stats page; blank = the column whose machine name is/ends in `female` |
 | `pleaseBookDays` | `Intake 7,14; ESSPPR 7,14; EBoR 7` | "Please book" reminders: days in the To Book stage per session type (code or label); a type with no days = none |
 | `signingNudgeDays` | 3 | Proposal signatures in progress: listed in the digest after this many days waiting on a signer |
+| `signatureDays` | 14 | EBoR paperwork signed outside the room: each signer's request stays open this many days |
 | `councilAppFrom` | (blank = off) | Council Formsite application emails filed into Scout folders from this date |
 | `eborReminderDays`, `dayOfContact` | 3, | EBoR reminders drafted this many days before; "Running late?" line |
 | `councilAckDays`, `svmbcReceivedMark`, `councilEaglesEmail` | 7, `*`, (blank) | Waiting on Council; Council Eagle Services address (Self-check flags it when empty) |
@@ -628,6 +630,34 @@ path against a fake Drive and fails on any tracking, Scout-log or Council call.
 
 After deploying: put the blank form in the Form Templates folder (or set `advancementReportTemplateId`; forms stay in Drive, outside this repo), check `districtName` and
 `advancementTitle`, run Setup / repair tabs (adds the Key 3 address headers).
+
+### Signing outside the room (`lib/signatures.js`, `remoteSigningActions.js`; Jim W., 2026-11-12; vault `ebor-remote-signing-design.md`)
+
+The fallback when the board's paperwork can't all be signed in the room (no laptop, no internet). In Dev with the
+paperwork page.
+
+1. **Save partial** (paperwork page): the documents as they are (filled, dated, any signatures done) go to the Scout's
+   folder as `…_EagleApplication-Partial.pdf` / `…_AdvancementReport-Partial.pdf` (earlier Partials to Archive; the
+   Verified Application stays until Finish). A new **series** starts on the hidden **`_Signatures`** tab: one row per
+   signer (who, which boxes, DAC/Council rep or not); the room's signers are rows with Status Signed and no email. An
+   earlier unfinished series for the Scout is cancelled.
+2. **Send for signatures**: name + email + box(es) per signer (any address can be typed). Each gets template **4.4.a
+   Signature request**, To that signer only (mail kind `private`: never Cc the group, whatever the tab says). The email
+   links to `/sign`, never a credential. Rows can be fixed (a bad address: the old one loses access at once and the new
+   one gets the email), resent (restarts the clock) or cancelled. Open for `signatureDays` (14).
+3. **The signer**: a pending, unexpired row puts the address **on file** (`Access.whoIs` → sign-in link, not the Start
+   link). On `/sign` they see only that Scout's Partial copies, sign their own boxes and save. The save is refused if
+   anyone saved those copies since the page loaded (file id + modified time, under the lock), so signers can sign in
+   any order. Their copy replaces the Partial (old one to Archive); their rows → Signed; Notes line. Once every box is
+   signed (or nobody is left to ask), the member who asked gets **4.4.b Signatures complete**.
+4. **Finish** (paperwork page): the Partials become the standard `-Signed.pdf` names, the Verified Application and
+   earlier signed copies go to Archive, every row of the series gets **Filed** (pending ones Cancelled), and the Council
+   email is drafted as for an in-room Finish. Missing boxes or no DAC/Council rep: listed, Finish needs a confirm. An
+   in-room Finish also closes an open series.
+
+Actions: `eborPaperworkStart {partial: true}` + `eborPaperworkSavePartial`, `eborSignatureStatus`, `eborSignatureRequest`,
+`eborSignatureEdit`, `eborPaperworkFinishPartial`; signer: `signerChoices`, `signerDocs`, `signerFetch`, `signerStart`,
+`signerUpload`, `signerFinish`. `test/remoteSigning.test.js` runs the whole path against a fake Drive.
 
 ### Signing with a pen tablet or touchscreen (`web/js/pdfStrokes.js`, `pdfDraw.js`, `pdfSignPad.js`; Task 13)
 

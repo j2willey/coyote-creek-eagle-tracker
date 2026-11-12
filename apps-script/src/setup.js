@@ -6,6 +6,7 @@
  *  Intake Queue  visible   every submission lands here first (M3); _ columns hidden
  *  Uploads Log   visible   one row per file received (M3/M7)
  *  _Sessions     hidden    hashed session tokens (M2); never shown to committee
+ *  _Signatures   hidden    remote EBoR signing ledger: who signs which box (lib/signatures.js)
  *  Activity      visible   one row per Life to Eagle Log line; feeds the digest (digest.js)
  *  Digest Log    visible   one row per scheduled digest: sent / no changes / error
  *  Closed Archive visible  the January archive of Closed records (adminActions.js / closingActions.js)
@@ -32,7 +33,10 @@ var TAB_HEADERS_ = {
     'Proposal approved', 'EBoR date', 'Folder', 'Archived on'],
   'Council Applications': ['Received', 'Ref', 'Name on form', 'Unit on form', 'Match', 'Scout', 'Record ID', 'How', 'Files', 'Not attached', 'Folder', 'Email', 'Checked', 'Stage'],
   'Unit Requests': ['Id', 'Submitted', 'Unit', 'From', 'Scout', 'Record ID', 'Date', 'Time', 'Place', 'Note', 'Status', 'Done', 'Done by'],
-  '_Sessions': ['Token hash', 'Email', 'Record IDs', 'Created', 'Expires', 'Last seen']
+  '_Sessions': ['Token hash', 'Email', 'Record IDs', 'Created', 'Expires', 'Last seen'],
+  // Remote EBoR signing ledger (lib/signatures.js HEADERS; test/gas-load.test.js keeps the two in step).
+  '_Signatures': ['Row ID', 'Request ID', 'Record ID', 'Scout', 'Email', 'Name', 'Slots', 'Rep', 'Status', 'Asked by', 'Asked',
+    'Signed', 'Expires', 'Filed', 'Note']
 };
 
 function setupTabs_() {

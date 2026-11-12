@@ -115,21 +115,23 @@ var EborPaperwork = (function () {
    * representative (the others are any adult board member present).
    * -> {ok, errors, clean: [{key, name, rep}]}
    */
-  function checkSigners(kind, signers) {
+  function checkSigners(kind, signers, opts) {
     var slots = SLOTS[kind], errors = [], clean = [];
+    var partial = !!(opts && opts.partial);   // Save partial (remote signing, 2026-11-12): empty boxes allowed, signed ones need a name
     if (!slots) return { ok: false, errors: ['Unknown document.'], clean: [] };
     var label = DOC_LABEL[kind], list = signers || [];
     if (list.length !== slots.length) errors.push(label + ' needs ' + slots.length + ' signatures.');
     var seen = {};
     slots.forEach(function (slot, i) {
       var s = list[i] || {}, name = str(s.name).replace(/\s+/g, ' ').slice(0, 80);
+      if (partial && !s.signed) { clean.push({ key: slot.key, name: name, rep: !!s.rep, signed: false }); return; }
       if (name.length < 2) errors.push(label + ', ' + slot.label + ': type the signer\'s name.');
       else if (seen[name.toLowerCase()]) errors.push(label + ': ' + name + ' is on two signature lines.');
       seen[name.toLowerCase()] = true;
       if (!s.signed) errors.push(label + ', ' + slot.label + ': the signature is missing.');
-      clean.push({ key: slot.key, name: name, rep: !!s.rep });
+      clean.push(partial ? { key: slot.key, name: name, rep: !!s.rep, signed: true } : { key: slot.key, name: name, rep: !!s.rep });
     });
-    if (!clean.some(function (c) { return c.rep; })) errors.push(label + ': tick "' + REP_LABEL + '" for at least one signer.');
+    if (!partial && !clean.some(function (c) { return c.rep; })) errors.push(label + ': tick "' + REP_LABEL + '" for at least one signer.');
     return { ok: !errors.length, errors: errors, clean: clean };
   }
 
