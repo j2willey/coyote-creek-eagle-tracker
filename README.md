@@ -108,6 +108,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     stats.js              Stats page: this year live (months, ages, female, pipeline, speed, units, sessions); history rows
     templateSamples.js    email preview: sample values for every placeholder, TEST banners
     emailMenu.js          "Email…" action: which emails fit a stage, what each needs, recently sent
+    eborPaperwork.js      EBoR paperwork: field map, MM/DD/YY, signer rules, Verified file picking, archive plan
     unitDirectory.js      unit contacts on the web: Key 3 rows vs unit-provided, directory, validation
     unitBroadcast.js      "Email the units": recipients by unit type and role, unique, Bcc batches
     openTimes.js          open-times email: Scouts ready to book a type, one To/Cc list, the times to list
@@ -161,7 +162,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     tabs.js settings.js mail.js menu.js setup.js
   src/tools/              migrate.js, fakeSchedule.js
 web/                      Firebase Hosting: index, intake, confirm, proposal-guide, signin, update, unit,
-                          committee.html (dashboard), committee/{schedule,outbox,review,units,stats,admin}.html (absolute /css /js paths)
+                          committee.html (dashboard), committee/{schedule,outbox,review,units,stats,admin,ebor-paperwork}.html (absolute /css /js paths)
   js/                     api.js (fetch), config.js (API URL per host), header.js (shared header), files.js (uploads),
                           committee.js (session, committee nav), outbox.js (Outbox UI, page + schedule popup),
                           boardSort.js (dashboard sorting inside a stage), photos.js (EBoR photo resize + EXIF date),
@@ -169,7 +170,9 @@ web/                      Firebase Hosting: index, intake, confirm, proposal-gui
                           unitContacts.js (unit contacts panel: committee Units page + unit page),
                           pdfPlan.js (pure: Scout folder file roles, workbook edition, which page is ours, placement math),
                           pdfEngine.js (pdf.js inspection, BSA workbook decryption, sign + flatten with pdf-lib),
-                          pdfWorkshop.js (Sign Workshop dialog on the Review page; libraries and fonts loaded on demand)
+                          pdfWorkshop.js (Sign Workshop dialog on the Review page; libraries and fonts loaded on demand),
+                          pdfInk.js (signature image helpers), pdfDraw.js (touch / stylus draw pad), pdfView.js (page viewer with draggable marks),
+                          pdfPaperwork.js (EBoR paperwork: Requirement 7 page and date boxes, form fill), pdfPaperworkPage.js (that page)
 test/                     vitest (+ tsconfig.json: type check of web/js/pdf*.js)
 tools/deploy-api.mjs      npm run deploy:api[:staging|:prod]
 docs/                     overview, glossary, process flow
@@ -292,6 +295,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `councilAppFrom` | (blank = off) | Council Formsite application emails filed into Scout folders from this date |
 | `eborReminderDays`, `dayOfContact` | 3, | EBoR reminders drafted this many days before; "Running late?" line |
 | `councilAckDays`, `svmbcReceivedMark`, `councilEaglesEmail` | 7, `*`, (blank) | Waiting on Council; Council Eagle Services address (Self-check flags it when empty) |
+| `advancementReportTemplateId`, `districtName`, `advancementTitle` | (blank), Coyote Creek, Coyote Creek Advancement | EBoR paperwork page: Drive file id of the blank Advancement Report (form 34403, kept in Drive, never in this repo); the District and Title fields |
 | `eborDoneColor`, `exceptionsFolder`, `unitPipeline` | #93c47d, Exceptions, TRUE | Eagle earned paint; folder; unit page candidate list |
 | `closeReviewDays` | 180 | Proposal Not Approved / EBoR Paused with no log line or update for this many days: amber "Close?" tag and digest line (also at 18 or older). Beyond Age is never suggested |
 | `closeSnoozeDays` | 90 | "Keep open" hides the "Close?" suggestion for this many days |
@@ -324,6 +328,7 @@ members use the Action column, the schedule sheet and the committee page instead
 | Record a Proposal Review outcome (upload the signed Proposal) | `/committee/review` |
 | Check / send emails waiting for review | `/committee/outbox` (also a popup on the schedule) |
 | Held web submissions, unit requests, January archive, email preview | `/committee/admin` |
+| Sign the Verified Application + Advancement Report at the board | `/committee/ebor-paperwork` (link on Admin) |
 | Statistics | `/committee/stats` |
 | Book / cancel on the sheet | Schedule sheet: type / clear the Scout's name in a slot |
 | Promote / spam a submission | Intake Queue → Action column |
@@ -573,6 +578,31 @@ reviews first) and records **Approved**, **Revisions requested** or **Not approv
   email is drafted as above. Otherwise tick More signatures again for a third signer. **Finish with the signatures we
   have** drafts the approval email with the copy on file. The digest lists signatures waiting `signingNudgeDays` (3).
 
+### EBoR paperwork page (`/committee/ebor-paperwork`, `lib/eborPaperwork.js`, `eborPaperworkActions.js`, `web/js/pdfPaperwork*.js`)
+
+For the Board of Review itself, on one device passed around the room. Pick a Scout at EBoR Booked or Paused (the next
+board on the schedule is preselected; the board's date can be changed on the page). Two documents, one tab each:
+
+1. **Verified Eagle Application**, Requirement 7: the file with "verified" in its name in the Scout's folder (newest;
+   or pick another, or choose one from the computer). The page finds Requirement 7 by its text (else page 2) and puts the
+   board date as three boxes **MM, DD, YY** (drag them together onto the form's boxes). Two signatures: the board chair
+   and a District Advancement Committee / Council representative.
+2. **Advancement Report** (BSA form 34403): the blank is fetched from Drive (Settings `advancementReportTemplateId`) and
+   prefilled: Scout's number, District and Title (Settings), Unit Leader name and address (Key 3), the date forwarded,
+   Board of Review date (MM/DD/YYYY), "Eagle Scout", and the unit type. Three signatures, each placed in its form field's box.
+
+Each signer **types their name** (suggestions from the board on the schedule and the committee), ticks whether they are a
+District Advancement Committee / Council representative (at least one per document), and signs **typed or drawn** in a
+dialog (ink palette: black, dark blue, blue, purple, dark green, brown, rust, dark red). Signatures live in the page
+only; nothing leaves the browser until **Save both**. Saving files `<Name>-<Unit>_EagleApplication-Signed.pdf` and
+`_AdvancementReport-Signed.pdf` in the Scout's folder, moves the Verified Application and earlier versions to Archive,
+drafts "Council: Eagle paperwork" in the Outbox (the existing path), and logs it. **The row does not move**: use
+*Eagle earned…* afterwards; it (and *Send signed paperwork to Council…*) now find files already filed this way instead of asking
+for scans again. Actions: `eborPaperworkChoices`, `Scout`, `Template`, `Start`, `Upload`, `Finish`.
+
+After deploying: set `advancementReportTemplateId` (upload the blank form to Drive, outside this repo), check `districtName` and
+`advancementTitle`, run Setup / repair tabs (adds the Key 3 address headers).
+
 ### Review page: the Scout's files and the Sign Workshop (`web/js/pdfPlan.js`, `pdfEngine.js`, `pdfWorkshop.js`)
 
 **Files in the Scout's folder** (2026-11-09; `scoutReviewFiles`, `fetchScoutFile` in `reviewActions.js`): picking a
@@ -632,6 +662,11 @@ normal Approved path above.
   versions are pinned in `package.json` (dev dependencies, used by the tests) and `pdfPlan.js`, and a test keeps them in
   step. Each script is loaded with a Subresource Integrity hash (`web/js/cdnIntegrity.js`; a test checks pdf-lib and
   pdf.js against `node_modules`). Known gap: the pdf.js worker and the Google Fonts stylesheet can't carry SRI.
+- **Ink and Draw** (2026-11-11): signatures, typed text and the date use an ink colour (palette of eight, black by default,
+  remembered with the signature settings; `INK_COLORS` in `pdfPlan.js`, same palette on the EBoR paperwork page). The Draw
+  pad (`pdfDraw.js`) is pointer-event based: `touch-action: none`, one active pointer, a resting palm is ignored while a
+  pen is in use (`acceptPadPointer`), smoothed strokes, pressure sets width for pens, **Undo** and Clear; changing the ink
+  recolours the drawing.
 - **Coming:** page tools (insert supporting pages before the approval page, keep/delete, reorder, merge PDFs and
   photos, save as a new Proposal version), then compression.
 
@@ -940,7 +975,7 @@ member's initials or the unit contact's email on every add/edit from the web, be
 A list of units (under review marked; units without a Unit Leader / Committee Chair email flagged) → the unit's
 contacts: **one list** (2026-11-01). **Key 3 rows** (Unit Leader, Committee Chair) first, looking like the others: only the
 committee can correct them (never add or delete; the next Key 3 import, about once a year, replaces them: these edits only bridge an
-early change of leadership). **Unit Contacts rows** below: edit, remove, add (role,
+early change of leadership). The Unit Leader row also has an optional **address** (Key 3 columns `Leader Address`, `Leader City`, `Leader State`, `Leader Zip`; found by the machine key if the tab has a machine row, else by header text, case and spaces ignored). It feeds the Advancement Report, is shown and edited here for the committee only, and the Key 3 import carries it over for the same unit and the same Unit Leader name. Not matched automatically beyond that: a renamed header leaves the column empty. **Unit Contacts rows** below: edit, remove, add (role,
 name, email, phone, note; `Exclude` stops a Key 3 address from getting unit emails). The **unit page** has the same
 panel for the contact's own units, Key 3 rows read-only; a unit contact can't remove themselves. Rows are checked
 against what the page showed before a write; every change goes on the Activity tab ("Unit T964"). The Unit Contacts tab is kept
