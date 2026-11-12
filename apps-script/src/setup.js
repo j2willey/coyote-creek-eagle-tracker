@@ -104,6 +104,8 @@ function setupTabs_() {
   try { queueActionDropdown_(); } catch (e) { created.push('Intake Queue Action dropdown skipped: ' + e.message); }
   try { var dk = ensureSettingKeys_(Object.keys(SettingsModel.DEFAULT_VALUES)); if (dk.length) created.push('Settings: ' + dk.join(', ')); }
   catch (e) { created.push('Digest settings skipped: ' + e.message); }
+  try { if (copyFormTemplatesKey_()) created.push('Settings: formTemplatesFolderId copied from stampsFolderId'); }
+  catch (e) { created.push('Form Templates setting skipped: ' + e.message); }
   try { var blankUc = withLock_(function () { return removeBlankUnitContacts_(); }); if (blankUc) created.push('Unit Contacts: removed ' + blankUc + ' empty row(s) (unit only)'); }
   catch (e) { created.push('Unit Contacts cleanup skipped: ' + e.message); }
   try { if (withLock_(function () { return sortUnitContacts_(); })) created.push('Unit Contacts sorted by unit'); }

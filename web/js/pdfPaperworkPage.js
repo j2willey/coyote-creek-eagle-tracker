@@ -607,7 +607,7 @@ export function initPaperwork(deps) {
     $('app').hidden = false; $('msg').hidden = true;
     if (!data.settings.templateSet) {
       $('problems').hidden = false;
-      $('problems').textContent = 'Settings → advancementReportTemplateId is empty: the blank Advancement Report cannot be loaded from Drive (you can choose it from this computer).';
+      $('problems').textContent = 'No blank Advancement Report in Drive: put the PDF (name with 34403 or Advancement) in the Form Templates folder, or set advancementReportTemplateId (you can also choose it from this computer).';
     }
     showTab('application');
     await loadScout();

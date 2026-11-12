@@ -30,8 +30,9 @@ var SettingsModel = (function () {
     intakeConfirmDays: 7,         // confirmation link lifetime
     intakePurgeDays: 14,          // unconfirmed submissions purged after this
     maxUploadMB: 20,
-    stampsFolderId: '',           // Drive folder holding the Sign Workshop's stamp PNGs (<= 2 MB each); blank = no Stamp button
-    advancementReportTemplateId: '', // Drive file id of the blank Advancement Report PDF (form 34403, fillable): the EBoR paperwork page copies it per Scout
+    formTemplatesFolderId: '',    // Form Templates folder (Drive): stamp PNGs (<= 2 MB each) and the blank forms; blank = the older stampsFolderId
+    stampsFolderId: '',           // older name of the same folder (still read; Setup copies it into formTemplatesFolderId once)
+    advancementReportTemplateId: '', // Drive file id of the blank Advancement Report PDF (form 34403, fillable); blank = the PDF in Form Templates whose name has 34403 or Advancement
     districtName: 'Coyote Creek',    // the Advancement Report's District box
     advancementTitle: 'Coyote Creek Advancement', // the Advancement Report's Title box
     calendarId: 'primary',        // invites are created on the deploying account's calendar (M5)

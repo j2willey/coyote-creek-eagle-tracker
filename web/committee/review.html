@@ -168,7 +168,7 @@
       } finally { btn.disabled = false; }
     }
 
-    // Stamps for the Sign Workshop: PNGs in the Drive folder named by the stampsFolderId setting (none = no Stamp button)
+    // Stamps for the Sign Workshop: PNGs in the Drive folder in the Form Templates folder (formTemplatesFolderId, else stampsFolderId) (none = no Stamp button)
     const stampApi = {
       list: () => api('stampList', { session }),
       fetch: id => api('stampFetch', { session, id })

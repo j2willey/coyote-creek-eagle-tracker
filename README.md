@@ -109,6 +109,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     templateSamples.js    email preview: sample values for every placeholder, TEST banners
     emailMenu.js          "Email…" action: which emails fit a stage, what each needs, recently sent
     eborPaperwork.js      EBoR paperwork: field map, MM/DD/YY, signer rules, Verified file picking, archive plan
+    formTemplates.js      Form Templates folder: which folder (formTemplatesFolderId / stampsFolderId), which PDF is the blank report / application
     unitDirectory.js      unit contacts on the web: Key 3 rows vs unit-provided, directory, validation
     unitBroadcast.js      "Email the units": recipients by unit type and role, unique, Bcc batches
     openTimes.js          open-times email: Scouts ready to book a type, one To/Cc list, the times to list
@@ -283,7 +284,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `parentsSignIn` | FALSE | TRUE lets parent/guardian addresses sign in to the Scout's record |
 | `digestHours`, `digestTo` | 6 PM, | Committee digest schedule and recipients |
 | `intakeConfirmDays`, `intakePurgeDays`, `maxUploadMB` | 7, 14, 20 | Intake |
-| `stampsFolderId` | | Drive folder of stamp PNGs for the Sign Workshop (blank = no Stamp button) |
+| `formTemplatesFolderId` | | **Form Templates** Drive folder (stamps and blank forms): the stamp PNGs for the Sign Workshop (blank = no Stamp button), the blank Advancement Report and the blank Eagle Application (demo). Blank = the older `stampsFolderId` (same folder renamed; still read; Setup / repair copies it across once and leaves the old key) |
 | `councilDomain`, `allowProduction` | (blank), FALSE | Menu items need a Council account; migration guard |
 | `approvalRep*` | | Council/District Project Approval Representative (proposal precheck, later) |
 | `*DateColumn`, `*WhoColumn`, `calendarId` | | Tracking columns filled on booking; calendar |
@@ -296,7 +297,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `councilAppFrom` | (blank = off) | Council Formsite application emails filed into Scout folders from this date |
 | `eborReminderDays`, `dayOfContact` | 3, | EBoR reminders drafted this many days before; "Running late?" line |
 | `councilAckDays`, `svmbcReceivedMark`, `councilEaglesEmail` | 7, `*`, (blank) | Waiting on Council; Council Eagle Services address (Self-check flags it when empty) |
-| `advancementReportTemplateId`, `districtName`, `advancementTitle` | (blank), Coyote Creek, Coyote Creek Advancement | EBoR paperwork page: Drive file id of the blank Advancement Report (form 34403, kept in Drive, never in this repo); the District and Title fields |
+| `advancementReportTemplateId`, `districtName`, `advancementTitle` | (blank), Coyote Creek, Coyote Creek Advancement | EBoR paperwork page: Drive file id of the blank Advancement Report (form 34403, kept in Drive, never in this repo); blank = the PDF in the Form Templates folder whose name contains `34403` or `Advancement` (newest); the District and Title fields |
 | `eborDoneColor`, `exceptionsFolder`, `unitPipeline` | #93c47d, Exceptions, TRUE | Eagle earned paint; folder; unit page candidate list |
 | `closeReviewDays` | 180 | Proposal Not Approved / EBoR Paused with no log line or update for this many days: amber "Close?" tag and digest line (also at 18 or older). Beyond Age is never suggested |
 | `closeSnoozeDays` | 90 | "Keep open" hides the "Close?" suggestion for this many days |
@@ -588,7 +589,7 @@ board on the schedule is preselected; the board's date can be changed on the pag
    or pick another, or choose one from the computer). The page finds Requirement 7 by its text (else page 2) and puts the
    board date as three boxes **MM, DD, YY** (drag them together onto the form's boxes). Two signatures: the board chair
    and a District Advancement Committee / Council representative.
-2. **Advancement Report** (BSA form 34403): the blank is fetched from Drive (Settings `advancementReportTemplateId`) and
+2. **Advancement Report** (BSA form 34403): the blank is fetched from Drive (Settings `advancementReportTemplateId`, else the PDF in the Form Templates folder) and
    prefilled: Scout's number, District and Title (Settings), Unit Leader name and address (Key 3), the date forwarded,
    Board of Review date (MM/DD/YYYY), "Eagle Scout", and the unit type. Three signatures, each placed in its form field's box.
 
@@ -601,7 +602,7 @@ drafts "Council: Eagle paperwork" in the Outbox (the existing path), and logs it
 *Eagle earned…* afterwards; it (and *Send signed paperwork to Council…*) now find files already filed this way instead of asking
 for scans again. Actions: `eborPaperworkChoices`, `Scout`, `Template`, `Start`, `Upload`, `Finish`.
 
-After deploying: set `advancementReportTemplateId` (upload the blank form to Drive, outside this repo), check `districtName` and
+After deploying: put the blank form in the Form Templates folder (or set `advancementReportTemplateId`; forms stay in Drive, outside this repo), check `districtName` and
 `advancementTitle`, run Setup / repair tabs (adds the Key 3 address headers).
 
 ### Signing with a pen tablet or touchscreen (`web/js/pdfStrokes.js`, `pdfDraw.js`, `pdfSignPad.js`; Task 13)
@@ -651,7 +652,7 @@ normal Approved path above.
   "Council or District Approval" heading with "Candidate's Promise", is an approval page even when it follows Plan
   pages and carries a Candidate's Promise date field (that field alone no longer marks a Plan Reviews page).
 - **Stamps:** PNG files (up to 2 MB, transparent background) in one Drive folder named by the Settings key
-  `stampsFolderId` (blank = no Stamp button; Setup adds the key). The button places the last stamp used (its Drive file
+  the Form Templates folder (`formTemplatesFolderId`, else the older `stampsFolderId`; blank = no Stamp button; Setup adds the key). The button places the last stamp used (its Drive file
   id is remembered in this browser), the arrow lists them with thumbnails. A stamp is placed 1.6 in (115 pt) wide with its aspect kept (any placed image is capped at 40% of the page width,
   resizable afterwards), drawn under the
   signature, name and date so they can sit on its lines; a PNG with no transparency warns that it covers the page under

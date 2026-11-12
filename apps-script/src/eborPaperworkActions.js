@@ -40,7 +40,7 @@ function actionEborPaperworkChoices_(req) {
     slots: { application: EborPaperwork.signerSlots('application'), report: EborPaperwork.signerSlots('report') },
     repLabel: EborPaperwork.REP_LABEL, signatureFields: EborPaperwork.SIGNATURE_FIELDS,
     committee: c.committee.filter(function (m) { return String(m.name || '').trim(); }).map(function (m) { return { name: String(m.name), initials: String(m.initials || '') }; }),
-    settings: { templateSet: !!String(s.advancementReportTemplateId || '').trim(), districtName: String(s.districtName || ''), advancementTitle: String(s.advancementTitle || '') },
+    settings: { templateSet: !!String(s.advancementReportTemplateId || '').trim() || !!FormTemplates.folderId(s), districtName: String(s.districtName || ''), advancementTitle: String(s.advancementTitle || '') },
     maxUploadMB: Number(s.maxUploadMB) || 20,
     testMode: s.testMode !== false
   };
@@ -115,11 +115,11 @@ function actionEborPaperworkScout_(req) {
 
 function actionEborPaperworkTemplate_(req) {
   committeeMe_(req.session);
-  var id = String(getSettings_().advancementReportTemplateId || '').trim();
-  if (!id) throw userError_('Settings → advancementReportTemplateId is empty: put the Drive file id of the blank Advancement Report (form 34403) there.');
+  var ref = reportTemplateRef_();
+  if (!ref) throw userError_('Settings → advancementReportTemplateId is empty and no Advancement Report PDF (a name with 34403 or Advancement) was found in the Form Templates folder. Put the blank form there, or put its Drive file id in the setting.');
   var file;
-  try { file = DriveApp.getFileById(id); }
-  catch (e) { throw userError_('The Advancement Report template could not be opened. Check Settings → advancementReportTemplateId and that the tool\'s account can see that file.'); }
+  try { file = DriveApp.getFileById(ref.id); }
+  catch (e) { throw userError_('The Advancement Report template could not be opened. Check Settings → advancementReportTemplateId (or the Form Templates folder) and that the tool\'s account can see that file.'); }
   var blob = file.getBlob();
   var bytes = blob.getBytes();
   if (!(bytes.length > 4 && bytes[0] === 37 && bytes[1] === 80 && bytes[2] === 68 && bytes[3] === 70)) {

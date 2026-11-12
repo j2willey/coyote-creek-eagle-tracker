@@ -157,7 +157,7 @@ describe('Apps Script bundle', () => {
     ctx.getSettings_ = () => ({ stampsFolderId: 'MISSING' });
     const bad = vm.runInContext("dispatch_({action:'stampList', session:'s'})", ctx);
     expect(bad.ok).toBe(false);
-    expect(bad.error).toMatch(/stamps folder could not be opened/);
+    expect(bad.error).toMatch(/Form Templates folder could not be opened/);
 
     ctx.getSettings_ = () => ({ stampsFolderId: 'STAMPS' });
     const list = vm.runInContext("dispatch_({action:'stampList', session:'s'})", ctx);
@@ -173,9 +173,16 @@ describe('Apps Script bundle', () => {
     expect(again.data).toBe(ok.data);    // served from the cache the second time
 
     expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-BAD'})", ctx).error).toMatch(/not a valid PNG/);
-    expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-BIG'})", ctx).error).toMatch(/not in the stamps folder/);
-    expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-PDF'})", ctx).error).toMatch(/not in the stamps folder/);
+    expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-BIG'})", ctx).error).toMatch(/not in the Form Templates folder/);
+    expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:'S-PDF'})", ctx).error).toMatch(/not in the Form Templates folder/);
     expect(vm.runInContext("dispatch_({action:'stampFetch', session:'s', id:''})", ctx).error).toMatch(/Pick a stamp/);
+
+    // 14a: formTemplatesFolderId is the folder; the older stampsFolderId still works when it is blank.
+    ctx.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {}, remove: () => {} }) };
+    ctx.getSettings_ = () => ({ formTemplatesFolderId: 'STAMPS', stampsFolderId: '' });
+    expect(vm.runInContext("dispatch_({action:'stampList', session:'s'})", ctx).stamps.map(s => s.id)).toEqual(['S-OK', 'S-BAD']);
+    ctx.getSettings_ = () => ({ formTemplatesFolderId: 'MISSING', stampsFolderId: 'STAMPS' });
+    expect(vm.runInContext("dispatch_({action:'stampList', session:'s'})", ctx).ok).toBe(false);   // the new key wins over the old
   });
 
   it('EBoR paperwork: bad tokens are refused; the template must be set and be a PDF; the choices list Booked and Paused Scouts', () => {
@@ -198,6 +205,23 @@ describe('Apps Script bundle', () => {
     ctx.DriveApp = { getFileById: () => { throw new Error('no access'); } };
     expect(vm.runInContext("dispatch_({action:'eborPaperworkTemplate', session:'s'})", ctx).error).toMatch(/could not be opened/);
 
+    // 14a: no template id -> the PDF in the Form Templates folder (34403 / Advancement), newest wins.
+    const mkPdf = (id, name, t) => ({ getId: () => id, getName: () => name, getMimeType: () => 'application/pdf', getSize: () => 5, getLastUpdated: () => new Date(t),
+      getBlob: () => ({ getBytes: () => [37, 80, 68, 70, 45] }) });
+    const ftFiles = [mkPdf('OLD', 'Advancement Form 34403 (old).pdf', 1000), mkPdf('NEWEST', 'Advancement Form 34403.pdf', 2000), mkPdf('APP', 'Blank Eagle Application.pdf', 3000)];
+    const ftFolder = { getFiles: () => { let i = 0; return { hasNext: () => i < ftFiles.length, next: () => ftFiles[i++] }; } };
+    ctx.DriveApp = { getFolderById: id => { if (id !== 'FT') throw new Error('nope'); return ftFolder; }, getFileById: id => ftFiles.find(f => f.getId() === id) };
+    ctx.getSettings_ = () => ({ advancementReportTemplateId: '', formTemplatesFolderId: 'FT', sections: [] });
+    expect(vm.runInContext("dispatch_({action:'eborPaperworkTemplate', session:'s'})", ctx)).toMatchObject({ ok: true, name: 'Advancement Form 34403.pdf' });
+    ctx.getSettings_ = () => ({ advancementReportTemplateId: '', formTemplatesFolderId: '', stampsFolderId: 'FT', sections: [] });
+    expect(vm.runInContext("dispatch_({action:'eborPaperworkTemplate', session:'s'})", ctx).ok).toBe(true);
+    ctx.getSettings_ = () => ({ advancementReportTemplateId: '', formTemplatesFolderId: 'FT', sections: [] });
+    ftFiles.length = 0;
+    expect(vm.runInContext("dispatch_({action:'eborPaperworkTemplate', session:'s'})", ctx).error).toMatch(/advancementReportTemplateId is empty/);
+    ftFiles.push(mkPdf('OLD', 'Advancement Form 34403 (old).pdf', 1000), mkPdf('NEWEST', 'Advancement Form 34403.pdf', 2000), mkPdf('APP', 'Blank Eagle Application.pdf', 3000));
+    ctx.getSettings_ = () => ({ advancementReportTemplateId: 'APP', formTemplatesFolderId: 'FT', sections: [] });   // an explicit id wins over the folder
+    expect(vm.runInContext("dispatch_({action:'eborPaperworkTemplate', session:'s'})", ctx).name).toBe('Blank Eagle Application.pdf');
+
     ctx.getSettings_ = () => ({ advancementReportTemplateId: 'TPL', districtName: 'Coyote Creek', advancementTitle: 'Coyote Creek Advancement', sections: [], maxUploadMB: 20, testMode: true });
     ctx.todayYmd_ = () => '2026-02-01';
     ctx.Records = { all: () => [
@@ -211,5 +235,15 @@ describe('Apps Script bundle', () => {
     expect(ch.selected).toBe('R-1');
     expect(ch.settings.templateSet).toBe(true);
     expect(ch.slots.report).toHaveLength(3);
+  });
+  it('Setup / repair copies stampsFolderId into formTemplatesFolderId once and leaves the old key', () => {
+    const writes = [];
+    ctx.setSetting_ = (k, v) => { writes.push([k, v]); };
+    ctx.getSettings_ = () => ({ formTemplatesFolderId: '', stampsFolderId: ' OLD ' });
+    expect(vm.runInContext('copyFormTemplatesKey_()', ctx)).toBe(true);
+    expect(writes).toEqual([['formTemplatesFolderId', 'OLD']]);
+    ctx.getSettings_ = () => ({ formTemplatesFolderId: 'NEW', stampsFolderId: 'OLD' });
+    expect(vm.runInContext('copyFormTemplatesKey_()', ctx)).toBe(false);
+    expect(writes).toHaveLength(1);
   });
 });
