@@ -31,10 +31,8 @@ function actionRequestLink_(req) {
   if (!Identity.rateLimitOk(cache.get(rlKey), now)) return reply;
   cache.put(rlKey, String(now), Math.ceil(Identity.RATE_LIMIT_MS / 1000));
 
-  var ids = Records.findByEmail(email);
-  var unitContact = Units.forEmail(units_(), email).length > 0;   // EBoR: Unit Contacts sign in the same way
-  var member = !!CommitteeSchedule.memberFor(committee_(), email);   // committee schedule page
-  if (!ids.length && !unitContact && !member) {
+  // On file: a Scout record, a Unit Contact (EBoR), the Committee tab (any role): lib/access.js.
+  if (!whoIs_(email).onFile) {
     // Not on file. A submission still waiting for its (old-style) confirmation gets that link again; otherwise
     // the address gets a link to start a first-time Proposal (email-first intake, Jim W. 2026-10-28).
     if (!resendIntakeConfirmation_(email)) sendStartLink_(email);
@@ -164,14 +162,24 @@ function logSignIn_(email, chk, askedOn, openedOn) {
   } catch (e) { console.warn('logSignIn_: ' + e); }
 }
 
+/**
+ * Who an email address is (lib/access.js): its Scout records, units, Committee row (any role, Support included),
+ * Admin / Support. The one identity check: sign-in, the signed-in page, the committee and Admin pages.
+ */
+function whoIs_(email) {
+  var e = Identity.normalizeEmail(email);
+  var s = getSettings_();
+  return Access.whoIs({ email: e, records: e ? Records.findByEmail(e) : [], units: e ? Units.forEmail(units_(), e) : [],
+    committee: committeeAll_(), settings: s, signatures: [] });
+}
+
 /** New browser session for a proven email address. Returns the token (only its hash is stored). */
 function startSession_(email) {
-  var ids = Records.findByEmail(email);
+  var w = whoIs_(email);
   var session = Identity.makeToken(Utilities.getUuid);
   var s = getSettings_();
-  var member = !!CommitteeSchedule.memberFor(committee_(), email);
-  var days = member ? (Number(s.committeeSessionDays) || 30) : (Number(s.sessionDays) || 14);
-  var row = Identity.newSessionRow(hash_(session), email, ids, Date.now(), days);
+  var days = w.member ? (Number(s.committeeSessionDays) || 30) : (Number(s.sessionDays) || 14);
+  var row = Identity.newSessionRow(hash_(session), email, w.records, Date.now(), days);
   withLock_(function () { sessionsSheet_().appendRow(row); });
   return session;
 }
@@ -192,15 +200,16 @@ function actionWhoami_(req) {
 /** What the signed-in page shows for an email: Scout records, units, committee role. */
 function mePayload_(email) {
   var settings = getSettings_();
-  var records = Records.findByEmail(email).map(function (id) {
+  var w = whoIs_(email);
+  var records = w.records.map(function (id) {
     var r = Records.get(id);
     return { recordId: id, scoutName: r ? r.fields.scout_name : '',
              status: r ? scoutStatusOf_(settings, r) : '' };
   });
-  var units = Units.forEmail(units_(), email).map(function (u) { return { unit: u.unit, underReview: u.underReview }; });
-  var m = CommitteeSchedule.memberFor(committee_(), email);
+  var units = w.units.map(function (u) { return { unit: u.unit, underReview: u.underReview }; });
+  var m = w.member;
   return { email: email, records: records, units: units,
-    committee: m ? { name: String(m.name || ''), initials: String(m.initials || '') } : null };
+    committee: m ? { name: String(m.name || ''), initials: String(m.initials || ''), admin: w.admin, support: w.support } : null };
 }
 
 function actionSignOut_(req) {

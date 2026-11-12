@@ -91,7 +91,8 @@
       <section class="admsec" data-tab="people">
         <h2>Committee members</h2>
         <p class="hint">The Committee tab: who can sign in to the committee pages, their initials on the schedule, and the Admin role
-          (People, Settings and System tabs). Inactive = occasional helper: still put on slots and still signs in, listed under
+          (People, Settings and System tabs). Support = someone who supports the tool without being a working member: Admin
+          powers, but never on the schedule, suggestions or invitations. Inactive = occasional helper: still put on slots and still signs in, listed under
           "Occasional". Nobody is deleted here: untick Active. Initials can't change once a member exists (the schedule refers to them).
           Every change is logged on the Activity tab.</p>
         <div id="pplView"><p class="muted">Loading…</p></div>
@@ -504,7 +505,14 @@
     }
     function renderPeople(r) {
       const me = String(r.me || '').toLowerCase();
-      const roleSel = (v) => { const x = el('select', { title: 'Role' }, el('option', { value: '', textContent: '(member)' }), el('option', { value: 'Admin', textContent: 'Admin' })); x.value = v || ''; return x; };
+      // Support (not a working member: Admin powers, left out of staffing and lists): only Support gives or changes it.
+      const roleSel = (v) => {
+        const opts = [el('option', { value: '', textContent: '(member)' }), el('option', { value: 'Admin', textContent: 'Admin' })];
+        if (r.support || v === 'Support') opts.push(el('option', { value: 'Support', textContent: 'Support' }));
+        const x = el('select', { title: 'Role' }, ...opts); x.value = v || '';
+        if (v === 'Support' && !r.support) { x.disabled = true; x.title = 'Support: only Support can change this row'; }
+        return x;
+      };
       const row = (m) => {
         const name = el('input', { type: 'text', value: m ? m.name : '', placeholder: 'Name' });
         const ini = el('input', { type: 'text', value: m ? m.initials : '', placeholder: 'AB', maxLength: 4, readOnly: !!m, title: m ? 'Initials can\'t change once a member exists' : '2 to 4 letters' });
@@ -521,7 +529,7 @@
           try {
             const res = await api('adminPeopleSave', { session, row: m ? m.row : 0, wasEmail: m ? m.email : '',
               member: { name: name.value, initials: ini.value, email: email.value, active: active.checked, role: role.value } });
-            renderPeople({ members: res.members, me: r.me });
+            renderPeople({ members: res.members, me: r.me, support: res.support });
             flash(res.message);
           } catch (e) { out.textContent = e.message; out.className = 'err'; save.disabled = false; }
         };

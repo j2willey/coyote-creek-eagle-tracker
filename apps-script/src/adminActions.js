@@ -54,7 +54,7 @@ function actionAdminData_(req) {
       .sort(function (a, b) { return a.label.localeCompare(b.label); }),
     sections: (s.sections || []).filter(function (x) { return EmailMenu.ENTRIES.some(function (e) { return EmailMenu.fits(e, x.key); }); })
       .map(function (x) { return { key: x.key, label: x.label || x.key }; }),
-    testMode: s.testMode !== false, isAdmin: SettingsView.isAdmin(me.me, me.email, s) };
+    testMode: s.testMode !== false, isAdmin: Access.isAdmin(me.me, me.email, s), support: !!me.support };
 }
 
 /** Admin → Settings (Admin role): every setting, grouped, with help and defaults. Read-only (step 2 of the plan). */
@@ -119,7 +119,7 @@ function actionAdminSystem_(req) {
 /** Admin → People: the Committee tab's members (Admin role). */
 function actionAdminPeople_(req) {
   var c = adminMe_(req.session);
-  return { members: People.list(Tabs.read('Committee')), me: c.email };
+  return { members: People.list(Tabs.read('Committee')), me: c.email, support: !!c.support };
 }
 
 /**
@@ -131,7 +131,7 @@ function actionAdminPeopleSave_(req) {
   var row = Number(req.row) || 0;
   var line = withLock_(function () {
     var members = People.list(Tabs.read('Committee'));
-    var r = People.validate(req.member || {}, members, { row: row, wasEmail: req.wasEmail, meEmail: c.email });
+    var r = People.validate(req.member || {}, members, { row: row, wasEmail: req.wasEmail, meEmail: c.email, meRole: c.me.role });
     if (r.errors.length) throw userError_(r.errors.join(' '));
     var cur = row ? members.filter(function (x) { return x.row === row; })[0] : null;
     if (cur) Tabs.update('Committee', row, r.fields);
@@ -148,7 +148,7 @@ function actionAdminPeopleSave_(req) {
   });
   uncache_('c:committee');
   if (line) adminLog_(line, c.email);
-  return { message: line ? line.replace(/^Committee: /, 'Saved: ') : 'Nothing changed.', members: People.list(Tabs.read('Committee')) };
+  return { message: line ? line.replace(/^Committee: /, 'Saved: ') : 'Nothing changed.', members: People.list(Tabs.read('Committee')), support: !!c.support };
 }
 
 /**

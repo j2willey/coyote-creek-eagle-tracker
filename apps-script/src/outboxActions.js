@@ -66,7 +66,7 @@ function ensureOutboxColumn_(name) {
 
 /** Initials for a member email (or the text itself). */
 function memberTag_(by) {
-  var m = CommitteeSchedule.memberFor(committee_(), by);
+  var m = Access.memberFor(committeeAll_(), by);
   if (m && m.initials) return String(m.initials);
   return String(by || '').split('@')[0];                      // not a member (e.g. the Council account): short form
 }

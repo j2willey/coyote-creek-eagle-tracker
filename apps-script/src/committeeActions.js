@@ -14,19 +14,22 @@
  *   cancelSlotBooking {session, key}               -> {message}   booked slot: cancel (Scout emailed, slot reopens)
  */
 
+/**
+ * The signed-in committee member: {email, me (their Committee row, any role), committee (the working committee, Support
+ * left out: lists, suggestions, staffing), support}. Support (Role Support) gets in like a member (lib/access.js).
+ */
 function committeeMe_(session) {
   var email = sessionEmail_(session);
-  var committee = committee_();
-  var me = CommitteeSchedule.memberFor(committee, email);
+  var me = Access.memberFor(committeeAll_(), email);
   if (!me) throw userError_('This page is for Coyote Creek District Advancement Committee members. ' +
     'Your email address is not on the committee list.');
-  return { email: email, me: me, committee: committee };
+  return { email: email, me: me, committee: committee_(), support: Access.isSupport(me) };
 }
 
-/** committeeMe_ + the Admin role (Committee tab Role "Admin", or Settings adminEmail): Admin → People / Settings / System. */
+/** committeeMe_ + the Admin role (Committee tab Role Admin or Support, or Settings adminEmail): Admin → People / Settings / System. */
 function adminMe_(session) {
   var c = committeeMe_(session);
-  if (!SettingsView.isAdmin(c.me, c.email, getSettings_())) throw userError_('This part of the Admin page needs the Admin role ' +
+  if (!Access.isAdmin(c.me, c.email, getSettings_())) throw userError_('This part of the Admin page needs the Admin role ' +
     '(Committee tab → Role = Admin). Ask Jim W.');
   return c;
 }

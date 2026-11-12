@@ -12,7 +12,7 @@ function unitAccess_(session, unit) {
   if (!code) throw userError_('Pick a unit.');
   var email = sessionEmail_(session);
   var committee = null;
-  try { committee = CommitteeSchedule.memberFor(committee_(), email); } catch (e) {}
+  try { committee = Access.memberFor(committeeAll_(), email); } catch (e) {}
   if (committee) return { code: code, email: email, committee: true, who: committee.initials || email };
   var mine = Units.forEmail(units_(), email).map(function (u) { return u.code; });
   if (mine.indexOf(code) < 0) throw userError_('You are not listed as a contact for ' + Units.label(code) + '.');

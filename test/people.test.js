@@ -21,7 +21,7 @@ describe('People (Admin → committee members)', () => {
     const ok = P.validate({ name: 'Jordan Test', initials: 'jt', email: 'Jordan@Example.org', active: true, role: '' }, members, {});
     expect(ok).toEqual({ errors: [], fields: { Name: 'Jordan Test', Email: 'jordan@example.org', Active: true, Role: '', Initials: 'JT' } });
     const bad = P.validate({ name: 'X', initials: 'cs', email: 'chris@example.org', role: 'Boss' }, members, {});
-    expect(bad.errors).toEqual(['Name: 2 to 100 characters.', 'Role: blank or Admin.', 'Email: already on the list.', 'Initials: already used by someone else.']);
+    expect(bad.errors).toEqual(['Name: 2 to 100 characters.', 'Role: blank, Admin or Support.', 'Email: already on the list.', 'Initials: already used by someone else.']);
   });
   it('updates keep the initials and check the row did not change', () => {
     const r = P.validate({ name: 'Chris Sample', initials: 'ZZ', email: 'chris@example.org', active: false, role: 'Admin' }, members, { row: 3, wasEmail: 'chris@example.org', meEmail: 'pat@example.org' });
@@ -37,5 +37,17 @@ describe('People (Admin → committee members)', () => {
   });
   it('logs an add', () => {
     expect(P.logLine(null, { Name: 'Jordan Test', Initials: 'JT', Email: 'j@example.org', Active: true, Role: 'Admin' })).toBe('Committee: added Jordan Test (JT), Role Admin');
+  });
+  it('only Support gives the Support role or changes a Support row', () => {
+    const withSupport = P.list([...rows.slice(0, 3), { _row: 6, Name: 'Sam Support', Initials: 'SS', Email: 'sam@example.org', Active: true, Role: 'support' }]);
+    expect(withSupport[3].role).toBe('Support');
+    const give = { name: 'Jordan Test', initials: 'JT', email: 'jordan@example.org', active: true, role: 'Support' };
+    expect(P.validate(give, withSupport, { meEmail: 'pat@example.org', meRole: 'Admin' }).errors).toEqual(['Only Support can give the Support role or change a Support member.']);
+    expect(P.validate(give, withSupport, { meEmail: 'sam@example.org', meRole: 'Support' }).errors).toEqual([]);
+    const edit = { name: 'Sam Support', email: 'sam@example.org', active: true, role: '' };
+    expect(P.validate(edit, withSupport, { row: 6, wasEmail: 'sam@example.org', meEmail: 'pat@example.org', meRole: 'Admin' }).errors[0]).toMatch(/Only Support/);
+    // Support can't drop their own role here either (no locking yourself out)
+    expect(P.validate(edit, withSupport, { row: 6, wasEmail: 'sam@example.org', meEmail: 'sam@example.org', meRole: 'Support' }).errors[0]).toMatch(/your own Admin role/);
+    expect(P.logLine(null, { Name: 'Jordan Test', Initials: 'JT', Email: 'j@example.org', Active: true, Role: 'Support' })).toBe('Committee: added Jordan Test (JT), Role Support');
   });
 });

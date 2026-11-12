@@ -103,7 +103,8 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     reminders.js          EBoR reminder (4.3.c): which boards are due, board list text
     closing.js            Closed records: reasons, close / reopen plans, the _closed cell, "Close?" suggestions, January archive rows (no contact details), closures by reason
     nudges.js             hourly nudges (4.1.h, 6.2.b, 6.2.c), _stage_since, the digest's "Awaiting action" list
-    settingsView.js       Admin → Settings: settings grouped with help; the Admin role
+    settingsView.js       Admin → Settings: settings grouped with help
+    access.js             who an email is, in one place: records, units, Committee row, Admin / Support (whoIs); the working committee
     people.js             Admin → People: committee member list, add / edit checks
     adminRules.js         Admin page: held web submissions and their actions; January archive (years, rows to delete)
     sectionSort.js        EBoR Booked in EBoR Date order (latest at the top): wanted order + row moves
@@ -952,9 +953,20 @@ Sub-tabs (2026-11-12): **Needs attention** (web submissions, comparisons to revi
 `#attention` / `#email` / `#yearend` / `#settings` in the address bar opens that tab. Plan for People / Settings /
 System tabs: vault `admin-ui-plan.md`.
 
-**Admin role (2026-11-12):** Committee tab column **Role** (blank | Admin; Setup / repair adds the column). The Settings
-adminEmail always has it too. Admin-only tabs are hidden for others and every Admin-only action checks the role on the
-server (`adminMe_`, `SettingsView.isAdmin`).
+**Admin role (2026-11-12):** Committee tab column **Role** (blank | Admin | Support; Setup / repair adds the column). The
+Settings adminEmail always has Admin too. Admin-only tabs are hidden for others and every Admin-only action checks the
+role on the server (`adminMe_`, `Access.isAdmin`).
+
+**Support role** (Jim W., 2026-11-12; vault `ebor-remote-signing-design.md`): someone who supports the install without
+being a working member (e.g. the maintainer, if other districts adopt the tool). Admin powers and the committee pages
+(test, demo, troubleshoot), but **left out of the working committee**: `committee_()` (staffing, Who, suggestions,
+calendar guests, choices, "no committee member" checks) drops Support rows; identity checks (sign-in, committee pages,
+Admin, the test-mode allow list, Outbox sender) read `committeeAll_()`. Committee email is the Google Group, so Support
+just isn't in the group. Only a Support member can give the Support role or change a Support row (People).
+
+**One identity check** (`lib/access.js`, `whoIs_` in `auth.js`): sign-in only proves an email address; what it may see
+is worked out on every request: Scout records, units, Committee row (any role), Admin, Support. `onFile` decides
+sign-in link vs Start-your-Proposal link.
 
 **Settings** (Admin role; `lib/settingsView.js`, `adminSettings`, `adminSettingsSave`): every setting grouped (District
 details, Scheduling, Reminders and email, Web submissions, Sign-in and security, Test mode, Internal wiring), with a help
@@ -971,7 +983,8 @@ header): those stay on the sheet.
 
 **People** (Admin role; `lib/people.js`, `adminPeople`, `adminPeopleSave`; 2026-11-12): the Committee tab as a table.
 Add a member (Name, Initials 2–4 letters, Email, Active, Role) or edit one (Name, Email, Active, Role). Initials are
-fixed once a member exists (schedule rows refer to them); nobody is deleted (untick Active). Only those five columns are
+fixed once a member exists (schedule rows refer to them); nobody is deleted (untick Active). The Support option shows
+only to Support (a Support row is read-only for others). Only those five columns are
 written, other columns on the tab are left alone; a new row's Active cell gets a checkbox. Unique email and initials;
 an Admin can't remove their own role, deactivate themselves or change their own email; a row changed on the sheet since
 the page loaded is refused. Each change is logged on Activity; the committee cache is cleared.

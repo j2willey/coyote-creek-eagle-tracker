@@ -10,7 +10,7 @@ function sendMail_(msg) {
   var settings = getSettings_();
   if (settings.testMode !== false && settings.testDeliverToCommittee === true) {
     // Staging playground: committee members get mail addressed only to themselves (their sign-in links).
-    settings = Object.assign({}, settings, { testAllow: committee_().map(function (m) { return m.email; }).filter(String) });
+    settings = Object.assign({}, settings, { testAllow: committeeAll_().map(function (m) { return m.email; }).filter(String) });
   }
   var p = MailPlan.plan(msg, settings);
   if (!p.send) {

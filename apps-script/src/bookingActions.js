@@ -88,24 +88,37 @@ function writeSchedule_(sched, rowNum, obj) {
   });
 }
 
-function committee_() {
-  if (committee_._memo) return committee_._memo;
+/**
+ * The Committee tab, every role (Support included): for identity checks only (sign-in, committee pages, Admin, test-mode
+ * allow list, Outbox sender). Lists that staff, suggest, invite or count use committee_(), which leaves Support out.
+ */
+function committeeAll_() {
+  if (committeeAll_._memo) return committeeAll_._memo;
   // A failed read must NOT be cached: an empty list would lock every member out for the cache lifetime
   // (2026-10-28: Jim W. "not recognized as a committee member" right after Setup / repair). The error escapes
   // cached_ (nothing stored), is logged, and this request alone gets [].
   try {
-    committee_._memo = cached_('c:committee', function () {
+    committeeAll_._memo = cached_('c:committee', function () {
       return Tabs.read('Committee').map(function (r) {
         var a = r['Active'];
         var active = !(a === false || /^(false|no|n|0)$/i.test(String(a == null ? '' : a).trim()));   // blank = active
         return { name: String(r['Name'] || ''), initials: String(r['Initials'] || ''), email: String(r['Email'] || ''), active: active,
-          role: String(r['Role'] || '').trim() };   // Role: blank | Admin (Admin → People / Settings / System; 2026-11-12)
+          role: Access.role(r['Role']) };   // Role: blank | Admin | Support (Admin → People / Settings / System; 2026-11-12)
       });
     });
   } catch (e) {
     console.error('Committee tab not read (not cached): ' + (e && e.stack || e));
     return [];
   }
+  return committeeAll_._memo;
+}
+
+/** The working committee: the Committee tab without Support rows (Jim W., 2026-11-12). Staffing, Who, suggestions, invites. */
+function committee_() {
+  if (committee_._memo) return committee_._memo;
+  var all = committeeAll_();
+  if (!all.length) return all;                       // a failed read: not memoized (see committeeAll_)
+  committee_._memo = Access.working(all);
   return committee_._memo;
 }
 

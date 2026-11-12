@@ -5,10 +5,13 @@
  * count) is left alone. Members are never deleted here: untick Active instead.
  * Initials can't be changed once a member exists: schedule rows and the tracking tab's Who columns refer to them
  * (change them on the sheet, together with those cells, if ever needed).
+ * Role: blank | Admin | Support (lib/access.js). Only a Support member can give the Support role or change a Support
+ * row, so a district Admin can't lock support out (or make someone Support by accident).
  */
 var People = (function () {
   function str(v) { return v == null ? '' : String(v).trim(); }
-  var ROLES = ['', 'Admin'];
+  function A() { return (typeof Access !== 'undefined') ? Access : require('./access'); }
+  var ROLES = ['', 'Admin', 'Support'];
 
   function isActive(a) { return !(a === false || /^(false|no|n|0)$/i.test(str(a))); }   // blank = active (as committee_())
 
@@ -16,13 +19,13 @@ var People = (function () {
   function list(rows) {
     return (rows || []).filter(function (r) { return str(r['Name']) || str(r['Email']); }).map(function (r) {
       return { row: r._row, name: str(r['Name']), initials: str(r['Initials']), email: str(r['Email']),
-        active: isActive(r['Active']), role: /^admin$/i.test(str(r['Role'])) ? 'Admin' : '' };
+        active: isActive(r['Active']), role: A().role(r['Role']) };
     });
   }
 
   /**
    * One add or update. m: {name, initials, email, active, role}; members: list(); opts: {row (update), wasEmail
-   * (what the page showed for that row), meEmail (the Admin saving)}.
+   * (what the page showed for that row), meEmail (the Admin saving), meRole (their Role)}.
    * -> {errors: [text], fields: {Name, Initials?, Email, Active, Role}}  (Initials only on add)
    */
   function validate(m, members, opts) {
@@ -38,7 +41,10 @@ var People = (function () {
     var active = m && m.active !== false;
     if (name.length < 2 || name.length > 100) errors.push('Name: 2 to 100 characters.');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) errors.push('Email: not an email address.');
-    if (ROLES.indexOf(role) < 0) errors.push('Role: blank or Admin.');
+    if (ROLES.indexOf(role) < 0) errors.push('Role: blank, Admin or Support.');
+    else if ((role === 'Support' || (cur && cur.role === 'Support')) && str(o.meRole) !== 'Support') {
+      errors.push('Only Support can give the Support role or change a Support member.');
+    }
     var others = (members || []).filter(function (x) { return !cur || x.row !== cur.row; });
     if (email && others.some(function (x) { return x.email.toLowerCase() === email; })) errors.push('Email: already on the list.');
     if (isAdd) {
@@ -48,7 +54,7 @@ var People = (function () {
     // No locking yourself out: the Admin saving can't remove their own Admin role or deactivate themselves here.
     var me = str(o.meEmail).toLowerCase();
     if (cur && me && cur.email.toLowerCase() === me) {
-      if (cur.role === 'Admin' && role !== 'Admin') errors.push('You can\'t remove your own Admin role here (ask another Admin, or edit the sheet).');
+      if (cur.role && !role) errors.push('You can\'t remove your own Admin role here (ask another Admin, or edit the sheet).');
       if (!active) errors.push('You can\'t mark yourself inactive here.');
       if (email !== me) errors.push('You can\'t change your own email here (you would be signed out of the committee pages).');
     }
@@ -59,7 +65,7 @@ var People = (function () {
 
   /** "Committee: added Pat Q (PQ)" / "Committee: PQ Email "a" → "b", Role "" → "Admin"" for the Activity tab. */
   function logLine(cur, fields) {
-    if (!cur) return 'Committee: added ' + fields['Name'] + ' (' + fields['Initials'] + ')' + (fields['Role'] ? ', Role Admin' : '') + (fields['Active'] ? '' : ', inactive');
+    if (!cur) return 'Committee: added ' + fields['Name'] + ' (' + fields['Initials'] + ')' + (fields['Role'] ? ', Role ' + fields['Role'] : '') + (fields['Active'] ? '' : ', inactive');
     var was = { 'Name': cur.name, 'Email': cur.email, 'Active': cur.active, 'Role': cur.role };
     var diffs = Object.keys(was).filter(function (k) { return String(was[k]) !== String(fields[k]); })
       .map(function (k) { return k + ' "' + was[k] + '" → "' + fields[k] + '"'; });

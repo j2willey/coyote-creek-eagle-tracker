@@ -202,10 +202,10 @@ var SettingsView = (function () {
   }
 
   /** The Admin role: Role "Admin" on the Committee tab, or the Settings adminEmail (so there is always one). */
+  /** Kept for callers; the rule lives in lib/access.js (Admin, Support, or Settings adminEmail). */
   function isAdmin(member, email, settings) {
-    if (member && /^admin$/i.test(str(member.role))) return true;
-    var e = str(email).toLowerCase();
-    return !!e && e === str(settings && settings.adminEmail).toLowerCase();
+    var A = (typeof Access !== 'undefined') ? Access : require('./access');
+    return A.isAdmin(member, email, settings);
   }
 
   return { GROUPS: GROUPS, EDITABLE: EDITABLE, view: view, isAdmin: isAdmin, validate: validate, typeOf: typeOf };
