@@ -401,6 +401,9 @@ Tags come **after** the name.
 - **Session column (Proposals tab; 2026-11-03):** Pre-Review Call / In-Person Review Booked rows show the Scout's next
   session of that type ("Wed 11/4 7:00 PM") as a link, plus the committee members' initials (full names on hover) or a
   pink **No member**. Sortable. A session that started under 12 hours ago still shows (`Board.nextSessions`).
+- **Follow-ups (2026-11-13):** a Scout's next **Follow-Up / Consult**, at any stage, shows as an orange
+  **Follow-up Fri 11/13 5:00 PM** link (members' initials beside it): on its own line in the Session column on the
+  Proposals tab, next to the name on the other tabs. Sorting by Session still uses the stage's session only.
 - **Deep link:** `/committee/schedule?s=<slot key>` opens that session's details (time, place, members, Unit Board
   Members, ✎) once the fresh schedule is loaded; a session no longer on the schedule says so on the page.
 - **Unit under review:** the Unit cell is yellow in every stage (Unit Info → Under Review).
@@ -798,7 +801,7 @@ Design note (kept outside the repo).
   - **Seen by:** the Scout on their own page ("Your follow-up / consult": time, members, place or Meet link; the Scout cannot
     change or cancel it), the Scout's unit on the unit calendar (like the Scout's other sessions, never as an open time),
     the digest's Next 7 days, and the day-before Session briefing (6.2.b). It is **not** counted as a Pre-Review Call,
-    Proposal Review or EBoR: not the dashboard Session column, not Stats "sessions held", not "Reviews with no outcome yet".
+    Proposal Review or EBoR: not Stats "sessions held", not "Reviews with no outcome yet".
   - Own calendar colour (orange). Rules: `Booking` (`Followup` rules, `isCommitteeOnly`, `upcomingBookings`, `bookingAt`),
     `CommitteeSchedule` (`FOLLOWUP_SECTIONS`, `typeDefaults`, `check`), `StageActions` (`followup`, a page action with
     `pageQuery`). Tests: `test/followup.test.js`.

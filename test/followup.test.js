@@ -203,9 +203,19 @@ describe('Follow-Up / Consult: never open to youth, never counted as Pre-Review 
   it('"Reviews with no outcome yet" ignores a held follow-up', () => {
     expect(Nudges.reviewsDue([fu({ date: day(9), time: '5:00 PM' })], () => 'review_booked', NOW)).toEqual([]);
   });
-  it('the dashboard Session column (next Pre-Review / Proposal Review / EBoR) leaves it out', () => {
+  it("the dashboard shows the Scout's next one at any stage (2026-11-13), never as the stage's session", () => {
     const Board = require('../apps-script/src/lib/board.js');
-    expect(Board.nextSessions([fu({})], NOW)).toEqual({});
+    const n = Board.nextSessions([fu({}), fu({ _key: 'SL_261120_GGG', date: day(20) }), fu({ _key: 'SL_261109_OLD', date: day(9) })], NOW);
+    expect(Object.keys(n['R-1'])).toEqual(['Followup']);
+    expect(n['R-1'].Followup).toMatchObject({ key: 'SL_261112_FFF', reps: ['MA'] });          // the next one; a held one is gone
+    const recs = ['proposal_revisions', 'intake_booked', 'proposal_approved', 'ebor_paused'].map((section, i) =>
+      ({ recordId: 'R' + i, section, scout_name: 'Scout ' + i, sessions: { Followup: { ...n['R-1'].Followup, names: ['Member A'] } } }));
+    const rows = Board.build(recs, [], '2026-11-11').flatMap((t) => t.groups.flatMap((g) => g.rows));
+    expect(rows).toHaveLength(4);
+    rows.forEach((r) => {
+      expect(r.followup).toMatchObject({ key: 'SL_261112_FFF', reps: ['MA'], names: ['Member A'] });
+      expect(r.session).toBeNull();                                                          // Intake Booked's session is a Pre-Review Call
+    });
   });
   it('Stats "sessions held" lists only the three review types', () => {
     const Stats = require('../apps-script/src/lib/stats.js');

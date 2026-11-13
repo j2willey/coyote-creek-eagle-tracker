@@ -122,14 +122,20 @@
     // A booked session on the schedule page (opens its details: time, place, members, Unit Board Members).
     const sessionHref = (key) => '/committee/schedule?s=' + encodeURIComponent(key);
     const whenShort = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const whoTag = (s) => s.reps.length
+      ? el('span', { className: 'tag reps', textContent: s.reps.join(' · '), title: s.names.join(', ') || s.reps.join(', ') })
+      : el('span', { className: 'tag board-short', textContent: 'No member', title: 'No committee member on this session yet' });
+    // The Scout's next Follow-Up / Consult (any stage, 2026-11-13): orange like the calendar, a link to it on the schedule.
+    const followupLink = (f, label) => el('a', { className: 'tag followup' + (f.start < Date.now() ? ' past' : ''), href: sessionHref(f.key),
+      textContent: label, title: 'Follow-Up / Consult ' + whenShort(f.start) + (f.names.length ? ' with ' + f.names.join(', ') : '') + '\n\nClick: open it on the schedule.' });
+    // Session column: the session the stage is about, then the next follow-up / consult on its own line.
     function sessionCell(r) {
-      const s = r.session;
-      if (!s) return el('td', {});
-      const who = s.reps.length
-        ? el('span', { className: 'tag reps', textContent: s.reps.join(' · '), title: s.names.join(', ') || s.reps.join(', ') })
-        : el('span', { className: 'tag board-short', textContent: 'No member', title: 'No committee member on this session yet' });
-      return el('td', { className: 'session' + (s.start < Date.now() ? ' past' : '') },
-        el('a', { href: sessionHref(s.key), textContent: whenShort(s.start), title: 'Open this session on the schedule' }), ' ', who);
+      const s = r.session, f = r.followup;
+      if (!s && !f) return el('td', {});
+      const td = el('td', { className: 'session' + (s && s.start < Date.now() ? ' past' : '') });
+      if (s) td.append(el('a', { href: sessionHref(s.key), textContent: whenShort(s.start), title: 'Open this session on the schedule' }), ' ', whoTag(s));
+      if (f) td.append(...(s ? [el('br')] : []), followupLink(f, 'Follow-up ' + whenShort(f.start)), ' ', whoTag(f));
+      return td;
     }   // age: oldest (least time left) first
     function sortLabel(st) {
       const word = { arrival: 'arrival in the stage', unit: 'unit', age: 'age', approved: 'approval date', ebor: 'EBoR date', session: 'session date' }[st.key];
@@ -210,6 +216,7 @@
                   : r.boardState === 'ok' ? r.boardSize + ' on the board (3 to 6 needed).'
                   : r.boardSize + ' on the board; the most is 6. Some may only be on the invitation to have it on their calendar: check who sits on the board.')
                   + (r.session ? '\n\nClick: open the board on the schedule (' + whenShort(r.session.start) + ').' : '') }), ' '] : []),
+              ...(r.followup && !t.cols.includes('session') ? [followupLink(r.followup, 'Follow-up ' + whenShort(r.followup.start)), ' '] : []),
               ...(r.eagleNumber ? [el('span', { className: 'tag eaglenum', textContent: '🦅 ' + r.eagleNumber.split(' ')[0],
                 title: 'If Eagle is awarded, announce: ' + r.eagleNumber }), ' '] : []),
               ...(r.councilWait !== null ? [el('span', { className: 'council' + (r.councilOverdue ? ' late' : ''), textContent: 'Council?',

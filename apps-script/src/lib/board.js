@@ -81,13 +81,14 @@ var Board = (function () {
   /**
    * Each Scout's NEXT booked session of each type, from the schedule rows. A session started less than 12 hours ago
    * still counts (tonight's board), and an older or duplicate row never hides a later one.
-   * -> {recordId: {Intake|ESSPPR|EBoR: {key, start (ms), reps: [initials], row}}}
+   * Follow-Up / Consult too (Jim W., 2026-11-13): the dashboard shows a Scout's next one at any stage.
+   * -> {recordId: {Intake|ESSPPR|EBoR|Followup: {key, start (ms), reps: [initials], row}}}
    */
   function nextSessions(rows, nowMs) {
     var out = {};
     (rows || []).forEach(function (x) {
       var id = str(x.record_id), code = B().typeCode(x.slot_type), st = B().slotStart(x.date, x.time) || 0;
-      if (!id || !str(x._key) || ['Intake', 'ESSPPR', 'EBoR'].indexOf(code) < 0 || !(st > nowMs - 12 * 3600 * 1000)) return;
+      if (!id || !str(x._key) || ['Intake', 'ESSPPR', 'EBoR', 'Followup'].indexOf(code) < 0 || !(st > nowMs - 12 * 3600 * 1000)) return;
       var m = out[id] = out[id] || {};
       if (m[code] && m[code].start <= st) return;
       m[code] = { key: str(x._key), start: st, reps: B().splitWho(x.reps), row: x };
@@ -130,6 +131,8 @@ var Board = (function () {
           eagleNumber: str(r.eagleNumber),                 // EBoR Booked: "110th Eagle Scout of Troop 910" to announce
           // Booked stages: the next session of that type {key, start, reps (initials), names}; links to the schedule page
           session: session(r),
+          // The Scout's next Follow-Up / Consult, any stage (2026-11-13): {key, start, reps, names} or null
+          followup: pick(r.sessions && r.sessions.Followup),
           // Proposal Approved with committee signatures still out (Signing column): {waiting: ['CD'], since, signed}
           signing: r.section === 'proposal_approved' && r.signing ? r.signing : null,
           formsite: r.formsite && str(r.formsite.why) ? { why: str(r.formsite.why), folder: str(r.formsite.folder) } : null,
@@ -150,7 +153,10 @@ var Board = (function () {
   }
 
   function session(r) {
-    var s = SESSION_OF[r.section] && r.sessions ? r.sessions[SESSION_OF[r.section]] : null;
+    return pick(SESSION_OF[r.section] && r.sessions ? r.sessions[SESSION_OF[r.section]] : null);
+  }
+
+  function pick(s) {
     return s && str(s.key) ? { key: str(s.key), start: Number(s.start) || 0, reps: (s.reps || []).map(str).filter(Boolean),
       names: (s.names || []).map(str).filter(Boolean) } : null;
   }
