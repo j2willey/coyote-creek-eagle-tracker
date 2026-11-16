@@ -29,12 +29,26 @@
         <section class="statcard" id="panel"><p class="muted">Pick a unit.</p></section>
       </div>
     </div>
+    <dialog id="k3Dlg" class="detail">
+      <div class="dethead"><div><h2>Import Key 3</h2>
+        <p class="muted">Council's export of Unit Leaders and Committee Chairs, as .xlsx or CSV. Columns are found by their
+          headings, in any order. Units not in the file keep their contacts (remove a folded unit by hand on the Key 3 tab).</p></div>
+        <button type="button" id="k3Close">Close</button></div>
+      <p><input type="file" id="k3File" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></p>
+      <div id="k3Out"></div>
+      <div class="actions"><button type="button" class="primary" id="k3Apply" hidden>Replace the Key 3 tab</button><span id="k3Msg" role="status"></span></div>
+    </dialog>
   </main>
   <script type="module">
     import { api } from '/js/api.js';
-    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut, actionButton } from '/js/committee.js';
     import { mountUnitContacts } from '/js/unitContacts.js';
-    const meLine = renderNav($('cnav'), 'units');
+    import { xlsxRows } from '/js/xlsx.js';
+    // Import Key 3… (Admin role, 2026-11-16): shown once the server says this member may import.
+    const k3Btn = actionButton({ label: 'Import Key 3…', icon: 'plus', title: 'Replace the Key 3 tab from Council\'s export (.xlsx or CSV)',
+      onClick: () => { $('k3File').value = ''; $('k3Out').replaceChildren(); $('k3Apply').hidden = true; $('k3Msg').textContent = ''; $('k3Dlg').showModal(); } });
+    k3Btn.hidden = true;
+    const meLine = renderNav($('cnav'), 'units', [k3Btn]);
     let units = [], sel = new URLSearchParams(location.search).get('u') || '';
     function renderList() {
       $('list').replaceChildren(...units.map(u => {
@@ -50,7 +64,42 @@
       if (!sel) return;
       mountUnitContacts($('panel'), { session, unit: sel, onChange: refresh });
     }
-    async function refresh() { const r = await api('unitDirectory', { session }); units = r.units; renderList(); }
+    async function refresh() { const r = await api('unitDirectory', { session }); units = r.units; k3Btn.hidden = !r.canImportKey3; renderList(); }
+
+    let k3File = null;
+    const say = (t, cls) => { $('k3Msg').textContent = t; $('k3Msg').className = cls || ''; };
+    const list = (title, xs, cls) => xs.length ? [el('p', { className: cls || '' }, el('b', { textContent: title + ' (' + xs.length + ')' })),
+      el('ul', {}, ...xs.slice(0, 40).map(x => el('li', { textContent: x })), ...(xs.length > 40 ? [el('li', { className: 'muted', textContent: '… ' + (xs.length - 40) + ' more' })] : []))] : [];
+    $('k3Close').onclick = () => $('k3Dlg').close();
+    $('k3File').onchange = async () => {
+      const f = $('k3File').files[0];
+      $('k3Out').replaceChildren(); $('k3Apply').hidden = true; k3File = null;
+      if (!f) return;
+      say('Reading ' + f.name + '…');
+      try {
+        k3File = /\.xlsx$/i.test(f.name) ? { name: f.name, rows: await xlsxRows(await f.arrayBuffer()) }
+          : /\.xls$/i.test(f.name) ? (() => { throw new Error('That is an old-style .xls file. Save it as .xlsx or CSV and try again.'); })()
+          : { name: f.name, csv: await f.text() };
+        const { summary: s } = await api('key3ImportPreview', { session, ...k3File });
+        const COL = { name: 'Name', position: 'Position', phone: 'Phone', address: 'Address', city: 'City', state: 'State', zip: 'Zip' };
+        $('k3Out').replaceChildren(
+          el('p', {}, s.fromFile + ' contacts in ' + s.file + '; ' + s.total + ' on the Key 3 tab after the import. Unit Leader addresses: ' +
+            s.addresses + ' of ' + s.leaders + (s.carried ? ' (' + s.carried + ' carried over from the last import)' : '') + '.'),
+          ...(s.skipped.length ? [el('p', { className: 'muted', textContent: 'Left out: ' + s.skipped.map(x => x.what + ' ' + x.n).join(' · ') })] : []),
+          ...(s.missingColumns.length ? [el('p', { className: 'err', textContent: 'Not in this file: ' + s.missingColumns.map(k => COL[k] || k).join(', ') +
+            '. Unit Leader addresses stay as they were when the leader is unchanged; other missing values will be blank.' })] : []),
+          ...list('Added', s.added), ...list('Removed', s.removed, 'err'), ...list('Units not in this file, kept as they are', s.kept, 'muted'));
+        $('k3Apply').hidden = false;
+        say(s.added.length || s.removed.length ? 'Check the changes, then replace.' : 'No contact changes (addresses and phones may still update).');
+      } catch (e) { k3File = null; say(e.message, 'err'); }
+    };
+    $('k3Apply').onclick = async () => {
+      if (!k3File) return;
+      $('k3Apply').disabled = true; say('Importing…');
+      try { const r = await api('key3ImportApply', { session, ...k3File }); $('k3Apply').hidden = true; say(r.message, 'ok'); await refresh(); open(); }
+      catch (e) { say(e.message, 'err'); }
+      finally { $('k3Apply').disabled = false; }
+    };
     if (!session) needSignIn($('msg'));
     else {
       try { const c = JSON.parse(localStorage.getItem('ccacHome') || 'null'); if (c && c.session === session) meLine.textContent = meText(c.d.me, c.d.testMode); } catch {}

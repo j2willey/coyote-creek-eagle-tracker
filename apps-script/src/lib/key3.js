@@ -4,7 +4,9 @@
  * The export's layout varies, so columns are found by header text in the first 10 rows:
  *   unit (or unit type + unit number), position/role/title, name (or first + last), email, phone.
  * One row per position per unit. Kept: troops, crews, ships (Cub packs never have an Eagle candidate).
- * Dropped: Chartered Organization Rep / Executive Officer, rows without a unit or an email.
+ * Dropped: Chartered Organization Rep / Executive Officer / Council Unit Representative (a council-chartered unit's
+ * COR), rows without a unit or an email.
+ * City and state may come as one column ("citystate": "Mocktown, CA"; the District Executive's export, 2026-11-16).
  * Positions map to roles: Scoutmaster / Cubmaster / Crew Advisor / Skipper → Unit Leader; Committee Chair.
  * If Council changes the headers, fix the patterns in COLS (that's the only place).
  *
@@ -30,6 +32,7 @@ var Key3 = (function () {
     phone: /phone|mobile|cell/i,
     address: /^((leader|member|mailing|home|street)\s*)?address(\s*(1|line\s*1))?$/i,
     city: /^((leader|member|mailing|home)\s*)?city$/i,
+    cityState: /^((leader|member|mailing|home)\s*)?city\s*[,\/&-]?\s*(and\s*)?state$/i,
     state: /^((leader|member|mailing|home)\s*)?state(\s*\/?\s*province)?$/i,
     zip: /^((leader|member|mailing|home)\s*)?(zip|postal)(\s*code)?$/i
   };
@@ -118,11 +121,37 @@ var Key3 = (function () {
 
   function roleFor(position) {
     var p = str(position);
-    if (/chartered\s*org|^cor$|executive\s*officer/i.test(p)) return 'Chartered Org Rep';
+    if (/chartered\s*org|^cor$|executive\s*officer|council\s*unit\s*rep/i.test(p)) return 'Chartered Org Rep';
     if (/assistant/i.test(p)) return p;
     if (/committee\s*chair/i.test(p)) return 'Committee Chair';
     if (/scoutmaster|cubmaster|crew\s*advisor|^advisor$|skipper|unit\s*leader/i.test(p)) return 'Unit Leader';
     return p;
+  }
+
+  /** "Mocktown, CA" -> {city: 'Mocktown', state: 'CA'}; "Mocktown CA 99999" too; no state found -> all of it is the city. */
+  function splitCityState(v) {
+    var t = str(v).replace(/\s+\d{5}(-\d{4})?$/, '');
+    var m = /^(.*?)[,\s]+([A-Za-z]{2})\.?$/.exec(t);
+    return m && str(m[1]) ? { city: str(m[1]).replace(/,$/, ''), state: m[2].toUpperCase() } : { city: t, state: '' };
+  }
+
+  /**
+   * Units missing from an import are KEPT (Jim W., 2026-11-16): an export may leave units out, and a unit that folded
+   * is removed by an admin by hand. oldRows: readGrid(); newRows: parse().rows. -> {rows (new + kept, in unit order), kept: ['T999']}
+   */
+  function keepMissing(oldRows, newRows) {
+    var units = U(), inNew = {}, kept = [], rows = (newRows || []).slice();
+    rows.forEach(function (r) { inNew[units.code(r.unit)] = true; });
+    (oldRows || []).forEach(function (r) {
+      var c = units.code(r['Unit']);
+      if (!c || inNew[c] || !str(r['Email'])) return;
+      if (kept.indexOf(units.label(c)) < 0) kept.push(units.label(c));
+      var o = { unit: units.label(c), role: str(r['Role']), position: str(r['Position']), name: str(r['Name']), email: str(r['Email']), phone: str(r['Phone']) };
+      ADDRESS.forEach(function (a) { o[a.field] = str(r[a.field]); });
+      rows.push(o);
+    });
+    rows.sort(function (a, b) { return a.unit < b.unit ? -1 : a.unit > b.unit ? 1 : (a.role < b.role ? -1 : a.role > b.role ? 1 : 0); });
+    return { rows: rows, kept: kept };
   }
 
   function findHeader(rows) {
@@ -142,7 +171,11 @@ var Key3 = (function () {
     var h = findHeader(rows || []);
     if (!h) return { error: 'No header row with a Unit column and an Email column in the first 10 rows.', rows: [], skipped: {} };
     var ix = h.idx, units = U();
-    var out = [], skipped = { 'Chartered Org Rep': 0, 'packs / other unit types': 0, 'no unit': 0, 'no email': 0 };
+    // Which optional columns this file has (the preview says what is missing).
+    var columns = { name: ix.name !== undefined || ix.first !== undefined || ix.last !== undefined, position: ix.position !== undefined,
+      phone: ix.phone !== undefined, address: ix.address !== undefined, city: ix.city !== undefined || ix.cityState !== undefined,
+      state: ix.state !== undefined || ix.cityState !== undefined, zip: ix.zip !== undefined };
+    var out = [], skipped = { 'Chartered Org Rep / Council Unit Rep': 0, 'packs / other unit types': 0, 'no unit': 0, 'no email': 0 };
     for (var r = h.row + 1; r < rows.length; r++) {
       var row = rows[r] || [];
       var cell = function (k) { return ix[k] === undefined ? '' : str(row[ix[k]]); };
@@ -151,19 +184,23 @@ var Key3 = (function () {
       if (ix.unitType !== undefined && /^\d+$/.test(rawUnit)) rawUnit = cell('unitType') + ' ' + rawUnit;
       var c = units.code(rawUnit);
       if (!c) { skipped['no unit']++; continue; }
-      if (['t', 'c', 's'].indexOf(c.charAt(0)) < 0) { skipped['packs / other unit types']++; continue; }
+      if (!/^[tcs]\d+$/.test(c)) { skipped['packs / other unit types']++; continue; }   // "club707" (Exploring) is not a crew
       var position = cell('position'), role = roleFor(position);
-      if (role === 'Chartered Org Rep') { skipped['Chartered Org Rep']++; continue; }
+      if (role === 'Chartered Org Rep') { skipped['Chartered Org Rep / Council Unit Rep']++; continue; }
       var emails = units.emailsIn(cell('email'));
       if (!emails.length) { skipped['no email']++; continue; }
       var name = cell('name') || [cell('first'), cell('last')].filter(Boolean).join(' ');
       var rowOut = { unit: units.label(c), role: role, position: position, name: name, email: emails.join('; '), phone: cell('phone') };
       // The export's own address columns (only the Unit Leader's row keeps them).
       ADDRESS.forEach(function (a) { rowOut[a.field] = role === 'Unit Leader' ? cell(a.field) : ''; });
+      if (role === 'Unit Leader' && ix.cityState !== undefined && !rowOut.city && !rowOut.state) {
+        var cs = splitCityState(cell('cityState'));
+        rowOut.city = cs.city; rowOut.state = cs.state;
+      }
       out.push(rowOut);
     }
     out.sort(function (a, b) { return a.unit < b.unit ? -1 : a.unit > b.unit ? 1 : (a.role < b.role ? -1 : a.role > b.role ? 1 : 0); });
-    return { rows: out, skipped: skipped };
+    return { rows: out, skipped: skipped, columns: columns };
   }
 
   function key(r) { return [str(r.unit || r['Unit']), str(r.role || r['Role']), str(r.email || r['Email']).toLowerCase()].join(' | '); }
@@ -180,7 +217,7 @@ var Key3 = (function () {
   }
 
   return { COLS: COLS, ADDRESS: ADDRESS, roleFor: roleFor, parse: parse, diff: diff, addressColumns: addressColumns, hasMachineRow: hasMachineRow,
-    readGrid: readGrid, carryForward: carryForward };
+    readGrid: readGrid, carryForward: carryForward, keepMissing: keepMissing, splitCityState: splitCityState };
 })();
 
 if (typeof module !== 'undefined') module.exports = Key3;

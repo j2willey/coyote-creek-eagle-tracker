@@ -28,7 +28,7 @@ describe('Key3.parse', () => {
   });
 
   it('drops COR, packs and rows without an email', () => {
-    expect(p.skipped).toMatchObject({ 'Chartered Org Rep': 1, 'packs / other unit types': 1, 'no email': 1 });
+    expect(p.skipped).toMatchObject({ 'Chartered Org Rep / Council Unit Rep': 1, 'packs / other unit types': 1, 'no email': 1 });
   });
 
   it('reads unit type + number and first + last name', () => {

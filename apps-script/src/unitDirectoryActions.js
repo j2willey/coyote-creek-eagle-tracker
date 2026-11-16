@@ -56,8 +56,9 @@ function removeBlankUnitContacts_() {
 }
 
 function actionUnitDirectory_(req) {
-  committeeMe_(req.session);
-  return { units: UnitDirectory.directory(units_(), key3Rows_(), readTabOrEmpty_(UNIT_CONTACTS_TAB)) };
+  var c = committeeMe_(req.session);
+  return { units: UnitDirectory.directory(units_(), key3Rows_(), readTabOrEmpty_(UNIT_CONTACTS_TAB)),
+    canImportKey3: Access.isAdmin(c.me, c.email, getSettings_()) };   // Import Key 3… (Admin role, 2026-11-16)
 }
 
 function actionUnitContactsGet_(req) {

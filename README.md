@@ -156,7 +156,8 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     scheduleCheckActions.js    Admin → Schedule: check against the tracking sheet
     templateMail.js       mailFromTemplate_ (template Doc → email, or built-in wording), template Doc setup
     unitActions.js        unit contacts' page (EBoRs, board members, calendar, Eagle candidates)
-    unitContacts.js       unit tabs, Key 3 import
+    unitContacts.js       unit tabs, Key 3 import (plan + write)
+    key3ImportActions.js  Units page: Import Key 3… (preview, apply)
     digest.js             Activity tab, digest trigger, Digest Log
     notes.js              Life to Eagle Log
     triggers.js           installable edit/change triggers (Action column, notes, names, Intake Queue, cache clearing)
@@ -324,7 +325,7 @@ members use the Action column, the schedule sheet and the committee page instead
   **Templates: create Doc / add missing tabs / number the tabs / rebuild catalog**, migration, fake schedule, key new
   slots, schedule check, install sheet triggers, digest now, folder report / apply / mock folders / place by stage,
   **Anonymize this STAGING sheet**, start Life to Eagle Logs, new files: flag rows, **Sort EBoR Booked by EBoR date**,
-  import Key 3.
+  import Key 3 (CSV or Google Sheet; an .xlsx goes through the Units page's **Import Key 3…**).
 
 | Task (committee member) | How |
 |---|---|
@@ -1115,6 +1116,17 @@ the line drops out). Before the board, the number to announce (count + 1, + 1 pe
 unit; a best guess when two boards are pending: the member corrects the email in the Outbox) shows on the dashboard
 (EBoR Booked: 🦅 tag; the Eagle earned dialog), the schedule's EBoR info window and the Session briefing
 (`{eagleNumber}`). This calendar year's count is computed from the tracking tab (Eagle Earned, EBoR date this year).
+**Import Key 3…** (Units page, Admin role; 2026-11-16): pick Council's export as **.xlsx or CSV**. Columns are found by
+heading in any order (`Key3.COLS`: `displayname`, `fullname`, `position`, `email`, `phone`, `address`, `citystate` or
+`city` + `state`, `zip` …); only a unit and an email column are required, and the preview names the optional columns the
+file lacks. Kept: Unit Leaders and Committee Chairs of troops, crews and ships. Left out: packs, Exploring clubs and posts,
+Chartered Org Reps and Council Unit Representatives. **Units missing from the file keep their rows** (an export can leave
+units out); a unit that folds is removed by hand on the Key 3 tab. The preview lists added and removed contacts, units
+kept and Unit Leader addresses; **Replace the Key 3 tab** writes it (the previous import stays on the hidden `_Key 3
+previous` tab). The page reads the .xlsx itself (`web/js/xlsx.js`, no library) and sends only the rows: one export marked
+a million blank rows as formatted, a 60 MB worksheet that Apps Script (50 MB blob limit) can't open. The sheet menu
+(Admin → import Key 3) takes a CSV or Google Sheet link and applies the same rules.
+
 Unit Contacts rows with nothing but a unit (placeholders) are not shown and are deleted by Setup / repair
 (`UnitDirectory.blankContactRows`, `removeBlankUnitContacts_`). Unit Contacts **Updated By** (2026-11-01): filled with the
 member's initials or the unit contact's email on every add/edit from the web, beside **Updated**; added on first use.

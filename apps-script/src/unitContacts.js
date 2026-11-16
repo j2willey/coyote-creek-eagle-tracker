@@ -106,7 +106,7 @@ function key3Note_(source) {
 }
 
 /**
- * Admin → Unit contacts: import Key 3. Source: a Drive link/ID to the CSV (or a Google Sheet; first tab),
+ * Admin → Unit contacts: import Key 3. Source: a Drive link/ID to the CSV or a Google Sheet (first tab; an .xlsx goes through the Units page),
  * or blank = a tab named "Key 3 paste". Shows the changes, then replaces the Key 3 tab (previous kept, hidden).
  */
 function menuImportKey3() {
@@ -132,33 +132,54 @@ function menuImportKey3() {
       label = f.getName();
       if (f.getMimeType() === MimeType.GOOGLE_SHEETS) rows = SpreadsheetApp.openById(id).getSheets()[0].getDataRange().getDisplayValues();
       else if (/csv|text|plain/i.test(f.getMimeType()) || /\.csv$/i.test(label)) rows = Utilities.parseCsv(f.getBlob().getDataAsString());
-      else throw new Error(label + ' is ' + f.getMimeType() + '. Use the CSV, or open it as a Google Sheet first (File → Save as Google Sheets).');
+      else throw new Error(label + ' is ' + f.getMimeType() + '. Use the CSV, or open it as a Google Sheet first (File → Save as Google Sheets). ' +
+        'An Excel file can be imported on the Units page (Import Key 3…).');
     }
   } catch (e) { ui.alert(e.message); return; }
 
-  var p = Key3.parse(rows);
-  if (p.error) { ui.alert('Key 3 import: ' + p.error); return; }
-  var old = key3Rows_();
-  // The Unit Leader's address is not in Council's export: carry it forward for a unit whose leader's name is unchanged.
-  var carried = Key3.carryForward(old, p.rows);
-  p.rows = carried.rows;
-  var d = Key3.diff(old, p.rows);
-  var skipped = Object.keys(p.skipped).filter(function (k) { return p.skipped[k]; })
-    .map(function (k) { return k + ': ' + p.skipped[k]; }).join(', ');
-  var list = function (xs) { return xs.slice(0, 12).join('\n') + (xs.length > 12 ? '\n… ' + (xs.length - 12) + ' more' : ''); };
-  var msg = p.rows.length + ' contacts from ' + label + (skipped ? ' (skipped ' + skipped + ')' : '') + '.\n\n' +
-    'Added: ' + d.added.length + (d.added.length ? '\n' + list(d.added) : '') + '\n\n' +
-    'Removed: ' + d.removed.length + (d.removed.length ? '\n' + list(d.removed) : '') + '\n\n' +
-    'Unit Leader addresses carried over: ' + carried.carried + '\n\nReplace the Key 3 tab?';
-  if (ui.alert('Import Key 3', msg, ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
+  var plan;
+  try { plan = key3Plan_(rows); } catch (e) { ui.alert('Key 3 import: ' + e.message); return; }
+  if (ui.alert('Import Key 3', key3Summary_(plan, label) + '\n\nReplace the Key 3 tab?', ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
+  ui.alert(key3Write_(plan, label));
+}
 
+/**
+ * The import, before anything is written: parse, carry Unit Leader addresses forward, keep units missing from the file
+ * (Jim W., 2026-11-16), and the changes. rows: 2D array. -> {rows, skipped, columns, carried, kept, added, removed}
+ */
+function key3Plan_(rows) {
+  var p = Key3.parse(rows);
+  if (p.error) throw userError_(p.error);
+  var old = key3Rows_();
+  var carried = Key3.carryForward(old, p.rows);           // an export without addresses keeps the ones on the tab
+  var keep = Key3.keepMissing(old, carried.rows);         // a unit left out of the file keeps its rows
+  var d = Key3.diff(old, keep.rows);
+  return { rows: keep.rows, fromFile: p.rows.length, skipped: p.skipped, columns: p.columns || {}, carried: carried.carried,
+    kept: keep.kept, added: d.added, removed: d.removed };
+}
+
+/** The plan as text (sheet-menu dialog). */
+function key3Summary_(plan, label) {
+  var skipped = Object.keys(plan.skipped).filter(function (k) { return plan.skipped[k]; })
+    .map(function (k) { return k + ': ' + plan.skipped[k]; }).join(', ');
+  var list = function (xs) { return xs.slice(0, 12).join('\n') + (xs.length > 12 ? '\n… ' + (xs.length - 12) + ' more' : ''); };
+  return plan.fromFile + ' contacts from ' + label + (skipped ? ' (skipped ' + skipped + ')' : '') + '.\n\n' +
+    'Added: ' + plan.added.length + (plan.added.length ? '\n' + list(plan.added) : '') + '\n\n' +
+    'Removed: ' + plan.removed.length + (plan.removed.length ? '\n' + list(plan.removed) : '') + '\n\n' +
+    'Units not in this file, kept as they are: ' + (plan.kept.length ? plan.kept.join(', ') : 'none') + '\n' +
+    'Unit Leader addresses carried over: ' + plan.carried;
+}
+
+/** Replace the Key 3 tab with plan.rows (previous kept on a hidden tab). -> message */
+function key3Write_(plan, label) {
+  var ss = SpreadsheetApp.getActive();
   withLock_(function () {
     var sh = ss.getSheetByName(KEY3_TAB) || ss.insertSheet(KEY3_TAB);
     var prev = ss.getSheetByName(KEY3_PREV_TAB);
     if (prev) ss.deleteSheet(prev);
     if (sh.getLastRow() > 1) { prev = sh.copyTo(ss).setName(KEY3_PREV_TAB); prev.hideSheet(); }
     sh.clear();
-    var out = [KEY3_HEADERS].concat(p.rows.map(function (r) { return [r.unit, r.role, r.position, r.name, r.email, r.phone, r.address || '', r.city || '', r.state || '', r.zip || '']; }));
+    var out = [KEY3_HEADERS].concat(plan.rows.map(function (r) { return [r.unit, r.role, r.position, r.name, r.email, r.phone, r.address || '', r.city || '', r.state || '', r.zip || '']; }));
     sh.getRange(1, 1, out.length, KEY3_HEADERS.length).setValues(out);
     sh.getRange(2, 7, Math.max(1, out.length - 1), 4).setNumberFormat('@');   // the address columns are text (zip codes)
     sh.getRange(1, 1, 1, KEY3_HEADERS.length).setFontWeight('bold');
@@ -166,9 +187,11 @@ function menuImportKey3() {
     sh.getRange(1, 1).setNote(key3Note_(label + ', ' + Intake.shortDate(new Date())));
     protectKey3_(sh);
   });
+  uncache_('c:units');
   var noContact = unitsWithoutContacts_();
-  ui.alert('Key 3 replaced (' + p.rows.length + ' contacts). The previous import is kept on the hidden "' + KEY3_PREV_TAB + '" tab.' +
-    (noContact.length ? '\n\nUnits with a Scout on the tracking tab but no contact: ' + noContact.join(', ') : ''));
+  return 'Key 3 replaced (' + plan.rows.length + ' contacts' + (plan.kept.length ? ', ' + plan.kept.length + ' unit(s) kept from before' : '') +
+    '). The previous import is kept on the hidden "' + KEY3_PREV_TAB + '" tab.' +
+    (noContact.length ? '\n\nUnits with a Scout on the tracking tab but no contact: ' + noContact.join(', ') : '');
 }
 
 function protectKey3_(sh) {
