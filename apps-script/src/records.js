@@ -120,7 +120,10 @@ var Records = (function () {
       Object.keys(fields).forEach(function (name) {
         if (md.headers[name] === undefined) throw new Error('Unknown column: ' + name);
         if (name === '_key') throw new Error('Refusing to write _key');
-        md.sheet.getRange(r + 1, md.headers[name] + 1).setValue(fields[name]);
+        var cell = md.sheet.getRange(r + 1, md.headers[name] + 1);
+        // Name the column in any error (2026-11-17: a data-validation rejection only quoted the rule's help text).
+        try { cell.setValue(fields[name]); }
+        catch (e) { throw new Error('column ' + name + ' (cell ' + cell.getA1Notation() + '): ' + (e && e.message || e)); }
       });
     });
     // A new EBoR date may mean a new year folder (folderPlace.js).
