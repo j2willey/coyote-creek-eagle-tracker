@@ -26,6 +26,10 @@ export function findRequirement7Page(pageTexts) {
 
 /** Spaces between month, day and year in the Requirement 7 date (Jim: one text, 3–4 spaces apart). */
 export const R7_DATE_GAP = '    ';
+/** Where the Requirement 7 date mark starts by default: its left edge and bottom, as fractions of the page (viewer space). */
+export const R7_DATE_AT = { x: 0.785, y: 0.295 };
+/** Its default font size (Jim W., 2026-11-17: 12 pt; the bar's Auto / − / + still change it). */
+export const R7_DATE_FONT_PT = 12;
 
 /**
  * The Requirement 7 date as ONE text mark "MM    DD    YY" (2026-11-11: three separate boxes sat too far apart):
@@ -38,12 +42,15 @@ export const R7_DATE_GAP = '    ';
  */
 export function requirement7DateMarks(date, pageIndex, pageSize, ink) {
   const text = [date.mm, date.dd, date.yy].join(R7_DATE_GAP);
-  const w = 96, h = 16;
-  const x0 = Math.max(0, pageSize.width * 0.62 - w / 2);
-  const y0 = pageSize.height * 0.42;
+  const w = 88, h = 16;
+  // Viewer space has its origin bottom-left. On the January 2026 form (512-728) Requirement 7's three date boxes start
+  // about 79% across and sit about 30% up the page (Jim W., 2026-11-17: the old 62% / 42% landed up and to the left,
+  // over the unit committee chair's date). Scans vary a little: the member still drags it onto the boxes.
+  const x0 = Math.max(0, pageSize.width * R7_DATE_AT.x);
+  const y0 = pageSize.height * R7_DATE_AT.y;
   return [clampItemToPage({
     id: 'r7date', kind: /** @type {'text'} */ ('text'), pageIndex, x: x0, y: y0, width: w, height: h,
-    label: 'Date (MM DD YY)', text, ink, group: 'r7date'
+    label: 'Date (MM DD YY)', text, ink, group: 'r7date', fontSize: R7_DATE_FONT_PT
   }, pageSize)];
 }
 
