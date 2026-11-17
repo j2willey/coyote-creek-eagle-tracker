@@ -184,7 +184,7 @@ function digestAwaiting_() {
     return openUnitRequests_().map(function (x) { return { title: x.unit + ': board for ' + x.scout + ' on ' + x.date + ' ' + x.time + (x.place ? ', ' + x.place : '') }; });
   });
   part('council', function () {
-    return Board.councilWaiting(Board.build(boardRecords_(), s.sections, todayYmd_(), s.councilAckDays)).filter(function (x) { return x.overdue; });
+    return Board.councilWaiting(Board.build(boardRecords_(), s.sections, todayYmd_(), s.councilAckDays, s.congratsDays)).filter(function (x) { return x.overdue; });
   });
   part('closeReview', function () {                         // Proposal Not Approved / EBoR Paused that look terminal (lib/closing.js)
     var why = closeSuggestions_();

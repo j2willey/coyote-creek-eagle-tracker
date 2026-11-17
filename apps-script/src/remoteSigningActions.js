@@ -253,8 +253,11 @@ function actionEborPaperworkFinishPartial_(req) {
   addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [' + by + '] EBoR paperwork filed after signing outside the room. ' + Signatures.summary(st) +
     '. Filed ' + names.application + ' and ' + names.report + (warnings.length ? ' (finished with missing signatures)' : '') +
     (queued ? '; Council email drafted in the Outbox' : '; no Council email drafted') + '.');
-  return { message: scout + ': signed paperwork filed.' + (queued ? ' The Council email is ready in the Outbox.' : '') + note +
-    ' The row has not moved: use Eagle earned… on the dashboard.', outboxId: queued ? res.id : '' };
+  var moved = '';
+  try { moved = moveToEagleEarned_(rec, boardYmd, by); }
+  catch (e) { console.error('finish partial move: ' + (e && e.stack || e)); moved = ' The row could not be moved (' + e.message + '): use Eagle earned… on the dashboard.'; }
+  return { message: scout + ': signed paperwork filed.' + (queued ? ' The Council email is ready in the Outbox.' : '') + note + moved,
+    outboxId: queued ? res.id : '' };
 }
 
 // ---------- signer ----------

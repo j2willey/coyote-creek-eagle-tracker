@@ -44,4 +44,12 @@ describe('Eagles to Date (2026-11-01)', () => {
       { section: 'eagle_earned', unit: 'T910', ebor: '2025-12-01' }, { section: 'ebor_booked', unit: 'T910', ebor: '2026-11-20' }];
     expect(EC.yearCounts(recs, 2026)).toEqual({ t910: 2, c967: 1 });
   });
+  it('keeps the numbers on the row for a later congratulations (_eagle_no)', () => {
+    expect(EC.store([{ code: 't910', n: 110 }, { code: 'c967', n: 12, was: 11 }])).toBe('t910:110; c967:12');
+    expect(EC.store([])).toBe('');
+    expect(EC.parseStored('t910:110; c967:12')).toEqual([{ code: 't910', n: 110 }, { code: 'c967', n: 12 }]);
+    expect(EC.parseStored('')).toEqual([]);
+    expect(EC.parseStored('junk; T41:3')).toEqual([{ code: 't41', n: 3 }]);
+    expect(EC.emailLine(EC.parseStored(EC.store([{ code: 't910', n: 110 }])))).toBe('You are the 110th Eagle Scout of Troop 910!');
+  });
 });

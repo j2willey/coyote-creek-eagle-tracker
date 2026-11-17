@@ -61,6 +61,7 @@ var SettingsModel = (function () {
     svmbcReceivedColumn: '',
     svmbcReceivedMark: '*',       // what "Council received the paperwork" writes into SVMBC Received (the sheet uses *)
     councilAckDays: 7,
+    congratsDays: 30,             // "Send congratulations…" on Eagle Earned rows whose EBoR date is at most this many days ago (lib/board.js)
     unitPipeline: true,           // unit page: read-only list of the unit's Eagle candidates (stage, age); FALSE hides it
     councilAppFrom: '',           // Council Formsite application emails filed into Scout folders from this date (YYYY-MM-DD); blank = off
     pleaseBookDays: 'Intake 7,14; ESSPPR 7,14; EBoR 7',   // "Please book" reminders: days in the To Book stage per session type; a type with no days = none

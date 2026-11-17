@@ -14,7 +14,7 @@ describe('StageActions', () => {
     expect(SA.forSection('app_submitted').map(a => a.key)).toEqual(['app_verified', 'checked', 'followup']);
     expect(SA.forSection('proposal_approved').map(a => a.key)).toEqual(['app_submitted', 'app_verified', 'checked', 'followup']);
     expect(SA.forSection('review_booked')[0]).toMatchObject({ key: 'review_outcome', page: '/committee/review' });
-    expect(SA.forSection('eagle_earned').map(a => a.key)).toEqual(['paperwork', 'svmbc_received']);
+    expect(SA.forSection('eagle_earned').map(a => a.key)).toEqual(['paperwork', 'congrats', 'svmbc_received']);
     expect(SA.resolveColumns(['signed_eagle_application_and.date', 'signed_eagle_application_and.who', 'eagle_earned.svmbc_received'], {}))
       .toMatchObject({ signedSent: 'signed_eagle_application_and.date', svmbcReceived: 'eagle_earned.svmbc_received' });
     expect(Object.keys(SA.bySection(['proposal_approved', 'eagle_not_awarded', 'app_submitted']))).toEqual(['proposal_approved', 'eagle_not_awarded', 'app_submitted']);   // Close record… (2026-11-10)
@@ -31,7 +31,7 @@ describe('StageActions', () => {
     expect(SA.forSection('ebor_booked').map(a => a.key)).toEqual(['eagle_earned', 'ebor_paused', 'eagle_not_awarded', 'checked', 'followup']);
     expect(SA.forSection('ebor_paused').map(a => a.key)).toEqual(['book_ebor', 'paused_not_awarded', 'close', 'keep_open', 'followup']);
     expect(SA.plan({ section: 'ebor_paused', action: 'paused_not_awarded', note: 'x', cols: {} })).toMatchObject({ errors: [], warnings: [], set: {}, to: 'eagle_not_awarded' });
-    expect(SA.forSection('eagle_earned').map(a => a.key)).toEqual(['paperwork', 'svmbc_received']);
+    expect(SA.forSection('eagle_earned').map(a => a.key)).toEqual(['paperwork', 'congrats', 'svmbc_received']);
     expect(SA.resolveColumns(['signed_eagle_application_and.date', 'signed_eagle_application_and.who', 'eagle_earned.svmbc_received'], {}))
       .toMatchObject({ signedSent: 'signed_eagle_application_and.date', svmbcReceived: 'eagle_earned.svmbc_received' });
     expect(SA.forSection('proposal_received').find(a => a.key === 'incomplete')).toMatchObject({ noteToEmail: true });
@@ -117,5 +117,24 @@ describe('StageActions: schedule-page actions say which type to open (2026-11-11
     expect(find('review_to_book', 'book_review')).toMatchObject({ page: '/committee/schedule', pageQuery: 'new=ESSPPR' });
     expect(find('app_verified', 'book_ebor')).toMatchObject({ page: '/committee/schedule', pageQuery: 'new=EBoR' });
     expect(find('ebor_paused', 'book_ebor')).toMatchObject({ pageQuery: 'new=EBoR' });
+  });
+
+  describe('Send congratulations (2026-11-17)', () => {
+    const c = { action: 'congrats', section: 'eagle_earned', cols: {}, files: ['photo'] };
+    it('is gated to recent boards and never moves the row', () => {
+      const a = SA.forSection('eagle_earned').find(x => x.key === 'congrats');
+      expect(a).toMatchObject({ ifCongrats: true, files: ['photo'], requireFiles: [] });
+      expect(SA.plan({ ...c, congratsOk: true })).toMatchObject({ errors: [], warnings: [], set: {}, to: null });
+      expect(SA.plan({ ...c, congratsOk: false }).errors[0]).toMatch(/congratsDays/);
+      expect(SA.plan({ ...c, congratsOk: true, files: [] }).warnings[0]).toMatch(/No photos/);
+      expect(SA.plan({ ...c, section: 'ebor_booked', congratsOk: true }).errors[0]).toMatch(/no longer at a stage/);
+    });
+    it('Eagle earned offers a photos-only variant once the paperwork went to Council', () => {
+      const a = SA.forSection('ebor_booked').find(x => x.key === 'eagle_earned');
+      expect(a.files).toEqual(['application', 'report', 'photo']);
+      expect(a.filesSent).toEqual(['photo']);
+      expect(a.emailHintSent).toMatch(/already gone to Council/);
+      expect(a.emailHint).toMatch(/drafts two emails/);
+    });
   });
 });

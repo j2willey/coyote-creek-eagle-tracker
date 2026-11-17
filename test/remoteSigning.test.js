@@ -44,7 +44,7 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
   beforeEach(() => {
     seq = 0;
     drive = makeDrive();
-    log = { sent: [], notes: [], council: [] };
+    log = { sent: [], notes: [], council: [], moved: [] };
     tabs = { '_Signatures': [], 'Uploads Log': [] };
     who = { s: 'ab@example.org', sam: 'sam@example.org', lee: 'lee@example.org', zed: 'zed@example.org' };
     ctx = vm.createContext({ console: { log() {}, warn() {}, error() {} } });
@@ -83,7 +83,8 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
       addRecordNote_: (id, line) => { log.notes.push(line); },
       readSchedule_: () => ({ rows: [] }),
       stageColumns_: () => ({ ebor: 'ebor_date' }),
-      draftCouncilPaperwork_: (c, r, ymd, files) => { log.council.push(files.map(f => f.name)); return { queued: true, id: 'OB-9' }; }
+      draftCouncilPaperwork_: (c, r, ymd, files) => { log.council.push(files.map(f => f.name)); return { queued: true, id: 'OB-9' }; },
+      moveToEagleEarned_: (r, ymd) => { log.moved.push([r.recordId, ymd]); return ' Moved to Eagle Earned.'; }
     });
     rec.fields.ebor_date = '2026-11-10';
   });
@@ -176,6 +177,8 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     expect(archived()).toContain('Verified Eagle Application.pdf');
     expect(log.council).toEqual([['Theodore_Sample-T999_EagleApplication-Signed.pdf', 'Theodore_Sample-T999_AdvancementReport-Signed.pdf']]);
     expect(sig().every(r => r.Filed)).toBe(true);
+    expect(log.moved).toEqual([['R-1', '2026-11-10']]);                 // Finish = Eagle earned (2026-11-17)
+    expect(r.message).toMatch(/Moved to Eagle Earned/);
     expect(call({ action: 'eborSignatureStatus', session: 's', recordId: 'R-1' }).requestId).toBe('');
   });
 

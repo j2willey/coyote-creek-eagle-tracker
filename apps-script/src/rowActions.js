@@ -45,13 +45,14 @@ function rowCheck_(req) {
   var dates = {};
   Object.keys(cols).forEach(function (role) { if (cols[role]) dates[role] = Intake.dateKey(rec.fields[cols[role]]) || ''; });
   var existing = a.eagleDone ? existingSigned_(rec) : {};
-  var p = StageActions.plan({ action: a.key, section: rec.section, date: req.date, today: todayYmd_(), dates: dates, cols: cols,
+  var today = todayYmd_();
+  var p = StageActions.plan({ action: a.key, section: rec.section, date: req.date, today: today, dates: dates, cols: cols,
     note: req.note, pending: Pending.isPending(rec.fields[Pending.COLUMN]), files: a.files ? (req.files || []) : undefined,
-    have: Object.keys(existing) });
+    have: Object.keys(existing), congratsOk: Board.congratsOpen(rec.section, dates.ebor, today, getSettings_().congratsDays) });
   if (p.errors.length) throw userError_(p.errors.join(' '));
-  var unit = (a.toUnit || a.eagleDone) ? Units.find(units_(), rec.fields.unit) : null;
+  var unit = (a.toUnit || a.eagleDone || a.congrats) ? Units.find(units_(), rec.fields.unit) : null;
   var warnings = p.warnings.slice();
-  if ((a.toUnit || a.eagleDone) && (!unit || !unit.contacts.length)) {
+  if ((a.toUnit || a.eagleDone || a.congrats) && (!unit || !unit.contacts.length)) {
     warnings.push('No unit contacts for ' + (rec.fields.unit || 'this unit') + ' (Key 3 / Unit Contacts tabs): add the unit leader in the Outbox if you know it.');
   }
   if (a.eagleDone && !String(getSettings_().councilEaglesEmail || '').trim()) {
@@ -119,6 +120,37 @@ function paintCell_(recordId, column, color) {
     if (!m || !rec || m.map[column] === undefined) return;
     sh.getRange(rec.row, m.map[column] + 1).setBackground(color);
   } catch (e) { console.warn('paintCell_: ' + e); }
+}
+
+/**
+ * Eagle earned (dashboard or EBoR paperwork Finish): +1 on Eagles to Date for each of the Scout's units, and the numbers
+ * kept on the row (hidden _eagle_no, when the column exists) for a later "Send congratulations…". -> {nums, note}
+ */
+function recordEagleNumbers_(rec, by) {
+  var nums = [];
+  try { nums = bumpEagleCounts_(rec, by); } catch (e) { console.warn('bumpEagleCounts_: ' + e); return { nums: [], note: 'Eagles to Date not updated: ' + e.message }; }
+  if (nums.length && Records.columns().indexOf('_eagle_no') >= 0) {
+    try { Records.update(rec.recordId, { _eagle_no: EagleCount.store(nums) }); } catch (e) { console.warn('_eagle_no: ' + e); }
+  }
+  return { nums: nums, note: '' };
+}
+
+/**
+ * EBoR paperwork Finish (in the room, or after signing outside it): the row moves to Eagle Earned as "Eagle earned…" would
+ * (EBoR Date = the board's date, painted; new-files clock stopped; Eagles to Date +1). Jim W., 2026-11-17: the signing is
+ * the "Eagle earned" moment; the congratulations is its own step ("Send congratulations…"). -> message text
+ */
+function moveToEagleEarned_(rec, boardYmd, by) {
+  var s = getSettings_(), cols = stageColumns_(), upd = {};
+  if (cols.ebor && /^\d{4}-\d{2}-\d{2}$/.test(String(boardYmd || ''))) upd[cols.ebor] = ymdToDate_(boardYmd);
+  if (Object.keys(upd).length) Records.update(rec.recordId, upd);
+  Records.move(rec.recordId, 'eagle_earned');
+  if (cols.ebor && String(s.eborDoneColor || '').trim()) paintCell_(rec.recordId, cols.ebor, String(s.eborDoneColor).trim());
+  clearPending_(rec.recordId);
+  var en = recordEagleNumbers_(rec, by);
+  var phrase = EagleCount.phrase(en.nums);
+  return ' Moved to ' + SettingsModel.sectionLabel(s, 'eagle_earned') + (phrase ? ' (' + phrase + ')' : '') + '.' +
+    (en.note ? ' ' + en.note + '.' : '') + ' Send the congratulations from the dashboard (Send congratulations…) when you have the photos.';
 }
 
 /** The Scout's last EBoR slot on the schedule (past or future): reps and Unit Board Members. */
@@ -214,20 +246,23 @@ function rowExecute_(c, ck, req, uploads) {
   // Eagles to Date (2026-11-01): +1 on each of the Scout's units that keeps a count, before the emails use it.
   var eagleNums = [];
   if (a.key === 'eagle_earned') {
-    try { eagleNums = bumpEagleCounts_(rec, by); } catch (e) { console.warn('bumpEagleCounts_: ' + e); notes.push('Eagles to Date not updated: ' + e.message); }
+    var en = recordEagleNumbers_(rec, by);
+    eagleNums = en.nums; if (en.note) notes.push(en.note);
     if (eagleNums.length) msg += ' ' + EagleCount.phrase(eagleNums).replace(/^./, function (ch) { return ch.toUpperCase(); }) + '.';
+  } else if (a.congrats) {
+    eagleNums = EagleCount.parseStored(rec.fields._eagle_no);       // the numbers given when Eagle was earned (none on older rows)
   }
-  if (a.eagleDone) {
+  if (a.eagleDone || a.congrats) {
     var after = Records.get(rec.recordId) || rec;
     var boardYmd = cols.ebor ? (Intake.dateKey(after.fields[cols.ebor]) || req.date) : req.date;
     var common = { scout: scout, firstName: EagleDone.firstName(scout, rec.fields.preferred_name), unitName: EagleDone.unitName(rec.fields.unit),
       date: EagleDone.longDate(boardYmd), senderName: String(c.me.name || c.email),
       photosLine: filed.photos.length ? 'Photos from your Board of Review are attached.' : '',
       eagleNumberLine: EagleCount.emailLine(eagleNums) };
-    // Council: signed paperwork (when both scans are here).
-    var have = ck.existing || {};
+    // Council: signed paperwork (when both scans are here). Never from "Send congratulations".
+    var have = a.eagleDone ? (ck.existing || {}) : {};
     var appF = filed.application || have.application, repF = filed.report || have.report;
-    if (filed.application && filed.report) {
+    if (!a.eagleDone) { /* congratulations only */ } else if (filed.application && filed.report) {
       record(draftCouncilPaperwork_(c, rec, boardYmd, [filed.application, filed.report], unitContacts, cols));
     } else if (appF && repF) {
       // Signed on the EBoR paperwork page (or one scan filed earlier): the files are in the folder already.
@@ -235,7 +270,7 @@ function rowExecute_(c, ck, req, uploads) {
       else notes.push('signed paperwork already in the folder: Council email not drafted again');
     }
     // Congratulations: Scout, family, unit, the board (district reps + Unit Board Members), others to invite.
-    if (a.key === 'eagle_earned') {
+    if (a.key === 'eagle_earned' || a.congrats) {
       var slot = lastEborSlot_(rec.recordId);
       var reps = slot ? Booking.resolveWho(Booking.splitWho(slot.reps), committee_()).emails : [];
       var board = slot ? Units.parseBoard(slot.board_members).map(function (m) { return m.email; }) : [];

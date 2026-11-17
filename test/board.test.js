@@ -129,4 +129,33 @@ describe('Board sessions (dashboard Session column + Board tag link, 2026-11-03)
     expect(row('proposals', 'review_to_book').session).toBeNull();
     expect(row('ebors', 'ebor_booked').session).toMatchObject({ key: 'S4', reps: ['JW', 'AB'], names: ['Pat Q', 'Lee Fake'] });
   });
+  describe('Send congratulations window (2026-11-17)', () => {
+    it('only Eagle Earned rows whose board was at most congratsDays ago', () => {
+      expect(Board.congratsOpen('eagle_earned', '2026-11-16', '2026-11-17', 30)).toBe(true);
+      expect(Board.congratsOpen('eagle_earned', '2026-11-17', '2026-11-17', 30)).toBe(true);
+      expect(Board.congratsOpen('eagle_earned', '2026-10-18', '2026-11-17', 30)).toBe(true);
+      expect(Board.congratsOpen('eagle_earned', '2026-10-17', '2026-11-17', 30)).toBe(false);
+      expect(Board.congratsOpen('eagle_earned', '2026-10-17', '2026-11-17', '')).toBe(false);     // blank setting = 30
+      expect(Board.congratsOpen('eagle_earned', '2026-10-17', '2026-11-17', 60)).toBe(true);
+      expect(Board.congratsOpen('eagle_earned', '2026-11-20', '2026-11-17', 30)).toBe(false);   // future date
+      expect(Board.congratsOpen('eagle_earned', '', '2026-11-17', 30)).toBe(false);
+      expect(Board.congratsOpen('ebor_booked', '2026-11-16', '2026-11-17', 30)).toBe(false);
+    });
+    it('finished Eagles keep an empty Action menu (same filter as the dashboard)', () => {
+      const SA = require('../apps-script/src/lib/stageActions.js');
+      const recs = [
+        { recordId: 'E1', section: 'eagle_earned', scout_name: 'Old Eagle', ebor: '2026-03-01', signedSent: '2026-03-02', svmbcReceived: '*' },
+        { recordId: 'E2', section: 'eagle_earned', scout_name: 'Recent Eagle', ebor: '2026-11-16', signedSent: '2026-11-16', svmbcReceived: '' },
+        { recordId: 'E3', section: 'eagle_earned', scout_name: 'Older, waiting', ebor: '2026-09-01', signedSent: '2026-09-02', svmbcReceived: '' }];
+      const rows = Board.build(recs, [], '2026-11-17', 7, 30).find(t => t.groups.some(g => g.key === 'eagle_earned'))
+        .groups.find(g => g.key === 'eagle_earned').rows;
+      const offered = (r) => SA.forSection('eagle_earned')
+        .filter(a => (!a.ifPending || r.pending) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifCongrats || r.congratsOk) && (!a.ifNot || !r[a.ifNot]))
+        .map(a => a.key);
+      const by = Object.fromEntries(rows.map(r => [r.recordId, offered(r)]));
+      expect(by.E1).toEqual([]);
+      expect(by.E2).toEqual(['congrats', 'svmbc_received']);
+      expect(by.E3).toEqual(['svmbc_received']);
+    });
+  });
 });

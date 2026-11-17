@@ -18,6 +18,10 @@
  *   EBoR Booked                      Eagle earned (one step: scans + photos, Council + congratulations emails) | EBoR paused (note email)
  *                                    | Eagle not awarded (note email); each records the board's date as EBoR Date
  *   Eagle Earned                     Send signed paperwork to Council (later) | Council received the paperwork
+ *                                    | Send congratulations (photos optional; only while the EBoR date is within
+ *                                    Settings → congratsDays, default 30: older Eagles keep an empty Action column)
+ *   (EBoR paperwork page Finish also moves EBoR Booked / Paused -> Eagle Earned, 2026-11-17: signing in the room is the
+ *    "Eagle earned" moment; the congratulations is its own step, often from a phone at the event)
  *   EBoR Paused                      Book an EBoR again (schedule page) | Eagle not awarded without reconvening (note email)
  *   any proposal/EBoR stage          ✓ Checked: nothing to do (only when new files are waiting)
  *   every stage but Eagle Earned     Schedule a follow-up / consult… (opens the schedule page's new-session dialog, create-and-book
@@ -92,6 +96,9 @@ var StageActions = (function () {
       eagleDone: true, paint: 'ebor', files: ['application', 'report', 'photo'] },
     { key: 'paperwork', label: 'Send signed paperwork to Council…', sections: ['eagle_earned'], ifNot: 'councilSent', past: 'Signed EBoR paperwork filed for Council',
       eagleDone: true, files: ['application', 'report'], requireFiles: ['application', 'report'] },
+    // Congratulations on its own (Jim W., 2026-11-17): from a phone at the event or later; can be sent again (more photos).
+    { key: 'congrats', label: 'Send congratulations…', sections: ['eagle_earned'], ifCongrats: true, congrats: true,
+      past: 'Congratulations email drafted', template: 'New Eagle Scout', files: ['photo'] },
     { key: 'svmbc_received', label: 'Council received the paperwork', sections: ['eagle_earned'], setTrue: 'svmbcReceived', ifCouncil: true,
       past: 'Council (SVMBC) acknowledged receipt of the EBoR paperwork' },
     { key: 'ebor_paused', label: 'EBoR paused…', sections: ['ebor_booked'], to: 'ebor_paused', dateRole: 'ebor', dateDefault: 'ebor',
@@ -141,23 +148,29 @@ var StageActions = (function () {
       if (a.ifPending) o.ifPending = true;
       if (a.closing) { o.closing = a.closing; if (a.ifSuggest) o.ifSuggest = true; }   // handled by closingActions.js
       if (a.ifCouncil) o.ifCouncil = true;          // only rows waiting on Council's acknowledgement
+      if (a.ifCongrats) o.ifCongrats = true;        // only rows whose board was recent (Board congratsOk)
       if (a.ifNot) o.ifNot = a.ifNot;               // hidden when the row already has it (e.g. paperwork sent)
       if (a.email === 'note') o.noteToEmail = true;
       if (a.noteLabel) o.noteLabel = a.noteLabel;
       if (a.files) { o.files = a.files; o.requireFiles = a.requireFiles || []; }
       o.emailHint = emailHint(a);
+      if (a.key === 'eagle_earned') { o.emailHintSent = emailHint(a, true); o.filesSent = ['photo']; }   // paperwork already sent to Council
       return o;
     });
   }
 
   /** What the dialog says about the email. */
-  function emailHint(a) {
+  function emailHint(a, paperworkSent) {
     if (a.toUnit) return 'Saving drafts the email to the Scout, parent and unit contacts in the Outbox, where you check it and send it.' +
       (a.onSent === 'emailedEbor' ? ' The "Emailed to set up EBoR" date is filled in when it is sent.' : '');
     if (a.email === 'note') return 'Saving drafts the email to the Scout and parent in the Outbox, with your note as the list of changes; check it and send it there.';
     if (a.closing === 'close') return 'No email is sent (use Email… if the family should hear from you). The row moves to Closed and the folder stays where it is; Reopen puts it back.';
     if (a.closing === 'keep') return 'No email is sent. The "Close?" suggestion is hidden for a while (Settings → closeSnoozeDays).';
     if (a.closing === 'reopen') return 'No email is sent. The row goes back to the stage you pick, and the reason goes into the log.';
+    if (a.key === 'eagle_earned' && paperworkSent) return 'The signed paperwork has already gone to Council, so only the congratulations is drafted: ' +
+      'to the Scout, family, unit and board (with the photos), in the Outbox. Saving also paints the EBoR date green and moves the row to Eagle Earned.';
+    if (a.key === 'congrats') return 'Saving files the photos in "EBoR Photos" and drafts the congratulations to the Scout, family, unit and board ' +
+      '(with the photos) in the Outbox. The row does not move. You can send it again with more photos.';
     if (a.key === 'eagle_earned') return 'Saving files the scans and photos in the Scout\'s folder, paints the EBoR date green, and drafts two emails in the Outbox: ' +
       'the signed paperwork to Council (with the scans) and the congratulations to the Scout, family, unit and board (with the photos). Replies go to you.';
     if (a.key === 'paperwork') return 'Saving files the scans and drafts the email to Council with both attached in the Outbox. "Signed paperwork sent" is filled in when it is sent.';
@@ -186,6 +199,7 @@ var StageActions = (function () {
     if (!a || a.page) return { errors: ['Unknown action.'], warnings: [], set: set, to: null };
     if (a.sections.indexOf(input.section) < 0) errors.push('This Scout is no longer at a stage where "' + a.label.replace(/…$/, '') + '" applies. Reload the page.');
     var to = a.to && a.to !== input.section ? a.to : null;
+    if (a.ifCongrats && !input.congratsOk) errors.push('"Send congratulations" is offered only for a while after the board (Settings → congratsDays). Reload the page.');
     if (a.ifPending && !input.pending) errors.push('There are no new files waiting for this Scout. Reload the page.');
     if (a.email === 'note' && !str(input.note)) warnings.push('No note: the email will not say what to change. Add a note, or write it in the Outbox before sending.');
     if (a.setTrue && !(input.cols || {})[a.setTrue]) errors.push('The tracking tab has no "' + COLUMNS[a.setTrue].label + '" column (Settings → ' + COLUMNS[a.setTrue].setting + ').');
@@ -198,6 +212,7 @@ var StageActions = (function () {
       else if (!hasApp) warnings.push('No signed scans: the Council email is not drafted. Send them later with "Send signed paperwork to Council…" on the Eagles tab.');
       if (input.files.indexOf('photo') < 0) warnings.push('No photos: the congratulations email goes without pictures.');
     }
+    if (a.key === 'congrats' && input.files && input.files.indexOf('photo') < 0) warnings.push('No photos: the congratulations email goes without pictures.');
     if (!a.dateRole) return { errors: errors, warnings: errors.length ? [] : warnings, set: set, to: to };
     var d = str(input.date), dates = input.dates || {}, cols = input.cols || {};
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) errors.push('Pick the date.');

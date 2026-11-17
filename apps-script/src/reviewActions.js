@@ -105,7 +105,7 @@ function actionCommitteeHome_(req) {
     waiting: pendingWaiting_().slice(0, 8).map(function (w) {
       return { title: w.title, days: w.days, stage: SettingsModel.sectionLabel(s, w.section) };
     }),
-    tabs: (function () { var t = Board.build(boardRecords_(), s.sections, todayYmd_(), s.councilAckDays); return t; })(),
+    tabs: (function () { var t = Board.build(boardRecords_(), s.sections, todayYmd_(), s.councilAckDays, s.congratsDays); return t; })(),
     actions: StageActions.bySection((s.sections || []).map(function (x) { return x.key; })),
     closing: { reasons: Closing.REASONS, stages: (s.sections || []).filter(function (x) { return x.key !== Closing.SECTION && x.label; })
       .map(function (x) { return { key: x.key, label: x.label }; }) },

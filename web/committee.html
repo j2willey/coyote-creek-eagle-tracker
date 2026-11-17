@@ -479,7 +479,7 @@
 
     // ---------- row actions (lib/stageActions.js) ----------
     function actionControl(r, g, list) {
-      list = list.filter(a => (!a.ifPending || r.pending) && (!a.ifSuggest || r.closeWhy) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifNot || !r[a.ifNot]));
+      list = list.filter(a => (!a.ifPending || r.pending) && (!a.ifSuggest || r.closeWhy) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifCongrats || r.congratsOk) && (!a.ifNot || !r[a.ifNot]));
       const email = EMAIL_OK(g.key);
       if (!list.length && !email) return [];
       const sel = el('select', { className: 'actsel', title: 'Actions for ' + r.name },
@@ -500,6 +500,8 @@
     const todayYmd = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
     function resetAct() { confirmNext = false; $('actWarn').hidden = true; $('actSave').textContent = 'Save'; }
     function openAction(r, g, a) {
+      // Eagle earned after the signed paperwork already went to Council: congratulations only, no scan pickers.
+      if (a.key === 'eagle_earned' && r.councilSent) a = { ...a, files: a.filesSent || ['photo'], emailHint: a.emailHintSent || a.emailHint };
       act = { r, a }; resetAct();
       $('actTitle').textContent = a.label.replace(/…$/, '');
       $('actWho').textContent = r.name + (r.unit ? ' (' + r.unit + ')' : '') + ' · ' + g.label +

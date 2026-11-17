@@ -20,7 +20,7 @@ var SettingsView = (function () {
   // [min, max] for numbers (default: 0 and up; *Minutes keys 5 to 600).
   var RANGES = { maxUploadMB: [1, 50], intakeLinkHours: [1, 6], intakeConfirmDays: [1, 60], intakePurgeDays: [1, 365],
     linkMinutes: [5, 1440], sessionDays: [1, 365], committeeSessionDays: [1, 365], eborReminderDays: [0, 30],
-    signingNudgeDays: [1, 60], signatureDays: [1, 60], closeReviewDays: [30, 1095], closeSnoozeDays: [7, 730], councilAckDays: [1, 90] };
+    signingNudgeDays: [1, 60], signatureDays: [1, 60], closeReviewDays: [30, 1095], closeSnoozeDays: [7, 730], councilAckDays: [1, 90], congratsDays: [1, 365] };
   var MUST_HAVE = { committeeGroupEmail: 1, adminEmail: 1 };   // the tool can't work without these
 
   // [key, help]. Order = order on the page.
@@ -53,6 +53,7 @@ var SettingsView = (function () {
       ['closeReviewDays', 'No log line or update for this long: "Close?" suggestion'],
       ['closeSnoozeDays', '"Keep open" hides the "Close?" suggestion for this long'],
       ['councilAckDays', 'Days after sending the signed paperwork to Council'],
+      ['congratsDays', '"Send congratulations…" is offered on Eagle Earned rows for this many days after the board'],
       ['committeeGroupEmail', 'Copied on substantive emails (never on sign-in links)'],
       ['replyTo', 'Where replies go; blank = the committee group'],
       ['adminEmail', 'Gets error reports; also has the Admin role']] },

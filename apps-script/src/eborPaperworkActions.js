@@ -15,7 +15,8 @@
  * Finish: both signed PDFs go to the Scout's folder as <Name>-<Unit>_EagleApplication-Signed.pdf and
  * _AdvancementReport-Signed.pdf (the names Eagle earned uses); the Verified Application and earlier versions move to
  * Archive; the "Council: Eagle paperwork" email is drafted in the Outbox (rowActions.js draftCouncilPaperwork_). The row
- * does NOT move: Eagle earned stays its own step and finds the files already there.
+ * then moves to Eagle Earned (rowActions.js moveToEagleEarned_; Jim W., 2026-11-17): signing is the "Eagle earned" moment.
+ * The congratulations email is its own step on the dashboard ("Send congratulations…", photos from a phone or later).
  */
 var EBOR_PAPERWORK_TOKEN_SECONDS = 2 * 3600;
 var EBOR_SECTIONS_ = ['ebor_booked', 'ebor_paused'];
@@ -235,7 +236,10 @@ function actionEborPaperworkFinish_(req) {
   // 3. Log (Notes cell + Life to Eagle Log + digest).
   addRecordNote_(rec.recordId, EborPaperwork.logLine(Intake.shortDate(new Date()), by, ctx.boardYmd, ctx.sign,
     [names.application, names.report], toArchive.length, queued));
+  var moved = '';
+  try { moved = moveToEagleEarned_(rec, ctx.boardYmd, by); }
+  catch (e) { console.error('ebor paperwork move: ' + (e && e.stack || e)); moved = ' The row could not be moved (' + e.message + '): use Eagle earned… on the dashboard.'; }
   var msg = scout + ': signed Eagle application and Advancement Report filed' + (toArchive.length ? ' (' + toArchive.length + ' earlier file(s) to Archive)' : '') + '.' +
-    (queued ? ' The Council email is ready in the Outbox.' : '') + note + ' The row has not moved: use Eagle earned… on the dashboard when the board is done.';
+    (queued ? ' The Council email is ready in the Outbox.' : '') + note + moved;
   return { message: msg, outboxId: queued ? res.id : '' };
 }

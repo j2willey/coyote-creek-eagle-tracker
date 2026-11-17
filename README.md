@@ -547,6 +547,7 @@ Each dashboard row has an **Action** dropdown (⋯) with the actions allowed for
 | Resend EBoR next-steps email | Application Verified | | | "Book: Eagle Board of Review" again (Outbox draft; fills Emailed to set up EBoR when sent) |
 | **Eagle earned…** (one step) | EBoR Booked | EBoR Date = the board's date (default the row's EBoR date), cell painted green (Settings `eborDoneColor`) | Eagle Earned | Uploads: signed application + Advancement Report (PDF scans, both or neither) → `<Name>-<Unit>_EagleApplication-Signed.pdf` / `_AdvancementReport-Signed.pdf` in the folder; photos → `EBoR Photos/<Name>-<Unit>_EBoR-<yyyymmdd>-NN.jpg`. Drafts **"Council: Eagle paperwork"** (to `councilEaglesEmail`, Cc group + unit contacts, both scans attached; fills "signed paperwork sent" when sent) and **"New Eagle Scout"** (Scout, family, unit contacts, the board: district reps + Unit Board Members from the last EBoR slot, others to invite; Cc group; photos attached) |
 | Send signed paperwork to Council… | Eagle Earned | | | Both scans required; "Council: Eagle paperwork" as above |
+| Send congratulations… | Eagle Earned, **only while the EBoR date is at most `congratsDays` (Settings, default 30) ago**; older Eagles get no Action menu | | | Optional photos → `EBoR Photos/` (numbering continues); "New Eagle Scout" only (same recipients as above; unit Eagle numbers from the hidden `_eagle_no` set at Eagle earned). Can be sent again. No row move, no Council email |
 | Council received the paperwork | Eagle Earned, **only rows waiting on Council** | SVMBC Received = `*` (Settings `svmbcReceivedMark`, the sheet's mark) | | none |
 | EBoR paused… | EBoR Booked | EBoR Date | EBoR Paused | "EBoR paused" with what must be completed (Outbox draft) |
 | Eagle not awarded… | EBoR Booked | EBoR Date | Eagle Not Awarded | "Eagle not awarded" with the stated reasons (Outbox draft) |
@@ -617,9 +618,10 @@ District Advancement Committee / Council representative (at least one per docume
 dialog (ink palette: black, dark blue, blue, purple, dark green, brown, rust, dark red). Signatures live in the page
 only; nothing leaves the browser until **Save both**. Saving files `<Name>-<Unit>_EagleApplication-Signed.pdf` and
 `_AdvancementReport-Signed.pdf` in the Scout's folder, moves the Verified Application and earlier versions to Archive,
-drafts "Council: Eagle paperwork" in the Outbox (the existing path), and logs it. **The row does not move**: use
-*Eagle earned…* afterwards; it (and *Send signed paperwork to Council…*) now find files already filed this way instead of asking
-for scans again. Actions: `eborPaperworkChoices`, `Scout`, `Template`, `Start`, `Upload`, `Finish`, `DemoReset`.
+drafts "Council: Eagle paperwork" in the Outbox (the existing path), logs it, and **moves the row to Eagle Earned**
+(2026-11-17: EBoR Date = the board's date, painted; Eagles to Date +1, kept in `_eagle_no`). The congratulations is its own
+step: *Send congratulations…* on the dashboard (from a phone with the photos at the event, or later). *Eagle earned…* on a row
+whose paperwork already went to Council asks for photos only and drafts the congratulations only. Actions: `eborPaperworkChoices`, `Scout`, `Template`, `Start`, `Upload`, `Finish`, `DemoReset`.
 
 **Demo Scout** (first entry in the Scout list, "Demo Scout (test: no email to Council)"): for showing the committee the page.
 Fictional Teddy Sample of T999, Unit Leader Pat Q Leader, board date = today, name suggestions = the committee. Files live in

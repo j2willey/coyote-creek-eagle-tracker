@@ -76,6 +76,20 @@ var EagleCount = (function () {
     return p + (g.length ? ' (best guess: another ' + g.map(function (v) { return unitWords(v.code); }).join(' / ') + ' board is pending; check before announcing)' : '');
   }
 
+  /**
+   * The numbers given at "Eagle earned", kept on the row (hidden _eagle_no, 2026-11-17) so a later "Send congratulations…"
+   * says the same thing: [{code, n}] <-> "t910:110; c967:12". Anything unreadable is dropped.
+   */
+  function store(nums) {
+    return (nums || []).filter(function (v) { return v && str(v.code) && v.n > 0; }).map(function (v) { return str(v.code) + ':' + v.n; }).join('; ');
+  }
+  function parseStored(cell) {
+    return str(cell).split(/\s*;\s*/).map(function (p) {
+      var m = /^([a-z]*\d+):(\d{1,6})$/i.exec(str(p));
+      return m ? { code: m[1].toLowerCase(), n: Number(m[2]) } : null;
+    }).filter(function (v) { return v && v.n > 0; });
+  }
+
   /** records: [{section, unit, ebor: 'YYYY-MM-DD'}]. -> {code: Eagles this calendar year} (every listed unit). */
   function yearCounts(records, year) {
     var out = {};
@@ -87,7 +101,7 @@ var EagleCount = (function () {
   }
 
   return { parseCount: parseCount, ordinal: ordinal, unitWords: unitWords, forecast: forecast, phrase: phrase, emailLine: emailLine,
-    announce: announce, yearCounts: yearCounts };
+    announce: announce, yearCounts: yearCounts, store: store, parseStored: parseStored };
 })();
 
 if (typeof module !== 'undefined') module.exports = EagleCount;

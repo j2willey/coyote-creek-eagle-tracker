@@ -51,6 +51,17 @@ var Board = (function () {
   }
 
   /** Paperwork sent, no acknowledgement: days waiting, else null. received: the SVMBC Received cell (any mark counts). */
+  /**
+   * "Send congratulations…" (2026-11-17): Eagle Earned with an EBoR date no more than `windowDays` (Settings → congratsDays,
+   * default 30) before today. No date, a future date or an older board: false, so finished Eagles keep an empty Action column.
+   */
+  function congratsOpen(section, eborYmd, today, windowDays) {
+    if (section !== 'eagle_earned' || !/^\d{4}-\d{2}-\d{2}$/.test(str(eborYmd))) return false;
+    var n = windowDays === '' || windowDays == null || !(Number(windowDays) >= 0) ? 30 : Number(windowDays);
+    var d = days(str(eborYmd), today);
+    return d !== null && d >= 0 && d <= n;
+  }
+
   function councilWait(sentYmd, received, today) {
     var r = received === true || (received !== false && str(received) !== '' && str(received).toUpperCase() !== 'FALSE');
     return str(sentYmd) && !r ? Math.max(0, days(sentYmd, today) || 0) : null;
@@ -103,7 +114,7 @@ var Board = (function () {
    * records: [{recordId, section, scout_name, unit, birth, approved, ebor ('YYYY-MM-DD'), notes, pending (ms), folderId}]
    * in sheet order. sections: settings.sections (labels). -> [{key, label, cols, stage, count, pending, groups:[{key, label, rows}]}]
    */
-  function build(records, sections, today, ackDays) {
+  function build(records, sections, today, ackDays, congratsDays) {
     var overdueAfter = Number(ackDays) || 7;
     var label = {};
     (sections || []).forEach(function (s) { label[s.key] = s.label || s.key; });
@@ -120,6 +131,7 @@ var Board = (function () {
           closed: r.closed && str(r.closed.reason) ? { reason: str(r.closed.reason), date: str(r.closed.date), by: str(r.closed.by),
             from: label[r.closed.from] || str(r.closed.from) } : null,
           closeWhy: r.section === 'closed' ? '' : str(r.closeWhy),
+          congratsOk: congratsOpen(r.section, r.ebor, today, congratsDays),
           councilSent: str(r.signedSent), councilWait: councilWait(r.signedSent, r.svmbcReceived, today),
           councilOverdue: (councilWait(r.signedSent, r.svmbcReceived, today) || 0) >= overdueAfter,
           band: EBOR_SECTIONS.indexOf(r.section) >= 0 ? eborBand(r.ebor, today) : '',
@@ -170,7 +182,7 @@ var Board = (function () {
     return out.sort(function (a, b) { return b.days - a.days; });
   }
 
-  return { TABS: TABS, age: age, firstLine: firstLine, build: build, councilWait: councilWait, councilWaiting: councilWaiting,
+  return { TABS: TABS, age: age, firstLine: firstLine, build: build, congratsOpen: congratsOpen, councilWait: councilWait, councilWaiting: councilWaiting,
     eborBand: eborBand, monthCounts: monthCounts, nextSessions: nextSessions, SESSION_OF: SESSION_OF };
 })();
 
