@@ -109,7 +109,7 @@
     import { $, el, session, renderNav, meText, needSignIn, isSignedOut, actionButton, setOutboxCount, setReviewCount } from '/js/committee.js';
     import { sortRows, stageRows } from '/js/boardSort.js';
     import { readBase64, sizeText, addFileRow, chosenFiles as chosenRows, uploadText } from '/js/files.js';
-    import { preparePhoto } from '/js/photos.js';
+    import { preparePhoto, MAX_PHOTOS } from '/js/photos.js';
     const meLine = renderNav($('cnav'), 'home', [
       actionButton({ label: 'Record outcomes', href: '/committee/review', icon: 'check', primary: true, count: 'review', id: 'recBtn',
         title: 'Record the outcome of a review that was held' }),
@@ -548,7 +548,10 @@
           if (k !== 'photo' && fs[0] && (!/\.pdf$/i.test(fs[0].name) || fs[0].size > 20 * 1048576)) {
             note.className = 'hint err'; note.textContent = fs[0].name + ': a PDF up to 20 MB, please.'; return;
           }
-          note.textContent = fs.length ? (k === 'photo' ? fs.length + ' photo' + (fs.length > 1 ? 's' : '') + ' (resized to 2048 px JPEG, dated with the board\'s date, before upload)' : sizeText(fs[0].size)) : '';
+          note.textContent = fs.length ? (k === 'photo' ? fs.length + ' photo' + (fs.length > 1 ? 's' : '') + ' (resized to at most 1600 px / about 300 KB each, dated with the board\'s date, before upload)' +
+            // No hard cap (Jim W., 2026-11-17): past ~12 the committee group's copy may bounce (8 MB); everyone else still gets it.
+            (fs.length > MAX_PHOTOS ? '. More than ' + MAX_PHOTOS + ': the email may pass 8 MB, and the committee group would not get its copy (everyone else still does).' : '')
+            : sizeText(fs[0].size)) : '';
         };
         const req = (a.requireFiles || []).includes(k);
         box.append(el('label', { htmlFor: inp.id }, u.label + ' ', el('span', { className: 'opt', textContent: req ? '' : '(optional)' })), inp, note);

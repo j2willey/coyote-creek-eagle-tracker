@@ -420,7 +420,7 @@ the digest. "Send signed paperwork to Council…" is hidden once a sent date exi
 ### EBoR photos (`web/js/photos.js`)
 
 Prepared in the browser before upload (Apps Script can't resize): HEIC decoded with heic2any (loaded only when
-needed), turned upright, long edge ≤ 2048 px, JPEG quality 0.85, EXIF DateTimeOriginal = the board's date with the
+needed), turned upright, long edge ≤ 1600 px, JPEG quality 0.8 stepping down (0.7, then 1280 px) until each photo is ≤ 320 KB, sized so 12 photos stay well under the 8 MB Google Groups limit (2026-11-17; more are allowed: past that only the group's copy may bounce), EXIF DateTimeOriginal = the board's date with the
 photo's own time of day (piexifjs). If a helper can't load, the photo still goes, without the EXIF date (said so).
 
 ### EBoR reminders and Send later (`lib/reminders.js`, `remindersActions.js`)
