@@ -607,6 +607,15 @@ or today) opens it on any screen. The same save path as the dialog (`rowAction` 
 
 , `lib/eborPaperwork.js`, `eborPaperworkActions.js`, `web/js/pdfPaperwork*.js`)
 
+**Photo of the signed page** (`web/js/pagePhoto.js`; step 2, 2026-11-17): for boards that sign on paper. On the Eagle
+earned page, **📷 Photo of the signed page…** takes or picks a photo (a phone's document scanner works best), lets the
+member turn it upright and drag the corners in to the edges of the paper, then builds the signed application in the
+browser: the Verified Application from the Scout's folder with the Requirement 7 page (found by its text, else page 2;
+changeable) replaced by the photo at that page's size, form fields flattened first. It is uploaded as the signed
+application (same filing and Council email as a PDF scan). Council accepts a clear photo or scan.
+
+### EBoR paperwork page (`/committee/ebor-paperwork`, `lib/eborPaperwork.js`, `eborPaperworkActions.js`, `web/js/pdfPaperwork*.js`)
+
 For the Board of Review itself, on one device passed around the room. Pick a Scout at EBoR Booked or Paused (the next
 board on the schedule is preselected; the board's date can be changed on the page). One document (the **Advancement
 Report**, BSA form 34403, was dropped 2026-11-17: Council no longer uses it):

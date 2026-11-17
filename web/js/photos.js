@@ -71,14 +71,20 @@ async function timeOfDay(file, piexif) {
  * file: a File from <input type=file>. ymd: the board's date 'YYYY-MM-DD'.
  * -> { base64, bytes, width, height, exif: true|false, note }
  */
-export async function preparePhoto(file, ymd, { steps = PHOTO_STEPS, maxBytes = PHOTO_MAX_BYTES } = {}) {
-  let src = file, note = '';
+/** A photo as an upright bitmap (EXIF orientation applied; HEIC decoded first). Also used by pagePhoto.js. */
+export async function decodeUpright(file) {
+  let src = file;
   if (isHeic(file)) {
     const heic2any = await loadScript('heic2any');
     const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
     src = Array.isArray(out) ? out[0] : out;
   }
-  const bmp = await createImageBitmap(src, { imageOrientation: 'from-image' });
+  return createImageBitmap(src, { imageOrientation: 'from-image' });
+}
+
+export async function preparePhoto(file, ymd, { steps = PHOTO_STEPS, maxBytes = PHOTO_MAX_BYTES } = {}) {
+  let note = '';
+  const bmp = await decodeUpright(file);
   let w = 0, h = 0;
   const canvas = document.createElement('canvas');
   const enc = await encodeWithin(async (edge, quality) => {

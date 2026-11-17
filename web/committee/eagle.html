@@ -24,6 +24,15 @@
     .eg-form input[type=date], .eg-form textarea { width: 100%; max-width: 28rem; font-size: 1.05rem; }
     .eg-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; align-items: center; }
     .eg-actions button.primary { font-size: 1.1rem; padding: .7rem 1.2rem; }
+    /* Photo of the signed page (step 2): the editor */
+    .pp-stage { position: relative; margin: .5rem 0; touch-action: none; }
+    .pp-canvas { display: block; }
+    .pp-frame { position: absolute; border: 2px solid #2a6db0; box-shadow: 0 0 0 9999px rgba(0,0,0,.35); pointer-events: none; }
+    .pp-handle { position: absolute; width: 28px; height: 28px; margin: -14px; border-radius: 50%; background: #2a6db0; border: 2px solid #fff;
+      pointer-events: auto; touch-action: none; cursor: grab; }
+    .pp-nw { left: 0; top: 0; } .pp-ne { left: 100%; top: 0; } .pp-sw { left: 0; top: 100%; } .pp-se { left: 100%; top: 100%; }
+    .pp-ready { display: flex; gap: .7rem; align-items: flex-start; margin-top: .5rem; }
+    .pp-ready img { width: 90px; border: 1px solid var(--line); }
     .eg-done { border-left: 4px solid var(--ok); padding: .6rem .9rem; margin: .8rem 0; background: color-mix(in srgb, var(--ok) 8%, transparent); border-radius: 4px; }
   </style>
 </head>
@@ -48,6 +57,9 @@
     import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
     import { readBase64, sizeText } from '/js/files.js';
     import { preparePhoto, MAX_PHOTOS } from '/js/photos.js';
+    import { ensurePdfLibs } from '/js/pdfWorkshop.js';
+    import { findRequirement7Page } from '/js/pdfPaperwork.js';
+    import { editPagePhoto, renderPagePhoto, replacePageWithImage } from '/js/pagePhoto.js';
     const meLine = renderNav($('cnav'), 'home');
     const params = new URLSearchParams(location.search);
     let data = null;
@@ -136,6 +148,59 @@
       const date = el('input', { type: 'date', max: todayYmd(), value: sc.board && sc.board.ymd <= todayYmd() ? sc.board.ymd : (sc.ebor && sc.ebor <= todayYmd() ? sc.ebor : todayYmd()) });
       const note = el('textarea', { rows: 2, placeholder: 'Optional: goes into the Notes cell and the Scout\'s log' });
       const app = fileKinds.includes('application') ? el('input', { type: 'file', accept: '.pdf,application/pdf' }) : null;
+      // Step 2 (2026-11-17): a photo of the signed Requirement 7 page replaces that page of the Verified Application.
+      let photoApp = null;
+      const ppHost = el('div'), ppMsg = el('p', { role: 'status', className: 'hint' }), ppReady = el('div');
+      const ppInput = el('input', { type: 'file', accept: 'image/*,.heic,.heif', hidden: true });
+      const ppBtn = el('button', { type: 'button', textContent: '📷 Photo of the signed page…' });
+      ppBtn.onclick = () => { ppInput.value = ''; ppInput.click(); };
+      ppInput.onchange = async () => {
+        const f = ppInput.files && ppInput.files[0];
+        if (!f) return;
+        ppMsg.className = 'hint'; ppMsg.textContent = '';
+        try {
+          const edit = await editPagePhoto(ppHost, f, el);
+          if (!edit) return;
+          await buildFromPhoto(edit);
+        } catch (e) { ppMsg.className = 'hint err'; ppMsg.textContent = e.message || String(e); }
+      };
+      const toBytes = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      async function buildFromPhoto(edit) {
+        ppMsg.textContent = 'Getting the Verified Application from the Scout\'s folder…';
+        const sp = await api('eborPaperworkScout', { session, recordId: sc.recordId });
+        if (!sp.verifiedId) throw new Error('No Verified Application in the Scout\'s folder (a PDF with "verified" in its name). Upload the signed PDF instead.');
+        const vf = await api('fetchScoutFile', { session, recordId: sc.recordId, fileId: sp.verifiedId });
+        const vbytes = toBytes(vf.data);
+        const { PDFLib, pdfjsLib } = await ensurePdfLibs();
+        ppMsg.textContent = 'Finding Requirement 7…';
+        const pdf = await pdfjsLib.getDocument({ data: vbytes.slice(), verbosity: 0 }).promise;
+        const texts = [];
+        for (let i = 1; i <= pdf.numPages; i++) texts.push((await (await pdf.getPage(i)).getTextContent()).items.map(it => it.str || '').join(' '));
+        const pages = pdf.numPages;
+        try { pdf.destroy(); } catch {}
+        const r7 = findRequirement7Page(texts);
+        let index = r7.index >= 0 ? r7.index : Math.min(1, pages - 1);
+        ppMsg.textContent = 'Preparing the photo…';
+        const img = await renderPagePhoto(edit.bmp, edit.rot, edit.crop);
+        const build = async () => {
+          ppMsg.textContent = 'Building the signed application…';
+          const out = await replacePageWithImage(PDFLib, vbytes, index, img.bytes, img.width, img.height);
+          const name = String(vf.name || 'Verified Eagle Application.pdf').replace(/\.pdf$/i, '') + ' - signed page ' + (index + 1) + '.pdf';
+          photoApp = new File([out.pdfBytes.slice()], name, { type: 'application/pdf' });
+          if (app) app.value = '';
+          const sel = el('select', { 'aria-label': 'Page to replace' }, ...Array.from({ length: pages }, (_, i) => el('option', { value: String(i), textContent: 'page ' + (i + 1), selected: i === index })));
+          sel.onchange = async () => { index = Number(sel.value); try { await build(); } catch (e) { ppMsg.className = 'hint err'; ppMsg.textContent = e.message; } };
+          const remove = el('button', { type: 'button', textContent: 'Remove' });
+          remove.onclick = () => { photoApp = null; ppReady.replaceChildren(); ppMsg.textContent = ''; };
+          ppReady.replaceChildren(el('div', { className: 'pp-ready' }, el('img', { src: img.dataUrl, alt: 'The signed page' }),
+            el('div', {}, el('div', {}, 'Ready: ', el('b', { textContent: vf.name || 'Verified Application' }), ' with ', sel, ' replaced by the photo (' + sizeText(photoApp.size) + ').'),
+              el('div', { className: 'hint', textContent: r7.how === 'text' ? 'Requirement 7 was found on page ' + (r7.index + 1) + '.' : 'Requirement 7 text not found (a scan?): check the page number.' }),
+              el('div', { className: 'eg-actions' }, remove))));
+          ppMsg.textContent = '';
+        };
+        await build();
+        edit.bmp.close && edit.bmp.close();
+      }
       const photos = el('input', { type: 'file', accept: 'image/*,.heic,.heif', multiple: true });
       const photoNote = el('p', { className: 'hint' });
       photos.onchange = () => {
@@ -153,7 +218,8 @@
         save.disabled = true; out.className = 'muted'; out.textContent = 'Saving… (this takes several seconds; please stay on this page)';
         try {
           const files = [];
-          if (app && app.files[0]) files.push({ kind: 'application', file: app.files[0] });
+          if (photoApp) files.push({ kind: 'application', file: photoApp });
+          else if (app && app.files[0]) files.push({ kind: 'application', file: app.files[0] });
           [...photos.files].forEach(f => files.push({ kind: 'photo', file: f }));
           let r = await api('rowAction', { session, recordId: sc.recordId, kind: 'eagle_earned', date: date.value, note: note.value,
             confirm: confirmNext, files: [...new Set(files.map(x => x.kind))] });
@@ -188,7 +254,9 @@
       return el('div', { className: 'eg-form' },
         el('p', { className: 'hint', textContent: sent ? (a.emailHintSent || a.emailHint) : a.emailHint }),
         el('label', {}, 'Date of the Board of Review'), date,
-        app ? el('label', {}, 'Signed Eagle Scout Rank Application ', el('span', { className: 'opt', textContent: '(optional, PDF scan)' })) : '', app || '',
+        app ? el('label', {}, 'Signed Eagle Scout Rank Application ', el('span', { className: 'opt', textContent: '(optional)' })) : '',
+        app ? el('p', { className: 'hint', textContent: 'Signed on paper? Take a photo of the signed Requirement 7 page (your phone\'s document scanner works best): it replaces that page of the Verified Application. Or choose a signed PDF.' }) : '',
+        app ? el('div', { className: 'eg-actions' }, ppBtn, app) : '', app ? ppInput : '', app ? ppHost : '', app ? ppReady : '', app ? ppMsg : '',
         el('label', {}, 'EBoR photos ', el('span', { className: 'opt', textContent: '(optional)' })), photos, photoNote,
         el('label', {}, 'Note ', el('span', { className: 'opt', textContent: '(optional)' })), note,
         warn, el('div', { className: 'eg-actions' }, save, el('a', { href: '/committee', textContent: 'Cancel' })), out);
