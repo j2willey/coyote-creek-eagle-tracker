@@ -56,7 +56,7 @@ describe('Requirement 7 date marks and signature fitting', () => {
     expect(marks[0].text).toBe('03    07    26');
     expect(marks[0].pageIndex === 1 && marks[0].x >= 0 && marks[0].x + marks[0].width <= 612).toBe(true);
     // 2026-11-17: on Requirement 7's boxes (right, lower third), 12 pt
-    expect(marks[0].x).toBeCloseTo(612 * 0.792, 0);
+    expect(marks[0].x).toBeCloseTo(612 * 0.797, 0);
     expect(marks[0].y).toBeCloseTo(792 * 0.295, 0);
     expect(marks[0].fontSize).toBe(12);
   });

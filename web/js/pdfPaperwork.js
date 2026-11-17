@@ -27,7 +27,7 @@ export function findRequirement7Page(pageTexts) {
 /** Spaces between month, day and year in the Requirement 7 date (Jim: one text, 3–4 spaces apart). */
 export const R7_DATE_GAP = '    ';
 /** Where the Requirement 7 date mark starts by default: its left edge and bottom, as fractions of the page (viewer space). */
-export const R7_DATE_AT = { x: 0.792, y: 0.295 };   // x: +4 pt (2026-11-17) centres the day in the middle box
+export const R7_DATE_AT = { x: 0.797, y: 0.295 };   // x nudged right twice on 2026-11-17 to centre the day in the middle box
 /** Its default font size (Jim W., 2026-11-17: 12 pt; the bar's Auto / − / + still change it). */
 export const R7_DATE_FONT_PT = 12;
 
