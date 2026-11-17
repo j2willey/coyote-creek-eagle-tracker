@@ -126,7 +126,10 @@ var EborPaperwork = (function () {
     var up = mine.filter(function (x) { return x.start >= startOfToday; }).sort(function (x, y) { return x.start - y.start; })[0];
     var pick = up || mine.sort(function (x, y) { return y.start - x.start; })[0];
     var d = new Date(pick.start);
-    return { ymd: d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()), time: str(pick.r.time), start: pick.start,
+    // time from the start, not the cell: a sheet time cell arrives as a Date of 12/30/1899 (2026-11-17 bug on the Eagle earned page)
+    var h = d.getHours(), mi = d.getMinutes();
+    var time = (h % 12 || 12) + ':' + pad2(mi) + ' ' + (h < 12 ? 'AM' : 'PM');
+    return { ymd: d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()), time: time, start: pick.start,
       reps: b.splitWho(pick.r.reps), boardMembers: str(pick.r.board_members), upcoming: !!up };
   }
 

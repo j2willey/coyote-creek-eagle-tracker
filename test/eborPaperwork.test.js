@@ -97,6 +97,10 @@ describe('EborPaperwork: the Scout dropdown', () => {
     expect(P.boardFor(rows, 'R-1', '2026-04-01')).toMatchObject({ ymd: '2026-03-14', upcoming: false });
     expect(P.boardFor(rows, 'R-4', '2026-02-01')).toBeNull();                         // not an EBoR
     expect(P.boardFor(rows, 'R-9', '2026-02-01')).toBeNull();
+    expect(P.boardFor(rows, 'R-1', '2026-02-01').time).toBe('7:00 PM');
+    // a sheet time cell is a Date of 12/30/1899: the time comes from the start, never the cell's text (2026-11-17)
+    const t = new Date(1899, 11, 30, 19, 0, 0);
+    expect(P.boardFor([{ record_id: 'R-5', slot_type: 'EBoR', date: day(2026, 11, 17), time: t, reps: 'JW' }], 'R-5', '2026-11-17').time).toBe('7:00 PM');
   });
   it('lists EBoR Booked and Paused Scouts, soonest board first, and preselects an upcoming one', () => {
     const recs = [
