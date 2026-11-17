@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.80.0';
+var API_VERSION = '0.80.1';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -102,8 +102,6 @@ var ACTIONS_ = {
   rowFinish: function (req) { return actionRowFinish_(req); },
   // Admin page (adminActions.js)
   stats: function (req) { return actionStats_(req); },
-  shadowList: function (req) { return actionShadowList_(req); },
-  shadowInvite: function (req) { return actionShadowInvite_(req); },
   broadcastPreview: function (req) { return actionBroadcastPreview_(req); },
   broadcastSend: function (req) { return actionBroadcastSend_(req); },
   unitDirectory: function (req) { return actionUnitDirectory_(req); },

@@ -117,7 +117,6 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     unitDirectory.js      unit contacts on the web: Key 3 rows vs unit-provided, directory, validation
     unitBroadcast.js      "Email the units": recipients by unit type and role, unique, Bcc batches
     openTimes.js          open-times email: Scouts ready to book a type, one To/Cc list, the times to list
-    shadowInvites.js      old-way ("shadow") bookings from tomorrow on that can get a Calendar invitation
     unitCalendar.js       unit page calendar (the unit's Scouts' sessions, open times)
     scheduleCheck.js      schedule sheet vs tracking dates (transition helper)
     anonymize.js          staging playground: fake Scouts, scrubbing names/emails/phones
@@ -152,7 +151,6 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     unitDirectoryActions.js  Units page / unit page contacts: list, edit, add, remove
     broadcastActions.js   Admin → Email the units (preview, test, send in Bcc batches)
     openTimesActions.js   committee page: several sessions at once (saveSlots), open-times email draft
-    shadowInviteActions.js  Dev → Old-way bookings: send calendar invitations (being retired)
     scheduleCheckActions.js    Admin → Schedule: check against the tracking sheet
     templateMail.js       mailFromTemplate_ (template Doc → email, or built-in wording), template Doc setup
     unitActions.js        unit contacts' page (EBoRs, board members, calendar, Eagle candidates)
@@ -1072,12 +1070,8 @@ Self-check is logged on Activity. The menu items call the same functions (`selfC
   differed show "Compare with the sheet…" for 60 days (`AdminRules.toReview`); the Intake Queue Note gets
   "Reviewed <date> by <who>: took … / kept the sheet", which ends it.
 - **Unit requests** with Done.
-- **Old-way bookings: send calendar invitations** (now on the Dev page; `lib/shadowInvites.js`, `shadowInviteActions.js`; switch-over
-  helper): booked "shadow" sessions from tomorrow on, each with its Scout, members, place and any problem (no Scout or
-  parent email, no member with an email; unknown initials are listed and not invited). Ticked ones get a Calendar
-  invitation as if booked in the tool (Scout, parent, members; EBoR also the Unit Board Members and others to invite),
-  the event ID replaces "shadow", logged. No other email. From then on the invite follows changes like any booking;
-  Scouts still can't cancel a type that isn't booked online.
+- **Old-way bookings: send calendar invitations**: retired 2026-11-17 (no shadow bookings left; removed from the Dev page,
+  with `lib/shadowInvites.js` and `shadowInviteActions.js`). Shadow rows still on the schedule just have no invitation.
 - **Email the units** (`lib/unitBroadcast.js`, `broadcastActions.js`): Packs / Troops / Crews / Ships × Committee
   Chairs / Unit Leaders / Unit Contacts (never Chartered Org Reps; "Exclude" honoured) → unique addresses (expand to
   untick), Reply-To (default the committee group), subject, formatted message. **Send me a test** (only to you), then
