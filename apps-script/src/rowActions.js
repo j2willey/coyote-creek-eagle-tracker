@@ -194,6 +194,13 @@ function rowExecute_(c, ck, req, uploads) {
     return { message: scout + ': new files marked as checked.', outboxId: '' };
   }
 
+  // Statistics (_Events tab): a Pre-Review Call outcome, recorded before the row moves.
+  var io = Events.intakeOutcome(a.key, rec.section);
+  if (io) {
+    var call = sessionFor_(rec.recordId, 'Intake', todayYmd_());
+    logEvent_({ event: 'intake_outcome', recordId: rec.recordId, outcome: io, date: todayYmd_(), session: call ? call.key : '', reps: call ? call.reps : [] });
+  }
+
   // 1. Dates / flags, row, log.
   var upd = {};
   Object.keys(p.set).forEach(function (role) { upd[cols[role]] = ymdToDate_(p.set[role]); });

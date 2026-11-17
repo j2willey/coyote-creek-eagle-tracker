@@ -31,6 +31,7 @@
         <section class="statcard"><h2 id="unitsTitle">Eagles by unit</h2><div id="units"></div></section>
         <section class="statcard"><h2 id="closedTitle">Closed records</h2><div id="closed"></div></section>
         <section class="statcard statwide"><h2 id="workTitle">Committee sessions held</h2><div class="boardwrap" id="work"></div></section>
+        <section class="statcard statwide"><h2>Proposal Reviews and Pre-Review Calls</h2><div class="boardwrap" id="reviews"></div></section>
       </div>
     </div>
   </main>
@@ -118,6 +119,35 @@
       $('work').replaceChildren(el('div', { className: 'statgrid', style: 'margin-top:0' },
         el('div', {}, table(['Month', 'Pre-Review Calls', 'Proposal Reviews', 'EBoRs'], wrows)), el('div', {}, mem)),
         el('p', { className: 'hint', textContent: 'Counts booked slots on the schedule sheet whose time has passed; members by the initials on each slot.' }));
+      showReviews(d.reviews, c.year);
+    }
+
+    // Proposal Reviews (lib/reviewStats.js): one column for this year, one for all years on the schedule.
+    function showReviews(rv, year) {
+      if (!rv) { $('reviews').replaceChildren(el('p', { className: 'muted', textContent: 'Not available.' })); return; }
+      const Y = rv.year, A = rv.all;
+      const rate = (k, x) => x.scouts - x.open ? Math.round(100 * x[k] / (x.scouts - x.open)) + '%' : '–';
+      const days = (s) => s && s.n ? s.median + ' median · ' + s.avg + ' avg · ' + s.min + '–' + s.max : '–';
+      const row = (label, f) => el('tr', {}, td(label), td(f(Y), 'cur'), td(f(A)));
+      const main = table(['', year, 'All (since ' + (A.since || '–') + ')'], [
+        row('Scouts with a first Proposal Review', x => fi(x.scouts)),
+        row('Approved at that review', x => fi(x.atFirst) + ' (' + rate('atFirst', x) + ')'),
+        row('Approved later', x => fi(x.later) + ' (' + rate('later', x) + ')'),
+        row('Not approved', x => fi(x.notApproved)),
+        row('Still open (no approval yet)', x => fi(x.open)),
+        row('Days from first review to a later approval', x => days(x.laterDays)),
+        row('Proposal Reviews per approval: 1 / 2 / 3+', x => x.reviewsPerApproval.one + ' / ' + x.reviewsPerApproval.two + ' / ' + x.reviewsPerApproval.more),
+        row('Days from Pre-Review Call to Proposal Review', x => days(x.intakeToReview)),
+        row('Outcomes recorded / inferred from dates', x => x.exact + ' / ' + x.inferred)
+      ]);
+      const by = A.byIntake.length ? table(['Pre-Review Call by', 'Scouts', 'Approved at first review', 'Decided'],
+        A.byIntake.map(x => el('tr', {}, td(x.who), td(fi(x.scouts)), td(x.decided ? x.atFirst + ' of ' + x.decided : '–'), td(fi(x.decided))))) : el('p', { className: 'muted', textContent: 'No Pre-Review Calls on the schedule yet.' });
+      const io = A.intakeOutcomes.length ? table(['Pre-Review Call outcomes', 'Ready for review', 'Changes needed', 'Not approved'],
+        A.intakeOutcomes.map(x => el('tr', {}, td(x.who), td(fi(x.ready)), td(fi(x.changes)), td(fi(x.notApproved))))) : el('p', { className: 'muted', textContent: 'Pre-Review Call outcomes are recorded from 11/17/2026 on.' });
+      $('reviews').replaceChildren(main, el('div', { className: 'statgrid', style: 'margin-top:12px' }, el('div', {}, by), el('div', {}, io)),
+        el('p', { className: 'hint', textContent: 'Each Scout counts once, by the first Proposal Review on the schedule. Its outcome is the one recorded on the Review page ' +
+          '(from 11/17/2026), otherwise inferred: Approved Date on the review day = approved at the review, later = approved later. Rates leave out Scouts still open. ' +
+          '"Pre-Review Call by": the members on the Scout\'s last call before that review (both members of a pair count). Small numbers: read "4 of 6", not the percentage.' }));
     }
 
     if (!session) needSignIn($('msg'));

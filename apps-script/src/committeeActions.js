@@ -23,6 +23,7 @@ function committeeMe_(session) {
   var me = Access.memberFor(committeeAll_(), email);
   if (!me) throw userError_('This page is for Coyote Creek District Advancement Committee members. ' +
     'Your email address is not on the committee list.');
+  ACTOR_ = String(me.initials || email);                       // Events tab "By" (metricsActions.js)
   return { email: email, me: me, committee: committee_(), support: Access.isSupport(me) };
 }
 

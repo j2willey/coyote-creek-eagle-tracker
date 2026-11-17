@@ -35,6 +35,10 @@ var TAB_HEADERS_ = {
   'Unit Requests': ['Id', 'Submitted', 'Unit', 'From', 'Scout', 'Record ID', 'Date', 'Time', 'Place', 'Note', 'Status', 'Done', 'Done by'],
   '_Sessions': ['Token hash', 'Email', 'Record IDs', 'Created', 'Expires', 'Last seen'],
   // Remote EBoR signing ledger (lib/signatures.js HEADERS; test/gas-load.test.js keeps the two in step).
+  // Statistics history (lib/events.js HEADERS) and request timings (lib/perf.js HEADERS); test/gas-load.test.js keeps them in step.
+  '_Events': ['At', 'Record ID', 'Event', 'From', 'To', 'Outcome', 'Date', 'Session', 'Reps', 'By', 'Source'],
+  'Timings': ['Hour', 'Action', 'Calls', 'Server p50 ms', 'Server p90 ms', 'Server max ms', 'Round trips', 'Round trip p50 ms',
+    'Round trip p90 ms', 'Start-up + network p50 ms'],
   '_Signatures': ['Row ID', 'Request ID', 'Record ID', 'Scout', 'Email', 'Name', 'Slots', 'Rep', 'Status', 'Asked by', 'Asked',
     'Signed', 'Expires', 'Filed', 'Note']
 };

@@ -238,6 +238,9 @@ function actionReviewFinish_(req) {
 
   // 3. Move the row, log it (Notes cell + Life to Eagle Log + digest).
   if (rec.section !== out.section) Records.move(rec.recordId, out.section);
+  var rv = sessionFor_(rec.recordId, 'ESSPPR', ctx.date);                // statistics (_Events tab): which review decided what
+  logEvent_({ event: 'review_outcome', recordId: rec.recordId, outcome: ctx.outcome, date: ctx.date, session: rv ? rv.key : '',
+    reps: rv && rv.reps.length ? rv.reps : ck.initials.list });
   var checked = clearPending_(rec.recordId);                  // a decision: new files no longer waiting (state-model-v3)
   if (ctx.outcome !== 'approved') saveRequest_(rec.recordId, out.section, ctx.note);   // shown on the Scout's page
   addRecordNote_(rec.recordId, ProposalOutcome.logLine(Intake.shortDate(new Date()), c.me.initials || c.email, ctx.outcome,

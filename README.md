@@ -955,6 +955,22 @@ move it is*. It holds the time of the oldest Scout file submission no member has
   triggers off), a dashboard tile (count, oldest first), "new files" on the Review page list, and the top of the digest.
 - Existing rows start empty: **Admin → New files: flag selected rows** sets the time from the Scout's latest upload.
 
+### Statistics history and timings (`lib/events.js`, `lib/reviewStats.js`, `lib/perf.js`, `metricsActions.js`; 2026-11-17)
+
+- **`_Events` tab** (hidden; Setup / repair creates it): append-only history beside the tracking tab, which stays the
+  record. Rows: `stage` (every `Records.move`: From → To), `review_outcome` (Review page: approved / revisions /
+  not_approved, with the ESSPPR slot key and members), `intake_outcome` (dashboard actions after a Pre-Review Call:
+  ready / changes / not_approved, with the Intake slot). Record IDs and initials only, never names. A failed write
+  (or no tab yet) loses only statistics. A Firestore copy is a later proof of concept, not now.
+- **Stats page → Proposal Reviews and Pre-Review Calls**: each Scout counted once by the first Proposal Review on the
+  schedule; approved at that review vs later (days: median, avg, min–max), reviews per approval, Pre-Review Call →
+  Proposal Review gap, results by who ran the Pre-Review Call (shown as "4 of 6"), Pre-Review Call outcomes by member.
+  Outcomes come from `_Events` when recorded (from 2026-11-17), otherwise inferred from the Approved Date.
+  Sessions per member per type were already on the page (Committee sessions held).
+- **`Timings` tab**: every response carries `ms` (server time); the page sends the round trip of its previous request
+  as `_perf`; samples collect in the script cache per hour and the hourly trigger writes one row per action: calls,
+  server p50/p90/max, round trip p50/p90, and start-up + network p50 (round trip − server). Best-effort sampling.
+
 ### Life to Eagle Log, Activity, digest
 
 - One Doc per Scout in their folder, newest line on top; the Notes cell shows the latest line and links to it. Typed

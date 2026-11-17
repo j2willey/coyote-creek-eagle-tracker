@@ -2,16 +2,24 @@
 // so we POST text/plain (a "simple request"); the script parses the JSON body.
 import { API_URL, ENV } from './config.js';
 
+// Timings (2026-11-17, apps-script lib/perf.js): each request carries the round trip of this browser's previous one
+// ({a: action, r: round trip ms, s: the server's own ms}); kept in sessionStorage so it survives moving between pages.
+const PERF_KEY = 'eaglePerf';
+function takePerf() { try { const v = JSON.parse(sessionStorage.getItem(PERF_KEY) || 'null'); sessionStorage.removeItem(PERF_KEY); return v; } catch { return null; } }
+function keepPerf(p) { try { sessionStorage.setItem(PERF_KEY, JSON.stringify(p)); } catch { /* private mode: no report */ } }
+
 export async function api(action, data = {}) {
   if (!API_URL || API_URL.includes('PASTE')) throw new Error('API_URL not set for ' + (ENV || 'host ' + location.hostname) + ' in web/js/config.js');
+  const prev = takePerf(), t0 = performance.now();
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, ...data }),
+    body: JSON.stringify({ action, ...data, ...(prev ? { _perf: prev } : {}) }),
     redirect: 'follow'
   });
   if (!res.ok) throw new Error('Network error (' + res.status + ')');
   const out = await res.json();
+  if (out.ok) keepPerf({ a: action, r: Math.round(performance.now() - t0), s: typeof out.ms === 'number' ? out.ms : null });
   if (!out.ok) throw new Error(out.error || 'Request failed');
   return out;
 }

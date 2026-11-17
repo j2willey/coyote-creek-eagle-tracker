@@ -131,17 +131,20 @@ var Records = (function () {
 
   /** Move a record to the end of another section (position = status). */
   function move(recordId, sectionKey) {
+    var from = '';
     withLock_(function () {
       var md = model_();
       var r = SheetModel.findRecordRow(md.keys, recordId);
       if (r < 0) throw new Error('Record not found: ' + recordId);
       var at = SheetModel.topRow(md.keys, sectionKey);       // moved rows go to the TOP of the section (Jim W., 2026-10-19)
       if (at < 0) throw sectionMissing_(sectionKey);
-      if (SheetModel.sectionForRow(md.keys, r) === sectionKey) return;
+      from = SheetModel.sectionForRow(md.keys, r);
+      if (from === sectionKey) { from = ''; return; }
       md.sheet.moveRows(md.sheet.getRange(r + 1, 1), at + 1);
       // Where it landed (1-based): moving down, the rows above shift up by one.
       clearTailFormat_(md.sheet, r + 1 < at + 1 ? at : at + 1, md.lastCol);
     });
+    if (from) logEvent_({ event: 'stage', recordId: recordId, from: from, to: sectionKey });   // _Events tab (statistics)
     refreshActionDropdownsQuietly_();
     placeFolderQuietly_(recordId);                            // 202x / EBoR year / Exceptions (folderPlace.js)
     if (sectionKey === 'ebor_booked') sortEborBooked_();     // EBoR Booked stays in EBoR Date order (sectionSortActions.js)

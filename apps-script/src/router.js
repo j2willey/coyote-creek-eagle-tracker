@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.78.0';
+var API_VERSION = '0.79.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -166,10 +166,13 @@ function dispatch_(req) {
   var handler = ACTIONS_[req && req.action];
   if (!handler) return { ok: false, error: 'Unknown action' };
   var t0 = Date.now();
+  ACTOR_ = '';
   try {
     var out = handler(req) || {};
     out.ok = true;
-    console.log('timing ' + req.action + ' ' + (Date.now() - t0) + ' ms');   // Executions log: where the time goes
+    out.ms = Date.now() - t0;                                             // the page reports its round trip next time (lib/perf.js)
+    console.log('timing ' + req.action + ' ' + out.ms + ' ms');   // Executions log: where the time goes
+    recordPerf_(req.action, out.ms, req._perf);                           // Timings tab, hourly (metricsActions.js)
     return out;
   } catch (err) {
     if (err && err.userMessage) return { ok: false, error: err.userMessage };

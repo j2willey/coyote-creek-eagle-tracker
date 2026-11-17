@@ -36,7 +36,7 @@ function actionStats_(req) {
     });
   } catch (e) { console.warn('stats schedule: ' + e); }
   return { current: cur, history: Stats.history(readTabOrEmpty_(STATS_HISTORY_TAB)).filter(function (h) { return h.year !== cur.year; }),
-    workload: Stats.workload(rows, cur.year, Date.now()), femaleColumn: femaleColumn_(), today: today };
+    workload: Stats.workload(rows, cur.year, Date.now()), femaleColumn: femaleColumn_(), today: today, reviews: reviewStats_(cur.year) };
 }
 
 /**
