@@ -41,7 +41,10 @@ function menuAnonymizeStaging() {
       (res.problems.length ? '\n\nProblems (' + res.problems.length + '):\n' + res.problems.slice(0, 10).join('\n') : '') +
       '\n\nStill real (by design): Key 3 / Unit Contacts / Committee tabs (adults; test mode keeps their mail to you). ' +
       'Check the staging Scouts folder for folders still named after real Scouts (not matched to a row): trash them by hand.'
-    : res.changed + ' Scouts anonymized; ' + res.left + ' left. Run it again (it continues where it stopped).');
+    : res.changed + ' Scouts anonymized; ' + res.left + ' left' + (res.failed ? ', ' + res.failed + ' failed' : '') + '. ' +
+      (res.stopped ? res.stopped + ' ' : 'Run it again (it continues where it stopped).') +
+      // 2026-11-17: problems were only shown when done, so a run where every row failed said just "0 done, 37 left".
+      (res.problems.length ? '\n\nProblems (' + res.problems.length + '):\n' + res.problems.slice(0, 10).join('\n') : ''));
 }
 
 function anonymizeStaging_(base) {
@@ -51,7 +54,7 @@ function anonymizeStaging_(base) {
   var problems = [];
   var drive = stagingDrive_(problems);
   var recs = Records.all(want);
-  var changed = 0, left = 0;
+  var changed = 0, left = 0, failed = 0, stopped = '';
   var renamed = {};                                         // recordId -> new name (for the schedule sheet)
   recs.forEach(function (r, i) { if (Anonymize.isFake(r.scout_name)) renamed[r.recordId] = String(r.scout_name).trim(); });
 
@@ -59,7 +62,8 @@ function anonymizeStaging_(base) {
     var r = recs[i];
     var oldName = String(r.scout_name || '').trim();
     if (!oldName || Anonymize.isFake(oldName)) continue;
-    if (Date.now() - t0 > 270 * 1000) { left++; continue; }
+    if (stopped || Date.now() - t0 > 270 * 1000) { left++; continue; }
+    var tRow = Date.now();
     var n = i + 1;
     var f = Anonymize.fakeFields(n, base, r.proj_coach);
     var scrub = function (text) { return Anonymize.scrub(text, oldName, f.scout_name, base, n); };
@@ -89,10 +93,16 @@ function anonymizeStaging_(base) {
       Records.update(r.recordId, upd);
       renamed[r.recordId] = f.scout_name;
       changed++;
-    } catch (e) { problems.push(r.recordId + ': ' + e.message); }
+    } catch (e) {
+      failed++;
+      problems.push(r.recordId + ' (' + oldName.replace(/\s+\S+$/, '') + '…): ' + e.message);
+      // The script lock is held elsewhere (a trigger, another run): every row would wait 30 s and fail. Stop and say so.
+      if (/Busy: could not get the script lock/.test(String(e.message))) stopped = 'Another run or trigger holds the script lock: wait a minute, then run it again.';
+    }
+    console.log('anonymize ' + r.recordId + ' ' + (Date.now() - tRow) + ' ms');
   }
   try { unlinkColumns_(['scout_name', 'notes']); } catch (e) { problems.push('unlinking name/notes cells: ' + e.message); }
-  if (left) return { done: false, changed: changed, left: left, total: recs.length, problems: problems };
+  if (left || failed) return { done: false, changed: changed, left: left, failed: failed, stopped: stopped, total: recs.length, problems: problems };
 
   // Schedule sheet: booked rows show the new names; names not linked to a record are cleared.
   // Only a STAGING / Test Copy schedule file (a copy of production's Settings would point at the real one).
