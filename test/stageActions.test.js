@@ -88,22 +88,20 @@ describe('StageActions', () => {
     expect(SA.forSection('ebor_booked')[0]).toMatchObject({ dateDefault: 'ebor' });
     expect(SA.plan({ section: 'app_verified', action: 'resend_ebor', cols: c2 })).toMatchObject({ errors: [], to: null });
   });
-  it('Eagle earned: scans both or neither; photos optional; paperwork needs both; Council received needs its column', () => {
+  it('Eagle earned: the signed application (no Advancement Report since 2026-11-17); photos optional; Council received needs its column', () => {
     const c3 = SA.resolveColumns(['ebor_date', 'eagle_earned.svmbc_received'], {});
     const b = { action: 'eagle_earned', section: 'ebor_booked', today: '2026-10-23', date: '2026-10-21', cols: c3, dates: { ebor: '2026-10-21' } };
-    expect(SA.plan({ ...b, files: ['application', 'report', 'photo'] })).toMatchObject({ errors: [], warnings: [] });
-    expect(SA.plan({ ...b, files: ['application'] }).errors[0]).toMatch(/both signed scans/);
-    expect(SA.plan({ ...b, files: [] }).warnings.join(' ')).toMatch(/No signed scans.*No photos/);
-    expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: ['report'] }).errors[0]).toMatch(/signed Eagle Scout Rank Application/);
-    // Signed on the EBoR paperwork page: both scans are in the folder already, none asked for again (Task 12).
-    expect(SA.plan({ ...b, files: [], have: ['application', 'report'] }).warnings.join(' ')).not.toMatch(/No signed scans/);
-    expect(SA.plan({ ...b, files: [], have: ['application', 'report'] }).errors).toEqual([]);
-    expect(SA.plan({ ...b, files: [], have: ['application'] }).errors[0]).toMatch(/both signed scans/);
-    expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: [], have: ['application', 'report'] }).errors).toEqual([]);
-    expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: [], have: ['report'] }).errors[0]).toMatch(/Rank Application/);
+    expect(SA.plan({ ...b, files: ['application', 'photo'] })).toMatchObject({ errors: [], warnings: [] });
+    expect(SA.plan({ ...b, files: [] }).warnings.join(' ')).toMatch(/No signed application.*No photos/);
+    expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: [] }).errors[0]).toMatch(/signed Eagle Scout Rank Application/);
+    // Signed on the EBoR paperwork page: the application is in the folder already, not asked for again (Task 12).
+    expect(SA.plan({ ...b, files: [], have: ['application'] }).warnings.join(' ')).not.toMatch(/No signed application/);
+    expect(SA.plan({ ...b, files: [], have: ['application'] }).errors).toEqual([]);
+    expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: [], have: ['application'] }).errors).toEqual([]);
+    expect(SA.plan({ action: 'paperwork', section: 'eagle_earned', cols: c3, files: [], have: [] }).errors[0]).toMatch(/Rank Application/);
     expect(SA.plan({ action: 'svmbc_received', section: 'eagle_earned', cols: c3 }).errors).toEqual([]);
     expect(SA.plan({ action: 'svmbc_received', section: 'eagle_earned', cols: {} }).errors[0]).toMatch(/SVMBC Received/);
-    expect(SA.forSection('ebor_booked')[0]).toMatchObject({ files: ['application', 'report', 'photo'] });
+    expect(SA.forSection('ebor_booked')[0]).toMatchObject({ files: ['application', 'photo'] });
   });
   it('log line', () => {
     expect(SA.logLine('10/23', 'AB', 'app_verified', '2026-10-22', 'via email')).toBe('10/23 [AB] Eagle application verified by Council (10/22/2026). Note: via email');
@@ -131,7 +129,7 @@ describe('StageActions: schedule-page actions say which type to open (2026-11-11
     });
     it('Eagle earned offers a photos-only variant once the paperwork went to Council', () => {
       const a = SA.forSection('ebor_booked').find(x => x.key === 'eagle_earned');
-      expect(a.files).toEqual(['application', 'report', 'photo']);
+      expect(a.files).toEqual(['application', 'photo']);
       expect(a.filesSent).toEqual(['photo']);
       expect(a.emailHintSent).toMatch(/already gone to Council/);
       expect(a.emailHint).toMatch(/drafts two emails/);

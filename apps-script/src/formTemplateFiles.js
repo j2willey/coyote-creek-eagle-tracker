@@ -20,14 +20,6 @@ function formTemplateFiles_() {
   });
 }
 
-/** The blank Advancement Report: Settings → advancementReportTemplateId when set, else the PDF in Form Templates. -> {id, name} or null */
-function reportTemplateRef_() {
-  var id = String(getSettings_().advancementReportTemplateId || '').trim();
-  if (id) return { id: id, name: '' };
-  var hit = FormTemplates.pickReport(formTemplateFiles_());
-  return hit ? { id: hit.id, name: hit.name } : null;
-}
-
 /** Setup / repair: copy the old stampsFolderId into formTemplatesFolderId once (the old key stays). -> true when copied */
 function copyFormTemplatesKey_() {
   var s = getSettings_();

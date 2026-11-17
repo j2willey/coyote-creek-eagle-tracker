@@ -26,11 +26,8 @@ describe('FormTemplates: the blank forms', () => {
     { id: 'v', name: 'Verified Eagle Application (demo).pdf', mime: 'application/pdf', modified: 900 },
     { id: 'n', name: 'Advancement notes.docx', mime: 'application/msword', modified: 999 }
   ];
-  it('the report is the newest PDF with 34403 or Advancement in its name (any case)', () => {
-    expect(F.pickReport(files).id).toBe('r1');
-    expect(F.pickReport(files.filter(f => f.id !== 'r1')).id).toBe('r2');
-    expect(F.pickReport([{ id: 'x', name: '34403.pdf', modified: 1 }, { id: 'y', name: 'Form 34403 v2.pdf', modified: 2 }]).id).toBe('y');
-    expect(F.pickReport([files[0], files[5]])).toBeNull();
+  it('no Advancement Report any more (dropped 2026-11-17)', () => {
+    expect(F.pickReport).toBeUndefined();
   });
   it('the Eagle Application has "Eagle Application" and not "Verified"; a Verified copy never counts', () => {
     expect(F.pickApplication(files).id).toBe('a');

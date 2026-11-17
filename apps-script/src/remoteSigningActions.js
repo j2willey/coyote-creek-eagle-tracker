@@ -8,8 +8,8 @@
  * Finish (the paperwork page) files the copies as the standard -Signed names and drafts the Council email.
  *
  * Committee (EBoR paperwork page, Dev):
- *   eborPaperworkSavePartial {session, uploadToken, layout?}  -> {message, status}   after eborPaperworkStart {partial: true} + Uploads;
- *                                                                layout: {report: {Signature1: rect}} kept on the Partial copies (Drive description)
+ *   eborPaperworkSavePartial {session, uploadToken}           -> {message, status}   after eborPaperworkStart {partial: true} + Upload
+ * (One document since 2026-11-17: the Eagle Application. The Advancement Report was dropped; Council no longer uses it.)
  *   eborSignatureStatus      {session, recordId}              -> status (see signatureStatus_)
  *   eborSignatureRequest     {session, recordId, signers: [{name, email, slots, rep}]} -> {message, status}
  *   eborSignatureEdit        {session, rowId, email?, name?, cancel?, resend?}       -> {message, status}
@@ -39,11 +39,11 @@ function signatureTab_() {
 
 function newSignatureId_(prefix) { return prefix + '-' + Date.now().toString(36).toUpperCase() + '-' + Utilities.getUuid().slice(0, 4).toUpperCase(); }
 
-/** The Partial copies at the top of the Scout's folder: {application: {id, name, modified, file}, report: ...} (newest of each). */
+/** The Partial copy at the top of the Scout's folder: {application: {id, name, modified, file}} (newest). */
 function partialFiles_(folder) {
   var out = {};
   listFolder_(folder).forEach(function (x) {
-    var kind = /_EagleApplication-Partial\.pdf$/i.test(x.name) ? 'application' : /_AdvancementReport-Partial\.pdf$/i.test(x.name) ? 'report' : '';
+    var kind = /_EagleApplication-Partial\.pdf$/i.test(x.name) ? 'application' : '';
     if (!kind) return;
     var t = x.file.getLastUpdated().getTime();
     if (!out[kind] || t > out[kind].modified) out[kind] = { id: String(x.id), name: String(x.name), modified: t, file: x.file };
@@ -75,8 +75,7 @@ function signatureStatus_(rec) {
       return { id: r.id, name: r.name, email: r.email, keys: r.slots, slots: r.slots.map(Signatures.slotLabel), status: r.status === 'Pending' && !(r.expires > now) ? 'Expired' : r.status,
         asked: fmt(r.asked), signed: fmt(r.signed), expires: fmt(r.expires), room: !r.email };
     }),
-    files: { application: files.application ? { id: files.application.id, name: files.application.name } : null,
-      report: files.report ? { id: files.report.id, name: files.report.name } : null }
+    files: { application: files.application ? { id: files.application.id, name: files.application.name } : null }
   };
 }
 
@@ -91,21 +90,19 @@ function actionEborPaperworkSavePartial_(req) {
   var rec = eborRecord_(ctx.recordId);
   var up = {};
   ctx.uploads.forEach(function (u) { up[u.kind] = u; });
-  if (!up.application || !up.report) throw userError_('Both PDFs must arrive before saving. Please try again.');
+  if (!up.application) throw userError_('The application must arrive before saving. Please try again.');
   CacheService.getScriptCache().remove('ep:' + req.uploadToken);
   var by = c.me.initials || c.email, scout = String(rec.fields.scout_name || '');
   var room = Signatures.roomSigners(ctx.sign);
   var folder = folderForRecord_(rec, true);
   var names = Signatures.partialNames(EagleDone.fileNames(scout, rec.fields.unit, ctx.boardYmd, Intake.namePart, Intake.unitPart));
   var res = withLock_(function () {
-    // 1. The two Partial copies (an earlier Partial goes to Archive; the Verified Application stays until Finish).
+    // 1. The Partial copy (an earlier Partial goes to Archive; the Verified Application stays until Finish).
     var newIds = [];
-    var layout = Signatures.layoutText(req.layout);
-    ['application', 'report'].forEach(function (kind) {
+    ['application'].forEach(function (kind) {
       var f = DriveApp.getFileById(up[kind].fileId);
       f.setName(names[kind]);
       f.moveTo(folder);
-      if (layout && f.setDescription) f.setDescription(layout);   // where the empty signature boxes are, for the signers' page
       newIds.push(f.getId());
     });
     var top = listFolder_(folder);
@@ -127,7 +124,7 @@ function actionEborPaperworkSavePartial_(req) {
     return { archived: old.length };
   });
   var line = Intake.shortDate(new Date()) + ' [' + by + '] EBoR paperwork saved partly signed (board ' + (EborPaperwork.mmddyy(ctx.boardYmd) || {}).text + '). ' +
-    (room.length ? 'Signed in the room: ' + room.map(function (p) { return p.name; }).join(', ') : 'Nobody signed in the room') + '. Filed ' + names.application + ' and ' + names.report + '.';
+    (room.length ? 'Signed in the room: ' + room.map(function (p) { return p.name; }).join(', ') : 'Nobody signed in the room') + '. Filed ' + names.application + '.';
   addRecordNote_(rec.recordId, line);
   return { message: scout + ': saved partly signed. Now send it to the other signers (below).' + (res.archived ? ' ' + res.archived + ' earlier copy(ies) to Archive.' : ''),
     status: signatureStatus_(rec) };
@@ -222,7 +219,7 @@ function actionEborPaperworkFinishPartial_(req) {
   var now = Date.now(), rows = Signatures.series(signatureRows_(), rec.recordId), st = Signatures.state(rows, now);
   if (!st.requestId) throw userError_('Nothing is in progress for this Scout: there is no partly signed paperwork.');
   var folder = folderForRecord_(rec, true), files = partialFiles_(folder);
-  if (!files.application || !files.report) throw userError_('The Partial copies are not in the Scout\'s folder any more (moved by hand?).');
+  if (!files.application) throw userError_('The Partial copy is not in the Scout\'s folder any more (moved by hand?).');
   var warnings = [];
   if (st.missing.length) warnings.push('Not signed yet: ' + st.missing.map(Signatures.slotLabel).join('; ') + '.');
   Signatures.DOCS.forEach(function (d) { if (!st.repOk[d]) warnings.push(Signatures.DOC_LABEL[d] + ': no District Advancement Committee / Council representative has signed.'); });
@@ -247,11 +244,11 @@ function actionEborPaperworkFinishPartial_(req) {
     return { files: out, archived: toArchive.length };
   });
   var unit = Units.find(units_(), rec.fields.unit), res = null, note = '';
-  try { res = draftCouncilPaperwork_(c, rec, boardYmd, [filed.files.application, filed.files.report], unit ? unit.contacts : [], stageColumns_()); }
+  try { res = draftCouncilPaperwork_(c, rec, boardYmd, [filed.files.application], unit ? unit.contacts : [], stageColumns_()); }
   catch (e) { console.error('finish partial email: ' + (e && e.stack || e)); note = ' The Council email could not be drafted (' + e.message + '): use "Send signed paperwork to Council…" on the dashboard.'; }
   var queued = !!(res && res.queued);
   addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [' + by + '] EBoR paperwork filed after signing outside the room. ' + Signatures.summary(st) +
-    '. Filed ' + names.application + ' and ' + names.report + (warnings.length ? ' (finished with missing signatures)' : '') +
+    '. Filed ' + names.application + (warnings.length ? ' (finished with missing signatures)' : '') +
     (queued ? '; Council email drafted in the Outbox' : '; no Council email drafted') + '.');
   var moved = '';
   try { moved = moveToEagleEarned_(rec, boardYmd, by); }
@@ -273,7 +270,7 @@ function signerMe_(session, recordId) {
 function slotsByDoc_(rows) {
   var all = [];
   rows.forEach(function (r) { r.slots.forEach(function (k) { if (all.indexOf(k) < 0) all.push(k); }); });
-  return { application: Signatures.slotsOf('application', all), report: Signatures.slotsOf('report', all) };
+  return { application: Signatures.slotsOf('application', all) };
 }
 
 function actionSignerChoices_(req) {
@@ -291,18 +288,16 @@ function actionSignerDocs_(req) {
   var me = signerMe_(req.session, req.recordId);
   var rec = eborRecord_(req.recordId);
   var folder = folderForRecord_(rec, false), files = folder ? partialFiles_(folder) : {};
-  if (!files.application || !files.report) throw userError_('The paperwork is not ready to sign yet. Please reply to the committee member who asked you.');
+  if (!files.application) throw userError_('The paperwork is not ready to sign yet. Please reply to the committee member who asked you.');
   var st = Signatures.state(Signatures.series(signatureRows_(), rec.recordId), Date.now());
   var signedBy = Object.keys(st.signed).map(function (k) { return { label: Signatures.slotLabel(k), name: st.signed[k].name }; });
   var slots = slotsByDoc_(me.rows);
   return {
     recordId: rec.recordId, scout: String(rec.fields.scout_name || ''), unit: String(rec.fields.unit || ''), boardYmd: boardYmdFor_(rec),
     name: me.rows[0].name, rep: me.rows.some(function (r) { return r.rep; }),
-    slots: slots, labels: { application: EborPaperwork.signerSlots('application'), report: EborPaperwork.signerSlots('report') },
-    files: { application: { id: files.application.id, name: files.application.name, modified: files.application.modified },
-      report: { id: files.report.id, name: files.report.name, modified: files.report.modified } },
-    signedBy: signedBy, maxUploadMB: Number(getSettings_().maxUploadMB) || 20,
-    layout: Signatures.parseLayout(files.report.file.getDescription ? files.report.file.getDescription() : '')
+    slots: slots, labels: { application: EborPaperwork.signerSlots('application') },
+    files: { application: { id: files.application.id, name: files.application.name, modified: files.application.modified } },
+    signedBy: signedBy, maxUploadMB: Number(getSettings_().maxUploadMB) || 20
   };
 }
 

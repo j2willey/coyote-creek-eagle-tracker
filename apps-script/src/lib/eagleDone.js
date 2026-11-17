@@ -1,8 +1,8 @@
 /**
  * EagleDone: rules for "Eagle earned" in one step (Jim W., 2026-10-23) and for where a Scout's folder lives. Pure.
  *
- * Eagle earned: the two signed scans (Eagle Scout Rank Application, Advancement Report) are filed and attached to the
- * Council email (Settings → councilEaglesEmail, Cc the committee and the unit leader); the EBoR photos (resized to JPEG in the
+ * Eagle earned: the signed Eagle Scout Rank Application is filed and attached to the Council email (the Advancement
+ * Report was dropped 2026-11-17) (Settings → councilEaglesEmail, Cc the committee and the unit leader); the EBoR photos (resized to JPEG in the
  * browser, EXIF date = the board's date) go to "EBoR Photos" and are attached to the congratulations email to the
  * Scout, family, unit contacts, the board (district reps + Unit Board Members) and the committee.
  *
@@ -60,7 +60,6 @@ var EagleDone = (function () {
     var d = str(eborYmd).replace(/-/g, '');
     return {
       application: base + '_EagleApplication-Signed.pdf',
-      report: base + '_AdvancementReport-Signed.pdf',
       photo: function (n) { return base + '_EBoR-' + d + '-' + (n < 10 ? '0' : '') + n + '.jpg'; }
     };
   }

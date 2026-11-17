@@ -8,7 +8,8 @@
  *    that email "on file" (lib/access.js): it can sign in, and sees that Scout's paperwork only, only while pending.
  * Rows are found by Row ID (`SG-...`), never by row number. Finish stamps Filed on every row of the series.
  *
- * Slot keys: `application:chair`, `application:rep`, `report:Signature1..3` (EborPaperwork.signerSlots).
+ * Slot keys: `application:chair`, `application:rep` (EborPaperwork.signerSlots). Rows from before 2026-11-17 may name
+ * `report:...` boxes of the dropped Advancement Report: unknown keys are ignored.
  * Names and emails are runtime data: nothing here is a real person's.
  */
 var Signatures = (function () {
@@ -20,8 +21,8 @@ var Signatures = (function () {
   var HEADERS = ['Row ID', 'Request ID', 'Record ID', 'Scout', 'Email', 'Name', 'Slots', 'Rep', 'Status', 'Asked by', 'Asked',
     'Signed', 'Expires', 'Filed', 'Note'];
   var STATUS = { pending: 'Pending', signed: 'Signed', cancelled: 'Cancelled' };
-  var DOCS = ['application', 'report'];
-  var DOC_LABEL = { application: 'Eagle Application (Requirement 7)', report: 'Advancement Report' };
+  var DOCS = ['application'];
+  var DOC_LABEL = { application: 'Eagle Application (Requirement 7)' };
 
   /** Every slot key, in page order. */
   function slotKeys() {
@@ -36,7 +37,7 @@ var Signatures = (function () {
     return slot ? DOC_LABEL[p[0]] + ': ' + slot.label : '';
   }
 
-  /** "application:chair, report:Signature1" <-> ['application:chair', 'report:Signature1'] (unknown keys dropped). */
+  /** "application:chair, application:rep" <-> ['application:chair', 'application:rep'] (unknown keys dropped). */
   function parseSlots(cell) {
     var known = slotKeys();
     var out = [];
@@ -81,7 +82,7 @@ var Signatures = (function () {
 
   /**
    * Where a series stands. -> {requestId, signed: {slotKey: {name, rep, email}}, pending: [row], expired: [row],
-   * missing: [slotKey], complete (every slot signed), repOk: {application, report}}
+   * missing: [slotKey], complete (every slot signed), repOk: {application}}
    */
   function state(rows, now) {
     var signed = {}, pending = [], expired = [];
@@ -97,8 +98,8 @@ var Signatures = (function () {
   }
 
   /**
-   * Save partial: the room's signers become Signed rows of a new series. sign: {application: [{key, name, rep, signed}],
-   * report: [...]} (only the signed ones are kept). -> [{slots, name, rep}]
+   * Save partial: the room's signers become Signed rows of a new series. sign: {application: [{key, name, rep, signed}]}
+   * (only the signed ones are kept). -> [{slots, name, rep}]
    */
   function roomSigners(sign) {
     var out = [];
@@ -157,7 +158,7 @@ var Signatures = (function () {
   }
 
   /**
-   * A signer's save is accepted only on the copies they opened: base: {application: {id, modified}, report: {...}};
+   * A signer's save is accepted only on the copy they opened: base: {application: {id, modified}};
    * current: the same from the folder now. -> '' or the reason it changed.
    */
   function baseChanged(base, current) {
@@ -171,7 +172,7 @@ var Signatures = (function () {
   /** The Partial copies' names: the standard -Signed names with -Partial. names: EagleDone.fileNames(...) */
   function partialNames(names) {
     var p = function (n) { return str(n).replace(/-Signed\.pdf$/i, '-Partial.pdf'); };
-    return { application: p(names && names.application), report: p(names && names.report) };
+    return { application: p(names && names.application) };
   }
 
   /** Which slot keys a document has, for one signer: slots filtered to the document. */
@@ -198,26 +199,7 @@ var Signatures = (function () {
     return Object.keys(by).map(function (k) { return by[k]; });
   }
 
-  /**
-   * Where the Advancement Report's signature boxes are (the Partial copy is flattened, so its form fields are gone): kept as
-   * the Partial files' Drive description. layout: {report: {Signature1: {pageIndex, x, y, width, height}, ...}} -> JSON or ''.
-   */
-  function layoutText(layout) {
-    var rep = layout && layout.report, out = {};
-    if (!rep || typeof rep !== 'object') return '';
-    ['Signature1', 'Signature2', 'Signature3'].forEach(function (k) {
-      var r = rep[k];
-      if (!r) return;
-      var n = ['pageIndex', 'x', 'y', 'width', 'height'].map(function (f) { return Number(r[f]); });
-      if (n.every(function (v) { return isFinite(v) && v >= 0 && v < 5000; })) out[k] = { pageIndex: n[0], x: n[1], y: n[2], width: n[3], height: n[4] };
-    });
-    return Object.keys(out).length ? JSON.stringify({ eborLayout: 1, report: out }) : '';
-  }
-  function parseLayout(text) {
-    try { var o = JSON.parse(str(text)); return o && o.eborLayout === 1 && o.report ? { report: o.report } : { report: {} }; } catch (e) { return { report: {} }; }
-  }
-
-  return { layoutText: layoutText, parseLayout: parseLayout, TAB: TAB, HEADERS: HEADERS, STATUS: STATUS, DOCS: DOCS, DOC_LABEL: DOC_LABEL, slotKeys: slotKeys, slotLabel: slotLabel,
+  return { TAB: TAB, HEADERS: HEADERS, STATUS: STATUS, DOCS: DOCS, DOC_LABEL: DOC_LABEL, slotKeys: slotKeys, slotLabel: slotLabel,
     parseSlots: parseSlots, slotsText: slotsText, list: list, isOpen: isOpen, openFor: openFor, series: series, state: state,
     roomSigners: roomSigners, checkRequest: checkRequest, newRows: newRows, baseChanged: baseChanged, partialNames: partialNames,
     slotsOf: slotsOf, summary: summary, waiting: waiting };

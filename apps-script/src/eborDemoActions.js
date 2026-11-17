@@ -38,7 +38,7 @@ function demoEnsureVerified_(folder) {
 
 function actionEborPaperworkDemoScout_(req) {
   committeeMe_(req.session);
-  var D = EborPaperwork.DEMO, s = getSettings_(), today = todayYmd_();
+  var D = EborPaperwork.DEMO, today = todayYmd_();
   var boardYmd = EborPaperwork.parts(req.boardYmd) ? String(req.boardYmd) : today;
   var folder = demoFolder_(true);
   demoEnsureVerified_(folder);
@@ -46,25 +46,23 @@ function actionEborPaperworkDemoScout_(req) {
   var verified = EborPaperwork.pickVerified(files);
   var committee = [];
   try { committee = committee_(); } catch (e) { /* suggestions only */ }
-  var fill = EborPaperwork.reportFields(EborPaperwork.demoReportInput(boardYmd, s.districtName, s.advancementTitle));
   var names = EagleDone.fileNames(D.name, D.unit, boardYmd, Intake.namePart, Intake.unitPart);
   return {
     recordId: D.recordId, demo: true, name: D.name, unit: D.unit, stage: D.stage,
     boardYmd: boardYmd, boardTime: '',
     suggestions: { district: committee.map(function (m) { return String(m.name || ''); }).filter(String), unit: [] },
     requirement7: EborPaperwork.mmddyy(boardYmd),
-    fields: fill.text, radio: fill.radio, problems: fill.problems,
-    leader: { name: D.leaderName, hasAddress: true },
+    problems: [],
     folderUrl: 'https://drive.google.com/drive/folders/' + folder.getId(),
     verifiedId: verified ? verified.id : '',
     pdfs: EborPaperwork.pdfChoices(files),
-    fileNames: { application: names.application, report: names.report },
+    fileNames: { application: names.application },
     alreadySigned: EborPaperwork.signedIn(files),
     councilEmail: ''
   };
 }
 
-/** Save for the demo: both files into the demo folder (same filing code), a [DEMO] draft To the member only, one Activity line. */
+/** Save for the demo: the signed application into the demo folder (same filing code), a [DEMO] draft To the member only, one Activity line. */
 function eborDemoFinish_(c, ctx, up) {
   var D = EborPaperwork.DEMO, by = c.me.initials || c.email;
   var folder = demoFolder_(true);
@@ -76,14 +74,14 @@ function eborDemoFinish_(c, ctx, up) {
   try {
     res = mailFromTemplate_('Council: Eagle paperwork', vars, {
       committee: true, outbox: true, by: c.email, recordId: '', scout: D.name, demo: true, demoTo: c.email,
-      to: [c.email], cc: '', subject: cp.subject, body: cp.body, attachments: [f.filed.application, f.filed.report] });
+      to: [c.email], cc: '', subject: cp.subject, body: cp.body, attachments: [f.filed.application] });
   } catch (e) { console.error('ebor paperwork demo email: ' + (e && e.stack || e)); note = ' The [DEMO] email could not be drafted (' + e.message + ').'; }
   var queued = !!(res && res.queued);
   if (res && !queued) note = ' No [DEMO] email was drafted (' + (res.reason || 'template Off') + ').';
   try {
     Tabs.append(ACTIVITY_TAB, { 'When': new Date(), 'Scout': D.name, 'Unit': D.unit, 'Record ID': D.recordId, 'Entry': EborPaperwork.demoActivity(by), 'By': by });
   } catch (e) { console.warn('Demo activity not recorded: ' + e); }
-  return { message: 'Demo: signed Eagle application and Advancement Report filed in the demo folder' +
+  return { message: 'Demo: signed Eagle application filed in the demo folder' +
     (f.toArchive.length ? ' (' + f.toArchive.length + ' earlier file(s) to Archive)' : '') + '.' +
     (queued ? ' A [DEMO] email, To you only, is ready in the Outbox. Nothing was sent to Council and no Scout record was touched.' : '') + note,
     outboxId: queued ? res.id : '' };

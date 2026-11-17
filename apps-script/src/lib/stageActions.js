@@ -15,7 +15,7 @@
  *   In-Person: To Book               Resend booking info | book on the schedule page
  *   In-Person: Booked / Prop. Rev.   Record review outcome (Review page)
  *   Application Verified             Book an EBoR (schedule page) | Resend EBoR next-steps email
- *   EBoR Booked                      Eagle earned (one step: scans + photos, Council + congratulations emails) | EBoR paused (note email)
+ *   EBoR Booked                      Eagle earned (one step: signed application scan + photos, Council + congratulations emails) | EBoR paused (note email)
  *                                    | Eagle not awarded (note email); each records the board's date as EBoR Date
  *   Eagle Earned                     Send signed paperwork to Council (later) | Council received the paperwork
  *                                    | Send congratulations (photos optional; only while the EBoR date is within
@@ -90,12 +90,13 @@ var StageActions = (function () {
     { key: 'resend_ebor', label: 'Resend EBoR next-steps email', sections: ['app_verified'], past: 'EBoR next-steps email drafted again',
       template: 'Book: Eagle Board of Review', toUnit: true, onSent: 'emailedEbor' },
     // EBoR outcome (the board's date: default the row's EBoR date)
-    // Eagle earned in one step: signed scans -> folder + Council email; photos -> "EBoR Photos" + congratulations email.
+    // Eagle earned in one step: signed application scan -> folder + Council email; photos -> "EBoR Photos" + congratulations email.
+    // (The Advancement Report was dropped 2026-11-17: Council no longer uses it.)
     { key: 'eagle_earned', label: 'Eagle earned…', sections: ['ebor_booked'], to: 'eagle_earned', dateRole: 'ebor', dateDefault: 'ebor',
       dateLabel: 'Date of the Board of Review', past: 'Eagle Board of Review: Eagle Scout rank earned', template: 'New Eagle Scout',
-      eagleDone: true, paint: 'ebor', files: ['application', 'report', 'photo'] },
+      eagleDone: true, paint: 'ebor', files: ['application', 'photo'] },
     { key: 'paperwork', label: 'Send signed paperwork to Council…', sections: ['eagle_earned'], ifNot: 'councilSent', past: 'Signed EBoR paperwork filed for Council',
-      eagleDone: true, files: ['application', 'report'], requireFiles: ['application', 'report'] },
+      eagleDone: true, files: ['application'], requireFiles: ['application'] },
     // Congratulations on its own (Jim W., 2026-11-17): from a phone at the event or later; can be sent again (more photos).
     { key: 'congrats', label: 'Send congratulations…', sections: ['eagle_earned'], ifCongrats: true, congrats: true,
       past: 'Congratulations email drafted', template: 'New Eagle Scout', files: ['photo'] },
@@ -122,7 +123,7 @@ var StageActions = (function () {
     { key: 'followup', label: 'Schedule a follow-up / consult…', sections: FOLLOWUP_STAGES, page: '/committee/schedule', pageQuery: 'new=Followup' }
   ];
 
-  var FILE_LABELS = { application: 'signed Eagle Scout Rank Application (PDF)', report: 'signed Advancement Report (PDF)', photo: 'EBoR photos' };
+  var FILE_LABELS = { application: 'signed Eagle Scout Rank Application (PDF)', photo: 'EBoR photos' };
 
   function str(v) { return v == null ? '' : String(v).trim(); }
 
@@ -171,9 +172,9 @@ var StageActions = (function () {
       'to the Scout, family, unit and board (with the photos), in the Outbox. Saving also paints the EBoR date green and moves the row to Eagle Earned.';
     if (a.key === 'congrats') return 'Saving files the photos in "EBoR Photos" and drafts the congratulations to the Scout, family, unit and board ' +
       '(with the photos) in the Outbox. The row does not move. You can send it again with more photos.';
-    if (a.key === 'eagle_earned') return 'Saving files the scans and photos in the Scout\'s folder, paints the EBoR date green, and drafts two emails in the Outbox: ' +
-      'the signed paperwork to Council (with the scans) and the congratulations to the Scout, family, unit and board (with the photos). Replies go to you.';
-    if (a.key === 'paperwork') return 'Saving files the scans and drafts the email to Council with both attached in the Outbox. "Signed paperwork sent" is filled in when it is sent.';
+    if (a.key === 'eagle_earned') return 'Saving files the signed application and the photos in the Scout\'s folder, paints the EBoR date green, and drafts two emails in the Outbox: ' +
+      'the signed application to Council and the congratulations to the Scout, family, unit and board (with the photos). Replies go to you.';
+    if (a.key === 'paperwork') return 'Saving files the signed application and drafts the email to Council with it attached in the Outbox. "Signed paperwork sent" is filled in when it is sent.';
     if (a.booking) return 'Saving sends the booking email to the Scout and parent (or drafts it in the Outbox, if its template is set to Review or the type is not booked online yet).';
     return 'No email is sent.';
   }
@@ -203,13 +204,12 @@ var StageActions = (function () {
     if (a.ifPending && !input.pending) errors.push('There are no new files waiting for this Scout. Reload the page.');
     if (a.email === 'note' && !str(input.note)) warnings.push('No note: the email will not say what to change. Add a note, or write it in the Outbox before sending.');
     if (a.setTrue && !(input.cols || {})[a.setTrue]) errors.push('The tracking tab has no "' + COLUMNS[a.setTrue].label + '" column (Settings → ' + COLUMNS[a.setTrue].setting + ').');
-    // input.have: the signed scans already in the Scout's folder (the EBoR paperwork page filed them): not asked for again.
+    // input.have: the signed application already in the Scout's folder (the EBoR paperwork page filed it): not asked for again.
     var have = input.have || [];
     (a.requireFiles || []).forEach(function (k) { if ((input.files || []).indexOf(k) < 0 && have.indexOf(k) < 0) errors.push('Add the ' + FILE_LABELS[k] + '.'); });
     if (a.key === 'eagle_earned' && input.files) {
-      var hasApp = input.files.indexOf('application') >= 0 || have.indexOf('application') >= 0, hasRep = input.files.indexOf('report') >= 0 || have.indexOf('report') >= 0;
-      if (hasApp !== hasRep) errors.push('Add both signed scans (application and Advancement Report), or neither (send them later from the Eagles tab).');
-      else if (!hasApp) warnings.push('No signed scans: the Council email is not drafted. Send them later with "Send signed paperwork to Council…" on the Eagles tab.');
+      var hasApp = input.files.indexOf('application') >= 0 || have.indexOf('application') >= 0;
+      if (!hasApp) warnings.push('No signed application: the Council email is not drafted. Send it later with "Send signed paperwork to Council…" on the Eagles tab.');
       if (input.files.indexOf('photo') < 0) warnings.push('No photos: the congratulations email goes without pictures.');
     }
     if (a.key === 'congrats' && input.files && input.files.indexOf('photo') < 0) warnings.push('No photos: the congratulations email goes without pictures.');

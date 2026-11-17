@@ -1,7 +1,7 @@
 /**
  * FormTemplates (Task 14a, Jim W., 2026-11-11): the ONE Drive folder of reusable files for the Sign Workshop and the
- * EBoR paperwork page: the stamp PNGs and the blank forms (Advancement Report 34403, blank Eagle Application for the
- * demo). Pure: Settings -> which folder, file list -> which file. No form or stamp image lives in the repo.
+ * EBoR paperwork page: the stamp PNGs and the blank Eagle Application for the demo (the Advancement Report was
+ * dropped 2026-11-17). Pure: Settings -> which folder, file list -> which file. No form or stamp image lives in the repo.
  *
  * Settings `formTemplatesFolderId`; when blank the older `stampsFolderId` is used (same folder, renamed in Drive).
  */
@@ -27,17 +27,12 @@ var FormTemplates = (function () {
     return !str(s.formTemplatesFolderId) && !!str(s.stampsFolderId);
   }
 
-  /** The blank Advancement Report: the PDF whose name contains "34403" or "Advancement"; newest wins. files: [{id, name, mime, modified}] */
-  function pickReport(files) {
-    return pick(files, function (n) { return /34403|advancement/i.test(n); });
-  }
-
   /** The blank Eagle Application (demo only): the PDF whose name contains "Eagle Application" and not "Verified"; newest wins. */
   function pickApplication(files) {
     return pick(files, function (n) { return /eagle application/i.test(n) && !/verified/i.test(n); });
   }
 
-  return { folderId: folderId, needsCopy: needsCopy, pickReport: pickReport, pickApplication: pickApplication };
+  return { folderId: folderId, needsCopy: needsCopy, pickApplication: pickApplication };
 })();
 
 if (typeof module !== 'undefined') module.exports = FormTemplates;

@@ -3,17 +3,16 @@
  * lib/eborPaperwork.js; the page signs both documents in the browser (Sign Workshop engine), then files them here.
  *
  * Router actions:
- *   eborPaperworkChoices  {session}                -> {me, today, scouts, selected, slots, repLabel, committee, settings, testMode}
- *   eborPaperworkScout    {session, recordId}      -> {name, unit, board, suggestions, fields, verified, pdfs, folderUrl, ...}
- *   eborPaperworkTemplate {session}                -> {name, mime, data (base64)}   the blank Advancement Report (Settings)
- *   eborPaperworkStart    {session, recordId, boardYmd, application: [signer], report: [signer], verifiedId, partial?}
+ *   eborPaperworkChoices  {session}                -> {me, today, scouts, selected, slots, repLabel, committee, testMode}
+ *   eborPaperworkScout    {session, recordId}      -> {name, unit, board, suggestions, verified, pdfs, folderUrl, ...}
+ *   eborPaperworkStart    {session, recordId, boardYmd, application: [signer], verifiedId, partial?}
  *                                                  -> {uploadToken}   (signer: {name, rep, signed})
- *   eborPaperworkUpload   {uploadToken, kind: application|report, name, data (base64)} -> {stored}
+ *   eborPaperworkUpload   {uploadToken, kind: application, name, data (base64)} -> {stored}
  *   eborPaperworkFinish   {session, uploadToken}   -> {message, outboxId}
  *   eborPaperworkDemoReset {session}               -> {message}   Demo Scout (recordId 'DEMO', eborDemoActions.js): signed files to Archive
  *
- * Finish: both signed PDFs go to the Scout's folder as <Name>-<Unit>_EagleApplication-Signed.pdf and
- * _AdvancementReport-Signed.pdf (the names Eagle earned uses); the Verified Application and earlier versions move to
+ * Finish: the signed PDF goes to the Scout's folder as <Name>-<Unit>_EagleApplication-Signed.pdf (the name Eagle earned
+ * uses; the Advancement Report was dropped 2026-11-17); the Verified Application and earlier versions move to
  * Archive; the "Council: Eagle paperwork" email is drafted in the Outbox (rowActions.js draftCouncilPaperwork_). The row
  * then moves to Eagle Earned (rowActions.js moveToEagleEarned_; Jim W., 2026-11-17): signing is the "Eagle earned" moment.
  * The congratulations email is its own step on the dashboard ("Send congratulations…", photos from a phone or later).
@@ -39,29 +38,12 @@ function actionEborPaperworkChoices_(req) {
   return {
     me: { name: String(c.me.name || ''), initials: String(c.me.initials || ''), email: c.email },
     today: today, scouts: ch.scouts, selected: ch.selected,
-    slots: { application: EborPaperwork.signerSlots('application'), report: EborPaperwork.signerSlots('report') },
-    repLabel: EborPaperwork.REP_LABEL, signatureFields: EborPaperwork.SIGNATURE_FIELDS,
+    slots: { application: EborPaperwork.signerSlots('application') },
+    repLabel: EborPaperwork.REP_LABEL,
     committee: c.committee.filter(function (m) { return String(m.name || '').trim(); }).map(function (m) { return { name: String(m.name), initials: String(m.initials || '') }; }),
-    settings: { templateSet: !!String(s.advancementReportTemplateId || '').trim() || !!FormTemplates.folderId(s), districtName: String(s.districtName || ''), advancementTitle: String(s.advancementTitle || '') },
     maxUploadMB: Number(s.maxUploadMB) || 20,
     testMode: s.testMode !== false
   };
-}
-
-/** The Scout's unit leader (name + address) from the Key 3 tab, else a Unit Leader on Unit Contacts. */
-function unitLeaderFor_(unit) {
-  var code = Units.code(unit);
-  var out = { name: '', address: '', city: '', state: '', zip: '' };
-  if (!code) return out;
-  try {
-    var k = UnitDirectory.key3For(key3Rows_(), code).filter(function (x) { return x.role === 'Unit Leader'; })[0];
-    if (k) return { name: k.name, address: k.address, city: k.city, state: k.state, zip: k.zip };
-  } catch (e) { console.warn('unitLeaderFor_ key3: ' + e); }
-  try {
-    var l = UnitDirectory.contactsFor(readTabOrEmpty_(UNIT_CONTACTS_TAB), code).filter(function (x) { return x.role.toLowerCase() === 'unit leader' && x.name; })[0];
-    if (l) out.name = l.name;
-  } catch (e) { console.warn('unitLeaderFor_ contacts: ' + e); }
-  return out;
 }
 
 /** Top-level files of the Scout's folder for the paperwork page: id, name, mime, bytes, date, modified (ms). Google Docs left out. */
@@ -97,9 +79,6 @@ function actionEborPaperworkScout_(req) {
     suggestions.people = Units.parseBoard(board.boardMembers).filter(function (m) { return m.name && m.email; }).map(function (m) { return { name: m.name, email: String(m.email).toLowerCase() }; });
   }
   committee.forEach(function (m) { if (m.name && m.email) suggestions.people.push({ name: String(m.name), email: String(m.email).toLowerCase() }); });
-  var leader = unitLeaderFor_(unit);
-  var fill = EborPaperwork.reportFields({ scout: scout, unit: unit, district: s.districtName, title: s.advancementTitle, leaderName: leader.name,
-    address: leader.address, city: leader.city, state: leader.state, zip: leader.zip, boardYmd: boardYmd });
   var folder = folderForRecord_(rec, false), files = folder ? paperworkFiles_(folder) : [];
   var verified = EborPaperwork.pickVerified(files);
   var names = EagleDone.fileNames(scout, unit, boardYmd, Intake.namePart, Intake.unitPart);
@@ -108,30 +87,14 @@ function actionEborPaperworkScout_(req) {
     recordId: rec.recordId, name: scout, unit: unit, stage: SettingsModel.sectionLabel(s, rec.section),
     boardYmd: boardYmd, boardTime: board ? board.time : '', suggestions: suggestions,
     requirement7: EborPaperwork.mmddyy(boardYmd),
-    fields: fill.text, radio: fill.radio, problems: fill.problems,
-    leader: { name: leader.name, hasAddress: !!(leader.address || leader.city || leader.zip) },
+    problems: boardYmd ? [] : ['No EBoR date yet: pick the Board of Review date.'],
     folderUrl: folder ? 'https://drive.google.com/drive/folders/' + folder.getId() : '',
     verifiedId: verified ? verified.id : '',
     pdfs: EborPaperwork.pdfChoices(files),
-    fileNames: { application: names.application, report: names.report },
-    alreadySigned: { application: !!ex.application, report: !!ex.report },
+    fileNames: { application: names.application },
+    alreadySigned: { application: !!ex.application },
     councilEmail: String(s.councilEaglesEmail || '')
   };
-}
-
-function actionEborPaperworkTemplate_(req) {
-  committeeMe_(req.session);
-  var ref = reportTemplateRef_();
-  if (!ref) throw userError_('Settings → advancementReportTemplateId is empty and no Advancement Report PDF (a name with 34403 or Advancement) was found in the Form Templates folder. Put the blank form there, or put its Drive file id in the setting.');
-  var file;
-  try { file = DriveApp.getFileById(ref.id); }
-  catch (e) { throw userError_('The Advancement Report template could not be opened. Check Settings → advancementReportTemplateId (or the Form Templates folder) and that the tool\'s account can see that file.'); }
-  var blob = file.getBlob();
-  var bytes = blob.getBytes();
-  if (!(bytes.length > 4 && bytes[0] === 37 && bytes[1] === 80 && bytes[2] === 68 && bytes[3] === 70)) {
-    throw userError_('The Advancement Report template is not a PDF file.');
-  }
-  return { name: String(file.getName() || 'Advancement Report.pdf'), mime: 'application/pdf', data: Utilities.base64Encode(bytes) };
 }
 
 function eborPaperworkContext_(token) {
@@ -150,12 +113,10 @@ function actionEborPaperworkStart_(req) {
   if (!EborPaperwork.parts(boardYmd)) throw userError_('The EBoR date is missing. Pick it on the page.');
   var partial = !!req.partial;   // Save partial (remote signing): unsigned boxes allowed
   var app = EborPaperwork.checkSigners('application', req.application, { partial: partial });
-  var rep = EborPaperwork.checkSigners('report', req.report, { partial: partial });
-  var errors = app.errors.concat(rep.errors);
-  if (errors.length) throw userError_(errors.join(' '));
+  if (app.errors.length) throw userError_(app.errors.join(' '));
   var token = Identity.makeToken(Utilities.getUuid);
   CacheService.getScriptCache().put('ep:' + token, JSON.stringify({ recordId: rec.recordId, boardYmd: boardYmd, email: c.email,
-    sign: { application: app.clean, report: rep.clean }, verifiedId: String(req.verifiedId || ''), batchId: 'EP-' + Date.now().toString(36).toUpperCase(), uploads: [],
+    sign: { application: app.clean }, verifiedId: String(req.verifiedId || ''), batchId: 'EP-' + Date.now().toString(36).toUpperCase(), uploads: [],
     partial: partial }),
     EBOR_PAPERWORK_TOKEN_SECONDS);
   return { uploadToken: token };
@@ -164,9 +125,9 @@ function actionEborPaperworkStart_(req) {
 function actionEborPaperworkUpload_(req) {
   var ctx = eborPaperworkContext_(req.uploadToken);
   var kind = String(req.kind || '');
-  if (['application', 'report'].indexOf(kind) < 0) throw userError_('Unknown file.');
+  if (kind !== 'application') throw userError_('Unknown file.');
   var name = String(req.name || '');
-  if (!/\.pdf$/i.test(name)) throw userError_('The signed documents must be PDFs.');
+  if (!/\.pdf$/i.test(name)) throw userError_('The signed application must be a PDF.');
   var D = EborPaperwork.DEMO, demo = EborPaperwork.isDemo(ctx.recordId);
   var rec = demo ? { recordId: '', fields: { scout_name: D.name, unit: D.unit } } : Records.get(ctx.recordId);
   if (!rec) throw userError_('Record not found.');
@@ -179,13 +140,13 @@ function actionEborPaperworkUpload_(req) {
 }
 
 /**
- * Both signed PDFs into `folder` under the standard names; the Verified Application used and earlier versions go to the
- * folder's Archive. Shared by the real Scouts and the Demo Scout. -> {names, filed: {application, report}, toArchive: [id]}
+ * The signed application into `folder` under the standard name; the Verified Application used and earlier versions go to
+ * the folder's Archive. Shared by the real Scouts and the Demo Scout. -> {names, filed: {application}, toArchive: [id]}
  */
 function fileSignedPair_(folder, ctx, up, scout, unit) {
   var names = EagleDone.fileNames(scout, unit, ctx.boardYmd, Intake.namePart, Intake.unitPart);
   var filed = {}, newIds = [];
-  ['application', 'report'].forEach(function (kind) {
+  ['application'].forEach(function (kind) {
     var f = DriveApp.getFileById(up[kind].fileId);
     f.setName(names[kind]);
     f.moveTo(folder);
@@ -209,14 +170,14 @@ function actionEborPaperworkFinish_(req) {
   if (!demo && (!rec || EBOR_SECTIONS_.indexOf(rec.section) < 0)) throw userError_('That Scout is no longer at EBoR Booked or EBoR Paused. Reload the page.');
   var up = {};
   ctx.uploads.forEach(function (u) { up[u.kind] = u; });
-  if (!up.application || !up.report) throw userError_('Both signed PDFs must arrive before filing. Please try again.');
+  if (!up.application) throw userError_('The signed application must arrive before filing. Please try again.');
   CacheService.getScriptCache().remove('ep:' + req.uploadToken);
   if (demo) return eborDemoFinish_(c, ctx, up);                                        // fictional Scout: no tracking row, no Council email
   var s = getSettings_();
   var scout = String(rec.fields.scout_name || '');
   var by = c.me.initials || c.email;
 
-  // 1. File both under the standard names; the Verified Application and earlier versions go to Archive.
+  // 1. File it under the standard name; the Verified Application and earlier versions go to Archive.
   var folder = folderForRecord_(rec, true);
   var fp = fileSignedPair_(folder, ctx, up, scout, rec.fields.unit);
   var names = fp.names, filed = fp.filed, toArchive = fp.toArchive;
@@ -224,7 +185,7 @@ function actionEborPaperworkFinish_(req) {
   // 2. The Council email, as an Outbox draft (the existing path); "signed paperwork sent" is filled when it is sent.
   var unit = Units.find(units_(), rec.fields.unit);
   var res = null, note = '';
-  try { res = draftCouncilPaperwork_(c, rec, ctx.boardYmd, [filed.application, filed.report], unit ? unit.contacts : [], stageColumns_()); }
+  try { res = draftCouncilPaperwork_(c, rec, ctx.boardYmd, [filed.application], unit ? unit.contacts : [], stageColumns_()); }
   catch (e) { console.error('ebor paperwork email: ' + (e && e.stack || e)); note = ' The Council email could not be drafted (' + e.message + '): use "Send signed paperwork to Council…" on the dashboard.'; }
   var queued = !!(res && res.queued);
   if (res && !queued) note = ' No Council email was drafted (' + (res.reason || 'template Off') + ').';
@@ -235,11 +196,11 @@ function actionEborPaperworkFinish_(req) {
 
   // 3. Log (Notes cell + Life to Eagle Log + digest).
   addRecordNote_(rec.recordId, EborPaperwork.logLine(Intake.shortDate(new Date()), by, ctx.boardYmd, ctx.sign,
-    [names.application, names.report], toArchive.length, queued));
+    [names.application], toArchive.length, queued));
   var moved = '';
   try { moved = moveToEagleEarned_(rec, ctx.boardYmd, by); }
   catch (e) { console.error('ebor paperwork move: ' + (e && e.stack || e)); moved = ' The row could not be moved (' + e.message + '): use Eagle earned… on the dashboard.'; }
-  var msg = scout + ': signed Eagle application and Advancement Report filed' + (toArchive.length ? ' (' + toArchive.length + ' earlier file(s) to Archive)' : '') + '.' +
+  var msg = scout + ': signed Eagle application filed' + (toArchive.length ? ' (' + toArchive.length + ' earlier file(s) to Archive)' : '') + '.' +
     (queued ? ' The Council email is ready in the Outbox.' : '') + note + moved;
   return { message: msg, outboxId: queued ? res.id : '' };
 }

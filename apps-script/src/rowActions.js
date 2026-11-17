@@ -5,7 +5,7 @@
  * Router actions:
  *   rowAction    {session, recordId, kind, date, note, files: [kinds], confirm}
  *                -> {needsConfirm, warnings} | {message, outboxId} | {uploadToken} (when files are coming)
- *   uploadRowFile {uploadToken, kind: application|report|photo, name, data (base64)} -> {stored}
+ *   uploadRowFile {uploadToken, kind: application|photo, name, data (base64)} -> {stored}
  *   rowFinish    {session, uploadToken} -> {message, outboxId}
  *
  * Records the dates, moves the row, logs it, stops the "new files" clock, files any uploads, and sends or drafts the
@@ -16,8 +16,8 @@ var ROW_TOKEN_SECONDS = 2 * 3600;
 function stageColumns_() { return StageActions.resolveColumns(Records.columns(), getSettings_()); }
 
 /**
- * The signed Eagle application / Advancement Report already at the top of the Scout's folder (the EBoR paperwork page
- * files them under the standard names), newest of each. -> {application: {id, name}, report: {id, name}} (a missing one is absent)
+ * The signed Eagle application already at the top of the Scout's folder (the EBoR paperwork page files it under the
+ * standard name), newest. -> {application: {id, name}} (absent when there is none)
  */
 function existingSigned_(rec) {
   var out = {};
@@ -26,7 +26,7 @@ function existingSigned_(rec) {
   if (!folder) return out;
   var best = {};
   listFolder_(folder).forEach(function (x) {
-    var kind = /_EagleApplication-Signed\.pdf$/i.test(x.name) ? 'application' : /_AdvancementReport-Signed\.pdf$/i.test(x.name) ? 'report' : '';
+    var kind = /_EagleApplication-Signed\.pdf$/i.test(x.name) ? 'application' : '';
     if (!kind) return;
     var t = x.file.getLastUpdated().getTime();
     if (!best[kind] || t > best[kind].t) best[kind] = { t: t, id: x.id, name: x.name };
@@ -87,9 +87,9 @@ function rowContext_(token) {
 function actionUploadRowFile_(req) {
   var ctx = rowContext_(req.uploadToken);
   var kind = String(req.kind || '');
-  if (['application', 'report', 'photo'].indexOf(kind) < 0) throw userError_('Unknown file.');
+  if (['application', 'photo'].indexOf(kind) < 0) throw userError_('Unknown file.');
   var name = String(req.name || '');
-  if (kind !== 'photo' && !/\.pdf$/i.test(name)) throw userError_('The signed scans must be PDFs.');
+  if (kind !== 'photo' && !/\.pdf$/i.test(name)) throw userError_('The signed application must be a PDF.');
   if (kind === 'photo' && !/\.(jpe?g|png)$/i.test(name)) throw userError_('Photos must be JPEG or PNG.');
   if (ctx.uploads.length >= 25) throw userError_('At most 25 files at a time.');
   var rec = Records.get(ctx.req.recordId);
@@ -167,7 +167,7 @@ function lastEborSlot_(recordId) {
  * The "Council: Eagle paperwork" email as an Outbox draft: To Settings → councilEaglesEmail, Cc the committee group and
  * the unit's contacts, both signed PDFs attached; the "signed paperwork sent" date is filled when it is sent. Used by
  * Eagle earned / Send signed paperwork (rowExecute_) and by the EBoR paperwork page (eborPaperworkActions.js).
- * attachments: [{id, name}] (application, then Advancement Report). -> mailFromTemplate_'s result
+ * attachments: [{id, name}] (the signed application). -> mailFromTemplate_'s result
  */
 function draftCouncilPaperwork_(c, rec, boardYmd, attachments, unitContacts, cols) {
   var s = getSettings_();
@@ -213,8 +213,8 @@ function rowExecute_(c, ck, req, uploads) {
   var msg = scout + ': ' + a.past + (a.dateRole ? ' (' + StageActions.nice(req.date) + ')' : '') +
     (p.to ? '; moved to ' + SettingsModel.sectionLabel(s, p.to) : '') + '.';
 
-  // 2. Files (Eagle earned / paperwork): signed scans into the folder, photos into "EBoR Photos".
-  var filed = { application: null, report: null, photos: [] };
+  // 2. Files (Eagle earned / paperwork): the signed application into the folder, photos into "EBoR Photos".
+  var filed = { application: null, photos: [] };
   if (uploads.length) {
     var r2 = Records.get(rec.recordId) || rec;
     var folder = folderForRecord_(r2, true);
@@ -233,11 +233,11 @@ function rowExecute_(c, ck, req, uploads) {
         filed[u.kind] = { id: f.getId(), name: f.getName() };
       }
     });
-    msg += ' Filed: ' + [filed.application && 'application', filed.report && 'Advancement Report',
+    msg += ' Filed: ' + [filed.application && 'signed application',
       filed.photos.length && filed.photos.length + ' photo' + (filed.photos.length > 1 ? 's' : '')].filter(Boolean).join(', ') + '.';
   }
   addRecordNote_(rec.recordId, StageActions.logLine(Intake.shortDate(new Date()), by, a.key, req.date, req.note) +
-    (filed.application ? '; signed scans filed' : '') + (filed.photos.length ? '; ' + filed.photos.length + ' EBoR photo(s) filed' : '') +
+    (filed.application ? '; signed application filed' : '') + (filed.photos.length ? '; ' + filed.photos.length + ' EBoR photo(s) filed' : '') +
     (checked ? '; new files checked' : ''));
 
   // 3. Emails.
@@ -266,14 +266,14 @@ function rowExecute_(c, ck, req, uploads) {
       date: EagleDone.longDate(boardYmd), senderName: String(c.me.name || c.email),
       photosLine: filed.photos.length ? 'Photos from your Board of Review are attached.' : '',
       eagleNumberLine: EagleCount.emailLine(eagleNums) };
-    // Council: signed paperwork (when both scans are here). Never from "Send congratulations".
+    // Council: the signed application (when it is here). Never from "Send congratulations".
     var have = a.eagleDone ? (ck.existing || {}) : {};
-    var appF = filed.application || have.application, repF = filed.report || have.report;
-    if (!a.eagleDone) { /* congratulations only */ } else if (filed.application && filed.report) {
-      record(draftCouncilPaperwork_(c, rec, boardYmd, [filed.application, filed.report], unitContacts, cols));
-    } else if (appF && repF) {
-      // Signed on the EBoR paperwork page (or one scan filed earlier): the files are in the folder already.
-      if (a.key === 'paperwork') record(draftCouncilPaperwork_(c, rec, boardYmd, [appF, repF], unitContacts, cols));
+    var appF = filed.application || have.application;
+    if (!a.eagleDone) { /* congratulations only */ } else if (filed.application) {
+      record(draftCouncilPaperwork_(c, rec, boardYmd, [filed.application], unitContacts, cols));
+    } else if (appF) {
+      // Signed on the EBoR paperwork page (or a scan filed earlier): the file is in the folder already.
+      if (a.key === 'paperwork') record(draftCouncilPaperwork_(c, rec, boardYmd, [appF], unitContacts, cols));
       else notes.push('signed paperwork already in the folder: Council email not drafted again');
     }
     // Congratulations: Scout, family, unit, the board (district reps + Unit Board Members), others to invite.

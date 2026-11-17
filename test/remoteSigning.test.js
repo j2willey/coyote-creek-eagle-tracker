@@ -89,38 +89,38 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     rec.fields.ebor_date = '2026-11-10';
   });
 
-  const savePartial = () => {
+  // One document since 2026-11-17 (the Advancement Report was dropped): two boxes, chair and representative.
+  const savePartial = (roomSigns = true) => {
     const st = call({ action: 'eborPaperworkStart', session: 's', recordId: 'R-1', boardYmd: '2026-11-10', partial: true,
-      application: [{ name: 'Pat Reviewer', rep: true, signed: true }, { name: '', rep: true, signed: false }],
-      report: [{ name: '', rep: true, signed: false }, { name: '', signed: false }, { name: '', signed: false }] });
+      application: [{ name: roomSigns ? 'Pat Reviewer' : '', rep: false, signed: roomSigns }, { name: '', rep: true, signed: false }] });
     expect(st.error).toBeUndefined();
-    for (const kind of ['application', 'report']) expect(call({ action: 'eborPaperworkUpload', uploadToken: st.uploadToken, kind, name: kind + '.pdf', data: PDF }).error).toBeUndefined();
+    for (const kind of ['application']) expect(call({ action: 'eborPaperworkUpload', uploadToken: st.uploadToken, kind, name: kind + '.pdf', data: PDF }).error).toBeUndefined();
     return call({ action: 'eborPaperworkSavePartial', session: 's', uploadToken: st.uploadToken });
   };
-  const ask = () => call({ action: 'eborSignatureRequest', session: 's', recordId: 'R-1', signers: [
-    { name: 'Sam Signer', email: 'Sam@Example.org', slots: ['application:rep', 'report:Signature1'], rep: true },
-    { name: 'Lee Member', email: 'lee@example.org', slots: ['report:Signature2', 'report:Signature3'] }] });
+  const ask = (both = false) => call({ action: 'eborSignatureRequest', session: 's', recordId: 'R-1', signers: [
+    { name: 'Sam Signer', email: 'Sam@Example.org', slots: ['application:rep'], rep: true },
+    ...(both ? [{ name: 'Lee Member', email: 'lee@example.org', slots: ['application:chair'] }] : [])] });
   const sign = (s, base) => {
     const d = call({ action: 'signerDocs', session: s, recordId: 'R-1' });
     expect(d.error).toBeUndefined();
-    const st = call({ action: 'signerStart', session: s, recordId: 'R-1', base: base || { application: d.files.application, report: d.files.report } });
+    const st = call({ action: 'signerStart', session: s, recordId: 'R-1', base: base || { application: d.files.application } });
     expect(st.error).toBeUndefined();
     for (const kind of st.kinds) expect(call({ action: 'signerUpload', uploadToken: st.uploadToken, kind, name: kind + '-' + s + '.pdf', data: PDF }).error).toBeUndefined();
     return { d, r: call({ action: 'signerFinish', session: s, uploadToken: st.uploadToken }) };
   };
 
-  it('Save partial files two Partial copies, keeps the Verified Application, and records who signed in the room', () => {
+  it('Save partial files the Partial copy, keeps the Verified Application, and records who signed in the room', () => {
     const r = savePartial();
     expect(r.error).toBeUndefined();
-    expect(top()).toEqual(['Theodore_Sample-T999_AdvancementReport-Partial.pdf', 'Theodore_Sample-T999_EagleApplication-Partial.pdf', 'Verified Eagle Application.pdf'].sort());
+    expect(top()).toEqual(['Theodore_Sample-T999_EagleApplication-Partial.pdf', 'Verified Eagle Application.pdf']);
     expect(sig()).toHaveLength(1);
     expect(sig()[0]).toMatchObject({ Name: 'Pat Reviewer', Slots: 'application:chair', Status: 'Signed', Email: '' });
-    expect(r.status.missing.map(m => m.key)).toEqual(['application:rep', 'report:Signature1', 'report:Signature2', 'report:Signature3']);
+    expect(r.status.missing.map(m => m.key)).toEqual(['application:rep']);
   });
 
   it('asking emails each signer alone (never the group) and puts the address on file', () => {
-    savePartial();
-    const r = ask();
+    savePartial(false);
+    const r = ask(true);
     expect(r.error).toBeUndefined();
     expect(log.sent.map(m => [m.to, m.cc || '', m.kind])).toEqual([['sam@example.org', '', 'private'], ['lee@example.org', '', 'private']]);
     expect(log.sent[0].body).toMatch(/https:\/\/tracker\.example\.org\/sign/);
@@ -131,14 +131,14 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
   });
 
   it('signers sign in any order; a save on copies someone else changed is refused; the last one completes it', () => {
-    savePartial(); ask();
+    savePartial(false); ask(true);
     expect(call({ action: 'signerDocs', session: 'zed', recordId: 'R-1' }).error).toMatch(/Nothing is waiting/);
     const leeDocs = call({ action: 'signerDocs', session: 'lee', recordId: 'R-1' });
-    expect(leeDocs.slots).toEqual({ application: [], report: ['Signature2', 'Signature3'] });
+    expect(leeDocs.slots).toEqual({ application: ['chair'] });
     const sam = sign('sam');
     expect(sam.r.error).toBeUndefined();
     expect(sam.r.complete).toBe(false);
-    const stale = sign('lee', { application: leeDocs.files.application, report: leeDocs.files.report });
+    const stale = sign('lee', { application: leeDocs.files.application });
     expect(stale.r.error).toMatch(/Someone else saved/);
     const lee = sign('lee');
     expect(lee.r.error).toBeUndefined();
@@ -146,13 +146,13 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     expect(sig().map(r => r.Status)).toEqual(['Signed', 'Signed', 'Signed']);
     expect(log.sent.at(-1)).toMatchObject({ to: 'ab@example.org', kind: 'private' });
     expect(log.sent.at(-1).subject).toMatch(/all signatures are in/);
-    expect(archived().length).toBe(3);                                    // Sam replaced both, Lee the report
+    expect(archived().length).toBe(2);                                    // Sam's save replaced the Partial, then Lee's
     expect(call({ action: 'signerDocs', session: 'sam', recordId: 'R-1' }).error).toMatch(/Nothing is waiting/);
     expect(run("whoIs_('sam@example.org').onFile")).toBe(false);          // access ends once signed
   });
 
   it('a wrong address is fixed (the old one loses access at once) or cancelled', () => {
-    savePartial(); ask();
+    savePartial(false); ask(true);
     const rowId = sig()[1]['Row ID'];
     const r = call({ action: 'eborSignatureEdit', session: 's', rowId, email: 'sam.new@example.org' });
     expect(r.error).toBeUndefined();
@@ -169,13 +169,13 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     const early = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' });
     expect(early.needsConfirm).toBe(true);
     expect(early.warnings.join(' ')).toMatch(/Not signed yet/);
-    sign('sam'); sign('lee');
+    sign('sam');
     const r = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' });
     expect(r.error).toBeUndefined();
     expect(r.outboxId).toBe('OB-9');
-    expect(top()).toEqual(['Theodore_Sample-T999_AdvancementReport-Signed.pdf', 'Theodore_Sample-T999_EagleApplication-Signed.pdf']);
+    expect(top()).toEqual(['Theodore_Sample-T999_EagleApplication-Signed.pdf']);
     expect(archived()).toContain('Verified Eagle Application.pdf');
-    expect(log.council).toEqual([['Theodore_Sample-T999_EagleApplication-Signed.pdf', 'Theodore_Sample-T999_AdvancementReport-Signed.pdf']]);
+    expect(log.council).toEqual([['Theodore_Sample-T999_EagleApplication-Signed.pdf']]);
     expect(sig().every(r => r.Filed)).toBe(true);
     expect(log.moved).toEqual([['R-1', '2026-11-10']]);                 // Finish = Eagle earned (2026-11-17)
     expect(r.message).toMatch(/Moved to Eagle Earned/);
@@ -183,7 +183,7 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
   });
 
   it('Finish with signatures missing (confirmed) closes the pending requests', () => {
-    savePartial(); ask();
+    savePartial(false); ask(true);
     const r = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1', confirm: true });
     expect(r.error).toBeUndefined();
     expect(sig().slice(1).map(x => x.Status)).toEqual(['Cancelled', 'Cancelled']);

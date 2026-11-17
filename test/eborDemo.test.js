@@ -85,10 +85,9 @@ describe('EBoR paperwork: the Demo Scout never touches real records or Council',
     const v = demoFolder().files.find(f => /verified/i.test(f.name));       // the page sends the Verified file it used
     const st = call({ action: 'eborPaperworkStart', session: 's', recordId: 'DEMO', boardYmd: '2026-11-11',
       application: [{ name: 'Pat Reviewer', rep: false, signed: true }, { name: 'Jordan Example', rep: true, signed: true }],
-      report: [{ name: 'Jordan Example', rep: true, signed: true }, { name: 'Pat Reviewer', rep: false, signed: true }, { name: 'Sam Sample', rep: false, signed: true }],
       verifiedId: v ? v.id : '', ...extra });
     expect(st.error).toBeUndefined();
-    for (const kind of ['application', 'report']) {
+    for (const kind of ['application']) {
       const up = call({ action: 'eborPaperworkUpload', uploadToken: st.uploadToken, kind, name: kind + '-signed.pdf', data: PDF });
       expect(up.error).toBeUndefined();
     }
@@ -108,7 +107,7 @@ describe('EBoR paperwork: the Demo Scout never touches real records or Council',
     const sc = call({ action: 'eborPaperworkScout', session: 's', recordId: 'DEMO' });
     expect(sc.error).toBeUndefined();
     expect(sc).toMatchObject({ recordId: 'DEMO', demo: true, unit: 'T999', boardYmd: '2026-11-11', councilEmail: '' });
-    expect(sc.fields).toMatchObject({ Leader: 'Pat Q Leader', Address: '1 Example Way', City: 'San Jose', State: 'CA', Zip: '95100', No: '999' });
+    expect(sc.fields).toBeUndefined();                              // no Advancement Report to fill (dropped 2026-11-17)
     expect(sc.suggestions).toEqual({ district: ['Pat Reviewer'], unit: [] });
     const files = demoFolder().files.map(f => f.name);
     expect(files).toEqual(['Verified Eagle Application (demo).pdf']);
@@ -134,14 +133,14 @@ describe('EBoR paperwork: the Demo Scout never touches real records or Council',
     expect(call({ action: 'eborPaperworkScout', session: 's', recordId: 'DEMO' }).error).toMatch(/blank Eagle Application/);
   });
 
-  it('Save: two signed files in the demo folder, Verified to Archive, a [DEMO] draft To the member only, no tracking tab, no Scout log', () => {
+  it('Save: the signed application in the demo folder, Verified to Archive, a [DEMO] draft To the member only, no tracking tab, no Scout log', () => {
     call({ action: 'eborPaperworkScout', session: 's', recordId: 'DEMO' });
     const r = savedFlow();
     expect(r.error).toBeUndefined();
     expect(r.outboxId).toBe('OB-1');
     expect(r.message).toMatch(/Nothing was sent to Council/);
     const f = demoFolder();
-    expect(f.files.map(x => x.name).sort()).toEqual(['Theodore_Teddy_Sample-T999_AdvancementReport-Signed.pdf', 'Theodore_Teddy_Sample-T999_EagleApplication-Signed.pdf']);
+    expect(f.files.map(x => x.name).sort()).toEqual(['Theodore_Teddy_Sample-T999_EagleApplication-Signed.pdf']);
     expect(f.folders.find(x => x.name === 'Archive').files.map(x => x.name)).toEqual(['Verified Eagle Application (demo).pdf']);
     // the one email
     expect(log.outbox).toHaveLength(1);
@@ -150,7 +149,7 @@ describe('EBoR paperwork: the Demo Scout never touches real records or Council',
     expect(out.cc).toBe('');
     expect(out.subject).toMatch(/^\[DEMO\] /);
     expect(out.body).toMatch(/^\[DEMO\]/);
-    expect(msg.attachments.map(a => a.name)).toEqual(['Theodore_Teddy_Sample-T999_EagleApplication-Signed.pdf', 'Theodore_Teddy_Sample-T999_AdvancementReport-Signed.pdf']);
+    expect(msg.attachments.map(a => a.name)).toEqual(['Theodore_Teddy_Sample-T999_EagleApplication-Signed.pdf']);
     expect(msg.recordId).toBe('');
     // nothing addressed to Council or the group, nothing sent directly
     expect(JSON.stringify(log.outbox)).not.toContain(COUNCIL);
@@ -182,21 +181,21 @@ describe('EBoR paperwork: the Demo Scout never touches real records or Council',
     expect(JSON.stringify(log.outbox)).not.toContain(COUNCIL);
   });
 
-  it('Save again archives the earlier signed pair; Reset demo moves the signed files to Archive and the next open restores the Verified copy', () => {
+  it('Save again archives the earlier signed application; Reset demo moves the signed files to Archive and the next open restores the Verified copy', () => {
     call({ action: 'eborPaperworkScout', session: 's', recordId: 'DEMO' });
     savedFlow();
     const again = call({ action: 'eborPaperworkScout', session: 's', recordId: 'DEMO' });
-    expect(again.alreadySigned).toEqual({ application: true, report: true });
+    expect(again.alreadySigned).toEqual({ application: true });
     expect(again.verifiedId).not.toBe('');                           // the blank was copied in again (the first one went to Archive)
     // Save a second time: earlier signed files archived (same standard names)
     savedFlow();
-    expect(demoFolder().files.filter(f => /-Signed\.pdf$/.test(f.name))).toHaveLength(2);
-    expect(demoFolder().folders.find(x => x.name === 'Archive').files.filter(f => /-Signed\.pdf$/.test(f.name))).toHaveLength(2);
+    expect(demoFolder().files.filter(f => /-Signed\.pdf$/.test(f.name))).toHaveLength(1);
+    expect(demoFolder().folders.find(x => x.name === 'Archive').files.filter(f => /-Signed\.pdf$/.test(f.name))).toHaveLength(1);
     const reset = call({ action: 'eborPaperworkDemoReset', session: 's' });
-    expect(reset.message).toMatch(/Demo reset: 2 signed file/);
+    expect(reset.message).toMatch(/Demo reset: 1 signed file/);
     expect(demoFolder().files.filter(f => /-Signed\.pdf$/.test(f.name))).toHaveLength(0);
     const fresh = call({ action: 'eborPaperworkScout', session: 's', recordId: 'DEMO' });
-    expect(fresh.alreadySigned).toEqual({ application: false, report: false });
+    expect(fresh.alreadySigned).toEqual({ application: false });
     expect(fresh.verifiedId).not.toBe('');                           // the blank was copied in again
     expect(call({ action: 'eborPaperworkDemoReset', session: 's' }).message).toMatch(/already fresh/);
     expect(log.forbidden).toEqual([]);

@@ -238,9 +238,8 @@ var TemplateCatalog = (function () {
   LIST.push({ key: 'Council: Eagle paperwork', cls: 'B', vars: ['scout', 'unitName', 'date', 'senderName'],
     subject: '{scout} is an Eagle Scout {date}', cc: 'group', mode: 'review', body: [
       'Hello Eagle Services,', '',
-      '{scout} ({unitName}) completed the Eagle Scout Board of Review on {date}. Attached are the signed Eagle Scout Rank Application ' +
-      'and the Advancement Report.', '',
-      'Please reply to confirm that you received them.', '',
+      '{scout} ({unitName}) completed the Eagle Scout Board of Review on {date}. Attached is the signed Eagle Scout Rank Application.', '',
+      'Please reply to confirm that you received it.', '',
       '{senderName}', 'Coyote Creek District Advancement Committee'] });
   // Remote EBoR signing (Jim W., 2026-11-12; vault ebor-remote-signing-design.md): To the signer only, never Cc the group
   // (sent as kind 'private'). The link is the signing page, not a credential: the signer signs in there with this address.

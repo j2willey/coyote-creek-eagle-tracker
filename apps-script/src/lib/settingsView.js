@@ -26,8 +26,6 @@ var SettingsView = (function () {
   // [key, help]. Order = order on the page.
   var GROUPS = [
     { id: 'district', label: 'District details', who: 'Committee chair', keys: [
-      ['districtName', 'The Advancement Report\'s District box'],
-      ['advancementTitle', 'The Advancement Report\'s Title box'],
       ['approvalRepName', 'Council or District Project Approval Representative (the District Advancement Chair), as on the Proposal\'s Contact Information page'],
       ['approvalRepPhone', ''], ['approvalRepEmail', ''], ['approvalRepAddress', ''], ['approvalRepCity', ''], ['approvalRepState', ''], ['approvalRepZip', ''],
       ['councilEaglesEmail', 'Council Eagle Services address for the signed EBoR paperwork'],
@@ -78,7 +76,7 @@ var SettingsView = (function () {
       ['webOrigin', ''], ['trackingTab', ''], ['scheduleSheetId', ''], ['scheduleTab', ''], ['calendarId', ''],
       ['templatesDocId', ''], ['templatesCatalogId', ''], ['intakeFolderId', ''], ['scoutsFolderId', ''], ['inProgressFolder', ''],
       ['folderReportFolders', ''], ['exceptionsFolder', ''], ['closedFolder', ''], ['formTemplatesFolderId', ''], ['stampsFolderId', ''],
-      ['advancementReportTemplateId', ''], ['eagleArchiveTab', ''], ['councilAppFrom', ''], ['councilDomain', ''], ['allowProduction', ''],
+      ['eagleArchiveTab', ''], ['councilAppFrom', ''], ['councilDomain', ''], ['allowProduction', ''],
       ['eborDoneColor', ''], ['svmbcReceivedMark', ''], ['eborSignupUrl', ''], ['reviewSignupUrl', ''],
       ['eborDateColumn', ''], ['eborWhoColumn', ''], ['proposalReviewDateColumn', ''], ['proposalReviewWhoColumn', ''],
       ['preReviewDateColumn', ''], ['preReviewWhoColumn', ''], ['approvedDateColumn', ''], ['appSubmittedColumn', ''],
@@ -87,7 +85,7 @@ var SettingsView = (function () {
 
   var LINKS = {
     scheduleSheetId: 'https://docs.google.com/spreadsheets/d/', templatesCatalogId: 'https://docs.google.com/spreadsheets/d/',
-    templatesDocId: 'https://docs.google.com/document/d/', advancementReportTemplateId: 'https://drive.google.com/file/d/',
+    templatesDocId: 'https://docs.google.com/document/d/',
     intakeFolderId: 'https://drive.google.com/drive/folders/', scoutsFolderId: 'https://drive.google.com/drive/folders/',
     formTemplatesFolderId: 'https://drive.google.com/drive/folders/', stampsFolderId: 'https://drive.google.com/drive/folders/'
   };

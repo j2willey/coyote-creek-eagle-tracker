@@ -26,7 +26,7 @@ var TemplateSamples = (function () {
     photosLine: 'Photos from your Board of Review are attached.', senderName: 'Pat Example',
     description: 'Added the beneficiary letter, fixed the materials list and moved the project date to March.',
     signer: 'Jordan Test', boardDate: '11/17/2026', member: 'Pat Example',
-    boxes: '- Advancement Report: Board member\n- Eagle Application (Requirement 7): Board of review chair'
+    boxes: '- Eagle Application (Requirement 7): Board of review chair'
   };
 
   /** Sample values for a catalog entry's placeholders (unknown names get "[name]"). */

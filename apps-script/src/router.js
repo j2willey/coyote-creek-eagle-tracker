@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.79.0';
+var API_VERSION = '0.80.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -77,7 +77,6 @@ var ACTIONS_ = {
   // EBoR paperwork page (eborPaperworkActions.js)
   eborPaperworkChoices: function (req) { return actionEborPaperworkChoices_(req); },
   eborPaperworkScout: function (req) { return actionEborPaperworkScout_(req); },
-  eborPaperworkTemplate: function (req) { return actionEborPaperworkTemplate_(req); },
   eborPaperworkStart: function (req) { return actionEborPaperworkStart_(req); },
   eborPaperworkUpload: function (req) { return actionEborPaperworkUpload_(req); },
   eborPaperworkFinish: function (req) { return actionEborPaperworkFinish_(req); },

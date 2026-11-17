@@ -1,19 +1,14 @@
 // @ts-check
 /**
- * EBoR paperwork (Task 12): the pieces of `/committee/ebor-paperwork` that are about the two PDFs.
+ * EBoR paperwork (Task 12): the pieces of `/committee/ebor-paperwork` that are about the Verified Eagle Application.
  *
  *  - which page of the Verified Eagle Application is Requirement 7,
- *  - the three date marks (MM, DD, YY) and a signature mark fitted into a form field's box,
- *  - filling the Advancement Report (form 34403) with pdf-lib: text fields by name, the unit type chosen by the
- *    position of its widget, and the rectangles of the three signature fields (as viewer-space boxes).
+ *  - the date mark (MM DD YY) and a signature mark fitted into a box.
+ * (Filling the Advancement Report was removed 2026-11-17: Council no longer uses it.)
  *
  * The rules (which values, which signers) come from the server (`lib/eborPaperwork.js`); nothing here knows a name.
  */
-import { loadPdfWithDecrypt } from './pdfEngine.js';
-import { normalizeRotation, userRectToViewer, clampItemToPage, SIGNATURE_BASE_WIDTH_PT, fitTextFontSize } from './pdfPlan.js';
-
-/** Largest font for the Advancement Report's filled text (the form's own boxes are ~17 pt tall). */
-export const REPORT_MAX_FONT_PT = 10;
+import { clampItemToPage, SIGNATURE_BASE_WIDTH_PT } from './pdfPlan.js';
 
 /**
  * The page that holds Requirement 7: the first page whose text has "REQUIREMENT 7" (any case and spacing), else page 2
@@ -73,79 +68,4 @@ export function fitSignatureToBox(aspect, box, fallback, pageSize) {
   width = Math.round(width * 10) / 10;
   height = Math.round(height * 10) / 10;
   return { x: Math.round((box.x + (box.width - width) / 2) * 10) / 10, y: Math.round((box.y + (box.height - height) / 2) * 10) / 10, width, height };
-}
-
-/**
- * Choose one widget of a radio group by its position (left to right), not by its export value.
- * @param {any} PDFLib
- * @param {any} form
- * @param {string} groupName
- * @param {number} index
- */
-export function selectRadioByPosition(PDFLib, form, groupName, index) {
-  const { PDFName } = PDFLib;
-  const group = form.getRadioGroup(groupName);
-  const widgets = group.acroField.getWidgets().map((/** @type {any} */ w) => ({ w, x: w.getRectangle().x }))
-    .sort((/** @type {any} */ a, /** @type {any} */ b) => a.x - b.x);
-  const target = widgets[index];
-  if (!target) throw new Error(`${groupName} has no widget number ${index + 1}`);
-  const on = target.w.getOnValue();
-  if (!on) throw new Error(`${groupName}: that widget has no "on" appearance`);
-  group.acroField.dict.set(PDFName.of('V'), on);
-  for (const { w } of widgets) w.setAppearanceState(w === target.w ? on : PDFName.of('Off'));
-}
-
-/**
- * Fill the Advancement Report. fill: {text: {field: value}, radio: {group, index} | null} from the server.
- * A field the form doesn't have is reported in `missing`, never fatal. `sigRects` are the three signature fields'
- * boxes in VIEWER space (null when the form has no such field).
- *
- * @param {any} PDFLib
- * @param {Uint8Array} pdfBytes
- * @param {{ text: Record<string, string>, radio: { group: string, index: number } | null }} fill
- * @param {string[]} signatureFields
- * @returns {Promise<{ pdfBytes: Uint8Array, missing: string[], sigRects: Record<string, { pageIndex: number, x: number, y: number, width: number, height: number } | null> }>}
- */
-export async function fillAdvancementReport(PDFLib, pdfBytes, fill, signatureFields) {
-  const pdfDoc = await loadPdfWithDecrypt(PDFLib, pdfBytes);
-  const form = pdfDoc.getForm();
-  /** @type {string[]} */
-  const missing = [];
-  for (const [name, value] of Object.entries(fill.text || {})) {
-    try {
-      const tf = form.getTextField(name);
-      // pdf-lib's auto size (0) fills the box height and clips longer text ("11/12/2…" in the Board of Review Date box):
-      // fit the text to the widget instead, at most 10 pt. Set the size BEFORE the text so the appearance uses it.
-      const w = tf.acroField.getWidgets()[0];
-      const r = w ? w.getRectangle() : null;
-      if (r) {
-        const size = Math.min(REPORT_MAX_FONT_PT, fitTextFontSize(String(value), r.width, r.height));
-        // Form 34403's fields carry no /DA of their own (pdf-lib's setFontSize throws): give them one first.
-        try { tf.setFontSize(size); } catch { tf.acroField.setDefaultAppearance(`/Helv ${size} Tf 0 g`); }
-      }
-      tf.setText(String(value));
-    } catch { missing.push(name); }
-  }
-  if (fill.radio) {
-    try { selectRadioByPosition(PDFLib, form, fill.radio.group, fill.radio.index); } catch { missing.push(fill.radio.group); }
-  }
-  const pages = pdfDoc.getPages();
-  /** @type {Record<string, { pageIndex: number, x: number, y: number, width: number, height: number } | null>} */
-  const sigRects = {};
-  for (const name of signatureFields || []) {
-    sigRects[name] = null;
-    try {
-      const widget = form.getField(name).acroField.getWidgets()[0];
-      const page = form.findWidgetPage(widget);
-      const idx = pages.findIndex((/** @type {any} */ p) => p.ref === page.ref);
-      if (idx < 0) continue;
-      const cb = typeof page.getCropBox === 'function' ? page.getCropBox() : page.getSize();
-      const r = widget.getRectangle();
-      const v = userRectToViewer({ x: r.x, y: r.y, width: r.width, height: r.height }, { width: cb.width, height: cb.height },
-        normalizeRotation(page.getRotation ? page.getRotation().angle : 0), { x: Number(cb.x) || 0, y: Number(cb.y) || 0 });
-      sigRects[name] = { pageIndex: idx, x: v.x, y: v.y, width: v.width, height: v.height };
-    } catch { /* no such signature field: the member places it by hand */ }
-  }
-  const saved = await pdfDoc.save();
-  return { pdfBytes: saved instanceof Uint8Array ? saved : new Uint8Array(saved), missing, sigRects };
 }

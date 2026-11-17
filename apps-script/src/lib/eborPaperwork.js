@@ -1,12 +1,10 @@
 /**
- * EborPaperwork (Task 12, Jim W., 2026-11-11): the two documents signed at an Eagle Board of Review. Pure.
+ * EborPaperwork (Task 12, Jim W., 2026-11-11): the document signed at an Eagle Board of Review. Pure.
  *
- *  1. The Verified Eagle Application (Council's scan), page 2, Requirement 7: a date (MM / DD / YY boxes) and two
- *     signatures (the board of review chair, the council / district board representative).
- *  2. The Advancement Report (BSA form 34403, fillable, named fields): unit, leader, district, title, the Scout's row
- *     and three signatures (`Signature1` "Signed" = the council / district person, `Signature2`, `Signature3`).
- *
- * Every date on both = the EBoR date. The page is built on the Sign Workshop engine; this file holds what is decided
+ * The Verified Eagle Application (Council's scan), page 2, Requirement 7: a date (MM / DD / YY boxes) and two
+ * signatures (the board of review chair, the council / district board representative). The date = the EBoR date.
+ * (The Advancement Report, BSA form 34403, was dropped 2026-11-17: Council no longer uses it.)
+ * The page is built on the Sign Workshop engine; this file holds what is decided
  * on the server: the field map, the signer rules, which file in the folder is the Verified Application, what moves to
  * Archive, and the Scout dropdown. Names and addresses are runtime data: nothing here is a real person's.
  */
@@ -14,18 +12,6 @@ var EborPaperwork = (function () {
   function str(v) { return v == null ? '' : String(v).trim(); }
   function B() { return (typeof Booking !== 'undefined') ? Booking : require('./booking'); }
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
-
-  var BADGE = 'Eagle Scout';
-  var UNIT_GROUP = 'Group16';
-  /** Group16 is four radio widgets in this order (left to right): pick the widget by position, not by export value. */
-  var UNIT_ORDER = ['P', 'T', 'C', 'S'];
-  var UNIT_TYPES = { P: 'Pack', T: 'Troop', C: 'Crew', S: 'Ship' };
-  var FIELD = {
-    unitNumber: 'No', district: 'District', leader: 'Leader', address: 'Address', city: 'City', state: 'State', zip: 'Zip',
-    forwarded: 'Date this report forwarded to council service center', title: 'Title', boardDate: 'Board of Review Date',
-    scout: '#1', earned: 'Date Award Earned1', badge: 'Badge of Rank Merit Badge or Award1'
-  };
-  var SIGNATURE_FIELDS = ['Signature1', 'Signature2', 'Signature3'];
 
   /** 'YYYY-MM-DD' -> {y, m, d} or null (a real calendar date). */
   function parts(ymd) {
@@ -44,65 +30,16 @@ var EborPaperwork = (function () {
     return { mm: pad2(p.m), dd: pad2(p.d), yy: yy, text: pad2(p.m) + '/' + pad2(p.d) + '/' + yy };
   }
 
-  /** The Advancement Report's date fields: 'MM/DD/YYYY' (a four-digit year, unmistakable). '' for a bad date. */
-  function reportDate(ymd) {
-    var p = parts(ymd);
-    return p ? pad2(p.m) + '/' + pad2(p.d) + '/' + p.y : '';
-  }
-
-  /** 'T999' / 'Troop 999' -> {letter: 'T', number: '999', type: 'Troop', index: 1 (Group16 widget)}; null when unreadable. */
-  function unitParts(unit) {
-    var m = /^\s*(pack|troop|crew|ship|[PTCS])\s*0*(\d+)\s*$/i.exec(str(unit));
-    if (!m) return null;
-    var letter = m[1].charAt(0).toUpperCase();
-    return { letter: letter, number: String(+m[2]), type: UNIT_TYPES[letter], index: UNIT_ORDER.indexOf(letter) };
-  }
-
-  /**
-   * The Advancement Report fill. i: {scout, unit, district, title, leaderName, address, city, state, zip, boardYmd}.
-   * -> {text: {field name: value}, radio: {group, index} | null, problems: [text]}  (blank values are left out)
-   */
-  function reportFields(i) {
-    var text = {}, problems = [];
-    var date = reportDate(i.boardYmd);
-    if (!date) problems.push('The EBoR date is missing or not a date.');
-    var u = unitParts(i.unit);
-    if (!u) problems.push('The unit "' + str(i.unit) + '" is not a Pack, Troop, Crew or Ship number.');
-    function put(name, v) { v = str(v); if (v) text[name] = v; }
-    if (u) put(FIELD.unitNumber, u.number);
-    put(FIELD.district, i.district);
-    put(FIELD.leader, i.leaderName);
-    put(FIELD.address, i.address);
-    put(FIELD.city, i.city);
-    put(FIELD.state, i.state);
-    put(FIELD.zip, i.zip);
-    put(FIELD.forwarded, date);
-    put(FIELD.title, i.title);
-    put(FIELD.boardDate, date);
-    put(FIELD.scout, i.scout);
-    // Date Award Earned is a narrow column: MM/DD/YY lets its text be larger (Jim W., 2026-11-12).
-    var short = mmddyy(i.boardYmd);
-    put(FIELD.earned, short ? short.text : '');
-    put(FIELD.badge, BADGE);
-    if (!str(i.leaderName)) problems.push('No Unit Leader on the Key 3 tab for ' + (str(i.unit) || 'this unit') + ': the Leader box stays empty.');
-    return { text: text, radio: u ? { group: UNIT_GROUP, index: u.index } : null, problems: problems };
-  }
-
   // ---------- signers ----------
 
   var SLOTS = {
     application: [
       { key: 'chair', label: 'Board of review chair', rep: false },
       { key: 'rep', label: 'Council / district board representative', rep: true }
-    ],
-    report: [
-      { key: 'Signature1', label: 'Council / district ("Signed")', rep: true },
-      { key: 'Signature2', label: 'Board member', rep: false },
-      { key: 'Signature3', label: 'Board member', rep: false }
     ]
   };
   var REP_LABEL = 'District Advancement Committee / Council representative';
-  var DOC_LABEL = { application: 'Eagle Scout Rank Application (Requirement 7)', report: 'Advancement Report' };
+  var DOC_LABEL = { application: 'Eagle Scout Rank Application (Requirement 7)' };
 
   /** Signature slots of a document: [{key, label, rep (ticked by default)}]. */
   function signerSlots(kind) {
@@ -137,7 +74,7 @@ var EborPaperwork = (function () {
 
   // ---------- files in the Scout's folder ----------
 
-  var OUR_SIGNED = /_(EagleApplication|AdvancementReport)-Signed\.pdf$/i;
+  var OUR_SIGNED = /_(EagleApplication|AdvancementReport)-Signed\.pdf$/i;   // AdvancementReport: files signed before 2026-11-17
   function isPdf(f) { return /\.pdf$/i.test(str(f && f.name)) || /pdf/i.test(str(f && f.mime)); }
   function newest(a, b) { return (Number(b.modified) || 0) - (Number(a.modified) || 0) || (str(b.name) < str(a.name) ? -1 : 1); }
 
@@ -159,14 +96,14 @@ var EborPaperwork = (function () {
   }
 
   /**
-   * What moves to Archive when the signed pair is filed: the Verified Application used, and any earlier file with the
+   * What moves to Archive when the signed application is filed: the Verified Application used, and any earlier file with the
    * same standard name as one of the new files. top: [{id, name}] (top level); keepIds: the new files' ids;
    * names: EagleDone.fileNames(...); verifiedId: '' when the Verified Application came from the computer.
    */
   function archivePlan(top, keepIds, names, verifiedId) {
     var keep = {};
     (keepIds || []).forEach(function (id) { keep[id] = true; });
-    var std = [str(names && names.application).toLowerCase(), str(names && names.report).toLowerCase()];
+    var std = [str(names && names.application).toLowerCase()];
     return (top || []).filter(function (f) {
       if (keep[f.id]) return false;
       if (verifiedId && f.id === verifiedId) return true;
@@ -213,12 +150,12 @@ var EborPaperwork = (function () {
 
   // ---------- log ----------
 
-  /** The Life to Eagle Log line. sign: {application: [{name, rep}], report: [...]}. */
+  /** The Life to Eagle Log line. sign: {application: [{name, rep}]}. */
   function logLine(shortDate, by, boardYmd, sign, filedNames, archivedCount, emailDrafted) {
     var who = function (list) { return (list || []).map(function (s) { return s.name + (s.rep ? ' (DAC/Council)' : ''); }).join(', '); };
     var d = mmddyy(boardYmd);
     return shortDate + ' [' + by + '] EBoR paperwork signed in the browser' + (d ? ' (board ' + d.text + ')' : '') +
-      '. Requirement 7: ' + who(sign && sign.application) + '. Advancement Report: ' + who(sign && sign.report) +
+      '. Requirement 7: ' + who(sign && sign.application) +
       '. Filed ' + (filedNames || []).join(' and ') + (archivedCount ? '; ' + archivedCount + ' earlier file(s) to Archive' : '') +
       (emailDrafted ? '; Council email drafted in the Outbox' : '; no Council email drafted') + '.';
   }
@@ -233,7 +170,6 @@ var EborPaperwork = (function () {
     recordId: 'DEMO',
     label: '\uD83E\uDDEA Demo Scout (test: no email to Council)',
     name: 'Theodore "Teddy" Sample', preferred: 'Teddy', unit: 'T999', stage: 'Demo (test)',
-    leaderName: 'Pat Q Leader', address: '1 Example Way', city: 'San Jose', state: 'CA', zip: '95100',
     folderName: 'Demo Scout - T999 (test)', verifiedName: 'Verified Eagle Application (demo).pdf',
     activity: 'EBoR paperwork demo run by ',
     note: '[DEMO] A test run of the EBoR paperwork page with a fictional Scout. This is what Council would receive; nothing was sent to Council.'
@@ -254,26 +190,16 @@ var EborPaperwork = (function () {
     return [String(p ? p.y : new Date().getFullYear()), DEMO.folderName];
   }
 
-  /** Which signed documents are already at the top of a folder. files: [{name}] -> {application, report} */
+  /** Whether a signed application is already at the top of a folder. files: [{name}] -> {application} */
   function signedIn(files) {
-    var out = { application: false, report: false };
-    (files || []).forEach(function (f) {
-      var n = str(f && f.name);
-      if (/_EagleApplication-Signed\.pdf$/i.test(n)) out.application = true;
-      if (/_AdvancementReport-Signed\.pdf$/i.test(n)) out.report = true;
-    });
+    var out = { application: false };
+    (files || []).forEach(function (f) { if (/_EagleApplication-Signed\.pdf$/i.test(str(f && f.name))) out.application = true; });
     return out;
   }
 
   /** "Reset demo": the signed files at the top of the demo folder (they move to its Archive). top: [{id, name}] -> [id] */
   function demoResetPlan(top) {
     return (top || []).filter(function (f) { return OUR_SIGNED.test(str(f.name)); }).map(function (f) { return f.id; });
-  }
-
-  /** What the demo page shows for the Scout: the Report fill needs this one's leader and address. */
-  function demoReportInput(boardYmd, district, title) {
-    return { scout: DEMO.name, unit: DEMO.unit, district: district, title: title, leaderName: DEMO.leaderName, address: DEMO.address,
-      city: DEMO.city, state: DEMO.state, zip: DEMO.zip, boardYmd: boardYmd };
   }
 
   /**
@@ -291,12 +217,12 @@ var EborPaperwork = (function () {
   /** The Activity line for a demo run. */
   function demoActivity(by) { return DEMO.activity + str(by); }
 
-  return { BADGE: BADGE, UNIT_GROUP: UNIT_GROUP, UNIT_ORDER: UNIT_ORDER, FIELD: FIELD, SIGNATURE_FIELDS: SIGNATURE_FIELDS, REP_LABEL: REP_LABEL,
-    parts: parts, mmddyy: mmddyy, reportDate: reportDate, unitParts: unitParts, reportFields: reportFields,
+  return { REP_LABEL: REP_LABEL,
+    parts: parts, mmddyy: mmddyy,
     signerSlots: signerSlots, checkSigners: checkSigners, pickVerified: pickVerified, pdfChoices: pdfChoices, archivePlan: archivePlan,
     boardFor: boardFor, choices: choices, logLine: logLine,
     DEMO: DEMO, isDemo: isDemo, withDemo: withDemo, demoFolderPath: demoFolderPath, signedIn: signedIn, demoResetPlan: demoResetPlan,
-    demoReportInput: demoReportInput, demoEmail: demoEmail, demoActivity: demoActivity };
+    demoEmail: demoEmail, demoActivity: demoActivity };
 })();
 
 if (typeof module !== 'undefined') module.exports = EborPaperwork;

@@ -25,7 +25,7 @@ describe('EagleDone', () => {
     expect(E.firstName('Scout Q. One')).toBe('Scout');
     const n = E.fileNames('Scout Q. One', 'T 101', '2026-10-13', Intake.namePart, Intake.unitPart);
     expect(n.application).toBe('Scout_Q_One-T101_EagleApplication-Signed.pdf');
-    expect(n.report).toBe('Scout_Q_One-T101_AdvancementReport-Signed.pdf');
+    expect(n.report).toBeUndefined();                                   // the Advancement Report was dropped (2026-11-17)
     expect(n.photo(3)).toBe('Scout_Q_One-T101_EBoR-20261013-03.jpg');
   });
   it('recipients de-duplicated', () => {

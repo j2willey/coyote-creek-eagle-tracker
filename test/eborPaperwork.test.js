@@ -12,59 +12,24 @@ describe('EborPaperwork: dates', () => {
     expect(P.mmddyy('2031-12-31').yy).toBe('31');
     expect(P.mmddyy('2100-01-02').yy).toBe('00');
   });
-  it('the Advancement Report dates keep a four-digit year', () => {
-    expect(P.reportDate('2026-03-07')).toBe('03/07/2026');
-  });
   it('refuses something that is not a date', () => {
     expect(P.mmddyy('2026-02-30')).toBeNull();
     expect(P.mmddyy('3/7/2026')).toBeNull();
-    expect(P.reportDate('')).toBe('');
-  });
-});
-
-describe('EborPaperwork: Advancement Report fields', () => {
-  const base = { scout: 'Theodore Sample', unit: 'T999', district: 'Coyote Creek', title: 'Coyote Creek Advancement', leaderName: 'Pat Q Leader',
-    address: '12 Elm St', city: 'Springfield', state: 'CA', zip: '95000', boardYmd: '2026-03-07' };
-  it('fills the named fields, every date = the EBoR date (Date Award Earned as MM/DD/YY)', () => {
-    const r = P.reportFields(base);
-    expect(r.problems).toEqual([]);
-    expect(r.text).toEqual({
-      'No': '999', 'District': 'Coyote Creek', 'Leader': 'Pat Q Leader', 'Address': '12 Elm St', 'City': 'Springfield', 'State': 'CA', 'Zip': '95000',
-      'Date this report forwarded to council service center': '03/07/2026', 'Title': 'Coyote Creek Advancement', 'Board of Review Date': '03/07/2026',
-      '#1': 'Theodore Sample', 'Date Award Earned1': '03/07/26', 'Badge of Rank Merit Badge or Award1': 'Eagle Scout'
-    });
-  });
-  it('picks the unit type widget by position: Pack, Troop, Crew, Ship', () => {
-    expect(P.reportFields(base).radio).toEqual({ group: 'Group16', index: 1 });
-    expect(P.reportFields({ ...base, unit: 'C917' }).radio.index).toBe(2);
-    expect(P.reportFields({ ...base, unit: 'Ship 5' }).radio.index).toBe(3);
-    expect(P.reportFields({ ...base, unit: 'P12' }).radio.index).toBe(0);
-    expect(P.unitParts('t 0999')).toMatchObject({ letter: 'T', number: '999', type: 'Troop' });
-  });
-  it('leaves the address out when unknown, and says what is missing', () => {
-    const r = P.reportFields({ ...base, leaderName: '', address: '', city: '', state: '', zip: '' });
-    expect(Object.keys(r.text)).not.toContain('Address');
-    expect(Object.keys(r.text)).not.toContain('Leader');
-    expect(r.problems.join(' ')).toMatch(/No Unit Leader/);
-  });
-  it('flags a bad unit or date', () => {
-    const r = P.reportFields({ ...base, unit: 'Den 4', boardYmd: '' });
-    expect(r.radio).toBeNull();
-    expect(r.problems.join(' ')).toMatch(/EBoR date.*not a Pack, Troop/s);
+    expect(P.reportDate).toBeUndefined();          // the Advancement Report was dropped (2026-11-17)
   });
 });
 
 describe('EborPaperwork: signer rules', () => {
   const s = (name, rep = false, signed = true) => ({ name, rep, signed });
-  it('has two slots on the application and three on the Advancement Report', () => {
+  it('has two slots on the application, and no Advancement Report any more', () => {
     expect(P.signerSlots('application').map(x => x.key)).toEqual(['chair', 'rep']);
-    expect(P.signerSlots('report').map(x => x.key)).toEqual(['Signature1', 'Signature2', 'Signature3']);
-    expect(P.signerSlots('report')[0].rep).toBe(true);
+    expect(P.signerSlots('report')).toEqual([]);
+    expect(P.checkSigners('report', []).ok).toBe(false);
   });
-  it('accepts one council / district representative and others any adult', () => {
-    const r = P.checkSigners('report', [s('Owen Patrick Fairbanks', true), s('Pat Q'), s('Jordan Example')]);
+  it('accepts one council / district representative and another adult', () => {
+    const r = P.checkSigners('application', [s('Pat Q'), s('Owen Patrick Fairbanks', true)]);
     expect(r.ok).toBe(true);
-    expect(r.clean).toEqual([{ key: 'Signature1', name: 'Owen Patrick Fairbanks', rep: true }, { key: 'Signature2', name: 'Pat Q', rep: false }, { key: 'Signature3', name: 'Jordan Example', rep: false }]);
+    expect(r.clean).toEqual([{ key: 'chair', name: 'Pat Q', rep: false }, { key: 'rep', name: 'Owen Patrick Fairbanks', rep: true }]);
   });
   it('needs at least one representative', () => {
     const r = P.checkSigners('application', [s('Pat Q'), s('Jordan Example')]);
@@ -77,7 +42,7 @@ describe('EborPaperwork: signer rules', () => {
   it('needs every name, every signature and the right count; one person cannot sign twice', () => {
     expect(P.checkSigners('application', [s(''), s('Jordan Example', true)]).errors.join(' ')).toMatch(/type the signer's name/);
     expect(P.checkSigners('application', [s('Pat Q', true, false), s('Jordan Example')]).errors.join(' ')).toMatch(/signature is missing/);
-    expect(P.checkSigners('report', [s('Pat Q', true), s('Jordan Example')]).errors.join(' ')).toMatch(/needs 3 signatures/);
+    expect(P.checkSigners('application', [s('Pat Q', true)]).errors.join(' ')).toMatch(/needs 2 signatures/);
     expect(P.checkSigners('application', [s('Pat Q', true), s(' pat  q ')]).errors.join(' ')).toMatch(/two signature lines/);
     expect(P.checkSigners('nope', []).ok).toBe(false);
   });
@@ -104,16 +69,16 @@ describe('EborPaperwork: files in the Scout folder', () => {
     expect(l.map(x => x.id)).toEqual(['b', 'a', 'd']);
     expect(l.map(x => x.verified)).toEqual([true, true, false]);
   });
-  it('archives the Verified Application used and earlier versions of the two outputs, nothing else', () => {
+  it('archives the Verified Application used and earlier signed applications, nothing else', () => {
     const names = EagleDone.fileNames('Theodore Sample', 'T999', '2026-03-07', Intake.namePart, Intake.unitPart);
     const top = [
       { id: 'v', name: 'Verified Eagle Application.pdf' }, { id: 'v2', name: 'Another Verified.pdf' },
-      { id: 'old1', name: names.application }, { id: 'old2', name: names.report.toUpperCase() },
-      { id: 'new1', name: names.application }, { id: 'new2', name: names.report },
+      { id: 'old1', name: names.application.toUpperCase() }, { id: 'rep', name: 'Theodore_Sample-T999_AdvancementReport-Signed.pdf' },
+      { id: 'new1', name: names.application },
       { id: 'esspp', name: 'Theodore_Sample-T999_ESSPP-ApprovedAndSignedBy-AB.pdf' }
     ];
-    expect(P.archivePlan(top, ['new1', 'new2'], names, 'v').sort()).toEqual(['old1', 'old2', 'v']);
-    expect(P.archivePlan(top, ['new1', 'new2'], names, '').sort()).toEqual(['old1', 'old2']);   // Verified came from the computer
+    expect(P.archivePlan(top, ['new1'], names, 'v').sort()).toEqual(['old1', 'v']);   // an old signed Advancement Report stays put
+    expect(P.archivePlan(top, ['new1'], names, '').sort()).toEqual(['old1']);          // Verified came from the computer
   });
 });
 
@@ -152,11 +117,12 @@ describe('EborPaperwork: the Scout dropdown', () => {
 
 describe('EborPaperwork: log line', () => {
   it('names the signers and what was filed', () => {
-    const line = P.logLine('3/7', 'AB', '2026-03-07', { application: [{ name: 'Pat Q', rep: true }, { name: 'Jordan Example', rep: false }], report: [{ name: 'Pat Q', rep: true }] },
-      ['A.pdf', 'R.pdf'], 2, true);
+    const line = P.logLine('3/7', 'AB', '2026-03-07', { application: [{ name: 'Pat Q', rep: true }, { name: 'Jordan Example', rep: false }] },
+      ['A.pdf'], 2, true);
     expect(line).toMatch(/^3\/7 \[AB\] EBoR paperwork signed in the browser \(board 03\/07\/26\)/);
     expect(line).toMatch(/Requirement 7: Pat Q \(DAC\/Council\), Jordan Example\./);
-    expect(line).toMatch(/Filed A\.pdf and R\.pdf; 2 earlier file\(s\) to Archive; Council email drafted in the Outbox\./);
+    expect(line).toMatch(/Filed A\.pdf; 2 earlier file\(s\) to Archive; Council email drafted in the Outbox\./);
+    expect(line).not.toMatch(/Advancement Report/);
   });
 });
 
@@ -172,21 +138,19 @@ describe('EborPaperwork: the Demo Scout', () => {
     expect(P.isDemo('R-1')).toBe(false);
     expect(P.isDemo('')).toBe(false);
   });
-  it('is fictional: Report fill uses the demo leader and address, unit T999 is a Troop', () => {
-    const fill = P.reportFields(P.demoReportInput('2026-11-11', 'Coyote Creek', 'Coyote Creek Advancement'));
-    expect(fill.problems).toEqual([]);
-    expect(fill.text).toMatchObject({ '#1': 'Theodore "Teddy" Sample', No: '999', Leader: 'Pat Q Leader', Address: '1 Example Way', City: 'San Jose', State: 'CA', Zip: '95100' });
-    expect(fill.radio).toEqual({ group: 'Group16', index: 1 });
+  it('is fictional: Theodore "Teddy" Sample of T999', () => {
+    expect(P.DEMO).toMatchObject({ name: 'Theodore "Teddy" Sample', unit: 'T999' });
+    expect(P.demoReportInput).toBeUndefined();
   });
   it('folder path is <year>/Demo Scout - T999 (test)', () => {
     expect(P.demoFolderPath('2026-11-11')).toEqual(['2026', 'Demo Scout - T999 (test)']);
   });
-  it('Reset demo moves only the signed files; signedIn reads the same names', () => {
+  it('Reset demo moves only the signed files (an old signed Advancement Report too); signedIn reads the application', () => {
     const top = [{ id: 'a', name: 'Theodore_Teddy_Sample-T999_EagleApplication-Signed.pdf' }, { id: 'r', name: 'x-T999_AdvancementReport-Signed.PDF' },
       { id: 'v', name: 'Verified Eagle Application (demo).pdf' }, { id: 'n', name: 'notes.txt' }];
     expect(P.demoResetPlan(top)).toEqual(['a', 'r']);
-    expect(P.signedIn(top)).toEqual({ application: true, report: true });
-    expect(P.signedIn([top[2]])).toEqual({ application: false, report: false });
+    expect(P.signedIn(top)).toEqual({ application: true });
+    expect(P.signedIn([top[2]])).toEqual({ application: false });
   });
   it('the demo email goes To the member only, no Cc or Bcc, whatever the original addressed', () => {
     const out = P.demoEmail({ to: ['council@example.org'], cc: 'group@example.org, leader@example.org', bcc: 'x@example.org', kind: 'x',

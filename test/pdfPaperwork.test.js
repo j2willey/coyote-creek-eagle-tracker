@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import * as PDFLib from 'pdf-lib';
 import pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js';
-import { findRequirement7Page, requirement7DateMarks, fitSignatureToBox, fillAdvancementReport } from '../web/js/pdfPaperwork.js';
+import { findRequirement7Page, requirement7DateMarks, fitSignatureToBox } from '../web/js/pdfPaperwork.js';
 import { applyMarksAndFlatten } from '../web/js/pdfEngine.js';
 
-/** A stand-in for form 34403 built with the real field names (the real form is not in the repo). */
+/** A small fillable form (once a stand-in for form 34403, dropped 2026-11-17): a fixture for flattening. */
 async function standInReport({ withSigFields = true, rotate = 0 } = {}) {
   const doc = await PDFLib.PDFDocument.create();
   const page = doc.addPage([612, 792]);
@@ -32,15 +32,6 @@ async function standInReport({ withSigFields = true, rotate = 0 } = {}) {
   return new Uint8Array(await doc.save());
 }
 
-const fill = {
-  text: {
-    'No': '999', 'District': 'Coyote Creek', 'Leader': 'Pat Q Leader', 'Address': '12 Elm St', 'City': 'Springfield', 'State': 'CA', 'Zip': '95000',
-    'Date this report forwarded to council service center': '03/07/2026', 'Title': 'Coyote Creek Advancement', 'Board of Review Date': '03/07/2026',
-    '#1': 'Theodore Sample', 'Date Award Earned1': '03/07/2026', 'Badge of Rank Merit Badge or Award1': 'Eagle Scout'
-  },
-  radio: { group: 'Group16', index: 1 }
-};
-const SIGS = ['Signature1', 'Signature2', 'Signature3'];
 const TINY_PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
 
 describe('findRequirement7Page', () => {
@@ -82,53 +73,11 @@ describe('Requirement 7 date marks and signature fitting', () => {
   });
 });
 
-describe('fillAdvancementReport', () => {
-  it('fills every named field and picks the Troop widget by position', async () => {
-    const out = await fillAdvancementReport(PDFLib, await standInReport(), fill, SIGS);
-    expect(out.missing).toEqual([]);
-    const doc = await PDFLib.PDFDocument.load(out.pdfBytes);
-    const form = doc.getForm();
-    expect(form.getTextField('#1').getText()).toBe('Theodore Sample');
-    expect(form.getTextField('No').getText()).toBe('999');
-    expect(form.getTextField('Board of Review Date').getText()).toBe('03/07/2026');
-    expect(form.getTextField('Badge of Rank Merit Badge or Award1').getText()).toBe('Eagle Scout');
-    expect(form.getRadioGroup('Group16').getSelected()).toBe('Troop');
-  });
-  it('picks Crew and Ship by position too', async () => {
-    for (const [index, name] of [[0, 'Pack'], [2, 'Crew'], [3, 'Ship']]) {
-      const out = await fillAdvancementReport(PDFLib, await standInReport(), { text: {}, radio: { group: 'Group16', index } }, []);
-      const doc = await PDFLib.PDFDocument.load(out.pdfBytes);
-      expect(doc.getForm().getRadioGroup('Group16').getSelected()).toBe(name);
-    }
-  });
-  it('reports a field the form lacks instead of failing', async () => {
-    const out = await fillAdvancementReport(PDFLib, await standInReport(), { text: { 'No such box': 'x', 'No': '5' }, radio: null }, []);
-    expect(out.missing).toEqual(['No such box']);
-  });
-  it('returns the three signature boxes in viewer space', async () => {
-    const out = await fillAdvancementReport(PDFLib, await standInReport(), fill, SIGS);
-    expect(out.sigRects.Signature1).toMatchObject({ pageIndex: 0, x: 60, y: 200, width: 160, height: 25 });
-    expect(out.sigRects.Signature3.y).toBe(120);
-    const none = await fillAdvancementReport(PDFLib, await standInReport({ withSigFields: false }), fill, SIGS);
-    expect(none.sigRects.Signature1).toBeNull();
-  });
-  it('a rotated page gives viewer-space boxes that match pdf.js', async () => {
-    const out = await fillAdvancementReport(PDFLib, await standInReport({ rotate: 90 }), fill, SIGS);
-    const task = pdfjsLib.getDocument({ data: new Uint8Array(out.pdfBytes), verbosity: 0 });
-    const pdf = await task.promise;
-    const vp = (await pdf.getPage(1)).getViewport({ scale: 1 });
-    const r = out.sigRects.Signature1;
-    expect(vp.width).toBe(792);
-    expect(r.x + r.width).toBeLessThanOrEqual(792);
-    expect(r.y + r.height).toBeLessThanOrEqual(612);
-    expect(r.width).toBeCloseTo(25, 0);      // the box is turned on its side
-    expect(r.height).toBeCloseTo(160, 0);
-  });
-});
-
 describe('applyMarksAndFlatten', () => {
   it('flattens the filled form and draws signature images and text, nothing left fillable on that page', async () => {
-    const filled = await fillAdvancementReport(PDFLib, await standInReport(), fill, SIGS);
+    const form = await PDFLib.PDFDocument.load(await standInReport());
+    form.getForm().getTextField('#1').setText('Theodore Sample');
+    const filled = { pdfBytes: new Uint8Array(await form.save()) };
     const marks = [
       { id: 'a', kind: 'image', pageIndex: 0, x: 62, y: 202, width: 100, height: 20, png: TINY_PNG },
       { id: 'b', kind: 'text', pageIndex: 0, x: 300, y: 300, width: 30, height: 16, text: '03', ink: 'darkblue' }

@@ -93,7 +93,7 @@ export function mountUnitContacts(root, { session, unit, onChange = () => {}, me
     if (role) role.setAttribute('list', 'ucRoles');
     const name = inp('Name', x.name), email = inp('Email', x.email, 'email'), phone = inp('Phone', x.phone, 'tel');
     const note = kind === 'key3' ? null : inp('Note (optional)', x.note);
-    // The Unit Leader's mailing address (Key 3 row; filled into the Advancement Report on the EBoR paperwork page)
+    // The Unit Leader's mailing address (Key 3 row; kept from Council's file, no longer used on a form since 2026-11-17)
     const leaderAddr = kind === 'key3' && x.role === 'Unit Leader';
     const addr = leaderAddr ? inp('Street address (optional)', x.address) : null;
     const city = leaderAddr ? inp('City', x.city) : null;

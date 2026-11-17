@@ -1,7 +1,8 @@
 // @ts-check
 /**
  * The EBoR paperwork page (`/committee/ebor-paperwork`, Task 12): sign the Verified Eagle Application (Requirement 7)
- * and fill + sign the Advancement Report at the board, then file both and draft the Council email.
+ * at the board, then file it and draft the Council email. (The Advancement Report was dropped 2026-11-17: Council no
+ * longer uses it.)
  *
  * Built on the Sign Workshop's engine: `pdfEngine` (decrypt, flatten, draw upright on rotated pages), `pdfPlan`
  * (placement maths, ink palette), `pdfDraw` (the touch / stylus draw pad), `pdfView` (the scrollable pages with
@@ -17,7 +18,7 @@ import { createDrawPad } from './pdfDraw.js';
 import { pngAspect, dataUrlToBytes, inkToPngDataUrl } from './pdfInk.js';
 import { openSigningOverlay } from './pdfSignPad.js';
 import { inkAspect, pixelWidthForBox } from './pdfStrokes.js';
-import { findRequirement7Page, requirement7DateMarks, fitSignatureToBox, fillAdvancementReport } from './pdfPaperwork.js';
+import { findRequirement7Page, requirement7DateMarks, fitSignatureToBox } from './pdfPaperwork.js';
 
 // Ink, font and Type / Draw only: never a signature (several people sign on one device).
 const STORE_KEY = 'ccacEborPaperwork_v1';
@@ -28,12 +29,11 @@ const STORE_KEY = 'ccacEborPaperwork_v1';
  * @typedef {import('./pdfView.js').ViewMark & { slotKey?: string }} Mark
  * @typedef {{ key: string, label: string, rep: boolean, name: string, dataUrl: string, aspect: number,
  *   ink: import('./pdfStrokes.js').Ink | null, px: number, typed: Typed | null }} Slot  `ink`: a pen signature as strokes (its picture is drawn from them)
- * @typedef {{ pageIndex: number, x: number, y: number, width: number, height: number }} Rect
  * @typedef {{
- *   kind: 'application' | 'report', host: any, pagesBar: any, slotsBox: any,
+ *   kind: 'application', host: any, pagesBar: any, slotsBox: any,
  *   baseBytes: Uint8Array | null, pdfjsDoc: any, view: import('./pdfView.js').PageView | null,
  *   pageSizes: Array<{ width: number, height: number }>, marks: Mark[], slots: Slot[],
- *   sigRects: Record<string, Rect | null>, armed: Slot | null, verifiedId: string,
+ *   armed: Slot | null, verifiedId: string,
  *   bar: { el: HTMLElement, sync: () => void } | null
  * }} DocState
  */
@@ -53,8 +53,6 @@ export function initPaperwork(deps) {
   /** @type {any} */
   let sc = null;
   let loadSeq = 0;
-  /** @type {Uint8Array | null} */
-  let templateBytes = null;
   let dirty = false;
   const maxMB = () => (data && data.maxUploadMB) || 20;
 
@@ -64,13 +62,10 @@ export function initPaperwork(deps) {
   let sigMode = stored.mode === 'draw' ? 'draw' : 'type';
   const saveSettings = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify({ ink, fontKey, mode: sigMode })); } catch { /* private mode */ } };
 
-  /** @param {'application' | 'report'} kind @returns {DocState} */
-  const newDoc = kind => {
-    const k = kind === 'application' ? 'Application' : 'Report';
-    return { kind, host: $('host' + k), pagesBar: $('pages' + k), slotsBox: $('slots' + k), baseBytes: null, pdfjsDoc: null, view: null,
-      pageSizes: [], marks: [], slots: [], sigRects: {}, armed: null, verifiedId: '', bar: null };
-  };
-  const docs = { application: newDoc('application'), report: newDoc('report') };
+  /** @param {'application'} kind @returns {DocState} */
+  const newDoc = kind => ({ kind, host: $('hostApplication'), pagesBar: $('pagesApplication'), slotsBox: $('slotsApplication'), baseBytes: null,
+    pdfjsDoc: null, view: null, pageSizes: [], marks: [], slots: [], armed: null, verifiedId: '', bar: null });
+  const docs = { application: newDoc('application') };
 
   /** @param {string} t @param {string} [c] */
   const say = (t, c) => { $('saveMsg').textContent = t; $('saveMsg').className = c || 'muted'; };
@@ -379,25 +374,19 @@ export function initPaperwork(deps) {
   /** @param {DocState} d @param {Slot} s */
   const slotPlaced = (d, s) => d.marks.some(m => m.slotKey === s.key);
   /** @param {DocState} d */
-  const docDone = d => d.slots.length > 0 && d.slots.every(s => slotPlaced(d, s) && s.name.trim().length >= 2);
-  function updateTabs() {
-    $('tabApplication').querySelector('.ep-ok').hidden = !docDone(docs.application);
-    $('tabReport').querySelector('.ep-ok').hidden = !docDone(docs.report);
-  }
   /** @param {DocState} d */
   function refreshSlots(d) {
     d.slotsBox.querySelectorAll('.ep-slot').forEach((/** @type {any} */ b) => { if (b.sync) b.sync(); });
-    updateTabs();
   }
 
   /** @param {DocState} d */
   function renderSlots(d) {
     d.slotsBox.replaceChildren(
       el('h3', { textContent: signer ? (d.slots.length ? 'Your signature' + (d.slots.length > 1 ? 's' : '') : 'Nothing for you to sign here')
-        : d.kind === 'application' ? 'Requirement 7: two signatures' : 'Advancement Report: three signatures' }),
+        : 'Requirement 7: two signatures' }),
       el('p', { className: 'hint', textContent: signer
         ? (d.slots.length ? 'Check your name, sign, and place the signature on its line. Signatures already on the document stay as they are.' : 'This document is shown so you can read it.')
-        : 'Each signer types their name, then signs. At least one signer on each document must be a District Advancement Committee / Council representative.' }),
+        : 'Each signer types their name, then signs. At least one signer must be a District Advancement Committee / Council representative.' }),
       ...d.slots.map(s => {
         const name = el('input', { type: 'text', value: s.name, placeholder: 'Signer\'s name (type it)', autocomplete: 'off' });
         name.setAttribute('list', 'boardNames');
@@ -420,7 +409,7 @@ export function initPaperwork(deps) {
           if (s.dataUrl && thumb.getAttribute('src') !== s.dataUrl) thumb.src = s.dataUrl;
           sign.textContent = s.dataUrl ? 'Type again…' : 'Type signature…';
           place.disabled = !s.dataUrl;
-          place.textContent = placed ? 'Move to its line' : (d.kind === 'report' && d.sigRects[s.key] ? 'Place on the form' : 'Place on the page…');
+          place.textContent = placed ? 'Move to its line' : 'Place on the page…';
           status.textContent = !s.dataUrl ? 'Not signed yet.' : placed ? 'Placed. Drag it to adjust.' : 'Signed. Place it on the page.';
           box.classList.toggle('done', placed && s.name.trim().length >= 2);
         };
@@ -447,7 +436,6 @@ export function initPaperwork(deps) {
         sync();
         return box;
       }));
-    updateTabs();
   }
 
   // ---- pen signatures: strokes in, a picture of the right colour and size out ----
@@ -502,11 +490,6 @@ export function initPaperwork(deps) {
   /** @param {DocState} d @param {Slot} s */
   function placeSlot(d, s) {
     if (!s.dataUrl) return;
-    const rect = d.kind === 'report' ? d.sigRects[s.key] : null;
-    if (rect) {
-      putSignature(d, s, rect.pageIndex, fitSignatureToBox(s.aspect, rect, { x: 0, y: 0 }, d.pageSizes[rect.pageIndex]));
-      return;
-    }
     d.armed = s;
     if (d.view) d.view.setArmed(true);
     say(`Click on the page where "${s.label}" signs (Escape cancels).`, 'muted');
@@ -524,19 +507,6 @@ export function initPaperwork(deps) {
     if (ev.key !== 'Escape') return;
     for (const d of Object.values(docs)) if (d.armed) { d.armed = null; if (d.view) d.view.setArmed(false); say('', 'muted'); }
   });
-
-  // ---- tabs ----
-  /** @param {'application' | 'report'} which */
-  function showTab(which) {
-    $('tabApplication').classList.toggle('on', which === 'application');
-    $('tabReport').classList.toggle('on', which === 'report');
-    $('panelApplication').hidden = which !== 'application';
-    $('panelReport').hidden = which !== 'report';
-    const d = docs[which];
-    if (d.view) d.view.refresh();
-  }
-  $('tabApplication').onclick = () => showTab('application');
-  $('tabReport').onclick = () => showTab('report');
 
   // ---- loading a Scout ----
   /** @param {string} b64 */
@@ -574,46 +544,6 @@ export function initPaperwork(deps) {
       (sc.requirement7 ? ` The date ${sc.requirement7.text} is on the page: drag it onto the form's date boxes, and use the bar above the page to change its spacing and size (zoom in to line it up).` : ' No EBoR date yet: pick it above.');
   }
 
-  /** @param {number} seq */
-  async function loadReport(seq) {
-    $('repNote').className = 'hint';
-    $('repNote').textContent = 'Preparing the Advancement Report…';
-    try {
-      if (!templateBytes) {
-        const t = await api('eborPaperworkTemplate', { session });
-        templateBytes = toBytes(t.data);
-      }
-    } catch (e) {
-      if (isSignedOut(e)) throw e;
-      $('repNote').className = 'hint err';
-      $('repNote').textContent = e.message + ' You can choose the blank Advancement Report from this computer instead.';
-      $('repLocalRow').hidden = false;
-      return;
-    }
-    if (seq !== loadSeq) return;
-    await fillReport(templateBytes, seq);
-  }
-  /** @param {Uint8Array} blank @param {number} seq */
-  async function fillReport(blank, seq) {
-    const d = docs.report;
-    const { PDFLib } = await ensurePdfLibs();
-    const out = await fillAdvancementReport(PDFLib, blank, { text: sc.fields, radio: sc.radio }, data.signatureFields);
-    if (seq !== loadSeq) return;
-    await openPdf(d, out.pdfBytes);
-    d.sigRects = out.sigRects;
-    refreshSlots(d);
-    const notes = [];
-    if (out.missing.length) notes.push(`Not on this form: ${out.missing.join(', ')}.`);
-    if (!Object.values(out.sigRects).some(Boolean)) notes.push('No signature boxes found: place each signature by clicking on the page.');
-    $('repNote').className = notes.length ? 'hint err' : 'hint';
-    $('repNote').textContent = `Filled from the tracking sheet, Key 3 and Settings. Check it before signing. ${notes.join(' ')}`;
-  }
-  $('fReportLocal').addEventListener('change', async () => {
-    const f = $('fReportLocal').files && $('fReportLocal').files[0];
-    if (!f || !sc) return;
-    try { templateBytes = new Uint8Array(await f.arrayBuffer()); await fillReport(templateBytes, loadSeq); } catch (e) { fail(e); }
-  });
-
   function showScoutInfo() {
     const box = $('scoutBox');
     box.hidden = false;
@@ -625,14 +555,14 @@ export function initPaperwork(deps) {
     if ($('boardEmails')) $('boardEmails').replaceChildren(...[...new Set(Object.values(emailFor))].map(e => el('option', { value: e })));
     const dateIn = el('input', { type: 'date', value: sc.boardYmd || '' });
     dateIn.onchange = () => { if (dateIn.value && dateIn.value !== sc.boardYmd) void loadScout(dateIn.value); };
-    const signed = [sc.alreadySigned.application && 'application', sc.alreadySigned.report && 'Advancement Report'].filter(Boolean);
+    const signed = sc.alreadySigned.application;
     box.replaceChildren(
       el('div', {}, el('b', { textContent: sc.name }), ` · ${sc.unit} · ${sc.stage} · Board of Review `, dateIn, sc.boardTime ? ` at ${sc.boardTime}` : '',
         sc.folderUrl ? el('span', {}, ' · ', el('a', { href: sc.folderUrl, target: '_blank', rel: 'noopener', textContent: 'Scout\'s folder ↗' })) : ''),
       district.length || unit.length ? el('div', { className: 'muted' }, 'Board (suggestions for the signers\' names): ' + [
         district.length ? 'district / council: ' + district.join(', ') : '', unit.length ? 'unit: ' + unit.join(', ') : ''].filter(Boolean).join(' · ')) : '',
-      sc.demo ? el('div', { className: 'hint', textContent: 'Demo with a fictional Scout: nothing is sent to Council and no Scout record changes. Save files the two PDFs in the demo folder and drafts a [DEMO] email To you only.' }) : '',
-      signed.length ? el('div', { className: 'warnbox', textContent: `Signed ${signed.join(' and ')} already in the folder: saving again moves the earlier version to Archive.` }) : '');
+      sc.demo ? el('div', { className: 'hint', textContent: 'Demo with a fictional Scout: nothing is sent to Council and no Scout record changes. Save files the signed PDF in the demo folder and drafts a [DEMO] email To you only.' }) : '',
+      signed ? el('div', { className: 'warnbox', textContent: 'A signed application is already in the folder: saving again moves the earlier version to Archive.' }) : '');
     const probs = sc.problems || [];
     $('problems').hidden = !probs.length;
     $('problems').replaceChildren(...probs.map((/** @type {string} */ t) => el('div', { textContent: t })));
@@ -652,10 +582,9 @@ export function initPaperwork(deps) {
     $('scoutBox').hidden = true; $('problems').hidden = true;
     for (const d of Object.values(docs)) {
       if (d.view) d.view.destroy();
-      d.view = null; d.marks = []; d.slots = []; d.slotsBox.replaceChildren(); d.pagesBar.replaceChildren(); d.host.replaceChildren(); d.baseBytes = null; d.sigRects = {}; d.verifiedId = '';
+      d.view = null; d.marks = []; d.slots = []; d.slotsBox.replaceChildren(); d.pagesBar.replaceChildren(); d.host.replaceChildren(); d.baseBytes = null; d.verifiedId = '';
     }
-    updateTabs();
-    $('appNote').textContent = ''; $('repNote').textContent = ''; $('repLocalRow').hidden = true;
+    $('appNote').textContent = '';
     if (!signer) renderSignatures(null);
     if (!recordId) return;
     say('Loading…', 'muted');
@@ -666,10 +595,9 @@ export function initPaperwork(deps) {
       /** @param {any} s @returns {Slot} */
       const slotOf = s => ({ key: s.key, label: s.label, rep: !!s.rep, name: '', dataUrl: '', aspect: 0, ink: null, px: 0, typed: null });
       docs.application.slots = data.slots.application.map(slotOf);
-      docs.report.slots = data.slots.report.map(slotOf);
       showScoutInfo();
       fillVerifiedChoices();
-      renderSlots(docs.application); renderSlots(docs.report);
+      renderSlots(docs.application);
       dirty = false;
       say('', 'muted');
       if (!sc.demo) api('eborSignatureStatus', { session, recordId: sc.recordId }).then(st => { if (seq === loadSeq) renderSignatures(st); }).catch(() => { /* panel only */ });
@@ -680,7 +608,6 @@ export function initPaperwork(deps) {
         $('appNote').className = 'hint err';
         $('appNote').textContent = 'No file with "verified" in its name in the Scout\'s folder. Choose it from the list, or from this computer.';
       }
-      await loadReport(seq);
     } catch (e) { fail(e); }
   }
 
@@ -708,7 +635,7 @@ export function initPaperwork(deps) {
     if (!sc) return 'Pick a Scout.';
     if (!sc.boardYmd) return 'Pick the Board of Review date.';
     for (const d of Object.values(docs)) {
-      const label = d.kind === 'application' ? 'the Verified Eagle Application' : 'the Advancement Report';
+      const label = 'the Verified Eagle Application';
       if (!d.baseBytes) return `${label} is not open yet.`;
       for (const s of d.slots) {
         if (s.name.trim().length < 2) return `Type the name of the signer on ${label}: ${s.label}.`;
@@ -729,7 +656,7 @@ export function initPaperwork(deps) {
       : { id: m.id, kind: 'text', pageIndex: m.pageIndex, x: m.x, y: m.y, width: m.width, height: m.height, text: m.text, ink: m.ink, fontSize: m.fontSize });
     const res = await applyMarksAndFlatten(PDFLib, { pdfBytes: /** @type {Uint8Array} */ (d.baseBytes), marks });
     if (res.pdfBytes.byteLength > maxMB() * 1048576) {
-      throw new Error(`The signed ${d.kind === 'application' ? 'application' : 'Advancement Report'} is ${sizeText(res.pdfBytes.byteLength)}, over the ${maxMB()} MB limit.`);
+      throw new Error(`The signed application is ${sizeText(res.pdfBytes.byteLength)}, over the ${maxMB()} MB limit.`);
     }
     return new File([res.pdfBytes.slice()], `${d.kind}-signed.pdf`, { type: 'application/pdf' });
   }
@@ -738,7 +665,7 @@ export function initPaperwork(deps) {
     const p = problemBeforeSave();
     if (p) { say(p, 'err'); return; }
     if (!docs.application.marks.some(m => m.kind === 'text') && !confirm('The date is not on Requirement 7 (the date boxes were removed). Save anyway?')) return;
-    if ((sc.alreadySigned.application || sc.alreadySigned.report) && !confirm('Signed paperwork is already in the Scout\'s folder. Replace it? (The earlier files go to Archive.)')) return;
+    if (sc.alreadySigned.application && !confirm('Signed paperwork is already in the Scout\'s folder. Replace it? (The earlier files go to Archive.)')) return;
     const btn = $('saveBtn');
     btn.disabled = true;
     try {
@@ -746,13 +673,11 @@ export function initPaperwork(deps) {
       /** @param {DocState} d */
       const signers = d => d.slots.map(s => ({ name: s.name, rep: s.rep, signed: !!s.dataUrl && slotPlaced(d, s) }));
       const st = await api('eborPaperworkStart', { session, recordId: sc.recordId, boardYmd: sc.boardYmd,
-        application: signers(docs.application), report: signers(docs.report), verifiedId: docs.application.verifiedId || '' });
+        application: signers(docs.application), verifiedId: docs.application.verifiedId || '' });
       say('Flattening the signed pages…', 'muted');
-      const fApp = await pdfFileFor(docs.application), fRep = await pdfFileFor(docs.report);
+      const fApp = await pdfFileFor(docs.application);
       say(`Uploading the application (${sizeText(fApp.size)})…`, 'muted');
       await api('eborPaperworkUpload', { uploadToken: st.uploadToken, kind: 'application', name: fApp.name, data: await readBase64(fApp) });
-      say(`Uploading the Advancement Report (${sizeText(fRep.size)})…`, 'muted');
-      await api('eborPaperworkUpload', { uploadToken: st.uploadToken, kind: 'report', name: fRep.name, data: await readBase64(fRep) });
       say('Filing, archiving, drafting the email…', 'muted');
       const r = await api('eborPaperworkFinish', { session, uploadToken: st.uploadToken });
       dirty = false;
@@ -775,7 +700,7 @@ export function initPaperwork(deps) {
     if (sc.demo) return 'The Demo Scout can\'t be saved partly signed (it has no tracking row). Use a staging Scout.';
     if (!sc.boardYmd) return 'Pick the Board of Review date.';
     for (const d of Object.values(docs)) {
-      const label = d.kind === 'application' ? 'the Verified Eagle Application' : 'the Advancement Report';
+      const label = 'the Verified Eagle Application';
       if (!d.baseBytes) return `${label} is not open yet.`;
       for (const s of d.slots) {
         if (!s.dataUrl) continue;
@@ -791,21 +716,20 @@ export function initPaperwork(deps) {
     if (p) { say(p, 'err'); return; }
     if (sigStatus && sigStatus.requestId && !confirm('Partly signed paperwork is already in progress for this Scout. Start over with these copies? (Its pending requests are cancelled.)')) return;
     if (!sigStatus || !sigStatus.requestId) {
-      if (!confirm('Save the documents as they are now (partly signed), then ask the other signers to sign by email?')) return;
+      if (!confirm('Save the application as it is now (partly signed), then ask the other signer to sign by email?')) return;
     }
     partialBtn.disabled = true;
     try {
       /** @param {DocState} d */
       const signers = d => d.slots.map(s => ({ name: s.name, rep: s.rep, signed: !!s.dataUrl && slotPlaced(d, s) }));
       const st = await api('eborPaperworkStart', { session, recordId: sc.recordId, boardYmd: sc.boardYmd, partial: true,
-        application: signers(docs.application), report: signers(docs.report), verifiedId: docs.application.verifiedId || '' });
+        application: signers(docs.application), verifiedId: docs.application.verifiedId || '' });
       say('Flattening the pages…', 'muted');
-      const fApp = await pdfFileFor(docs.application), fRep = await pdfFileFor(docs.report);
-      say(`Uploading (${sizeText(fApp.size + fRep.size)})…`, 'muted');
+      const fApp = await pdfFileFor(docs.application);
+      say(`Uploading (${sizeText(fApp.size)})…`, 'muted');
       await api('eborPaperworkUpload', { uploadToken: st.uploadToken, kind: 'application', name: fApp.name, data: await readBase64(fApp) });
-      await api('eborPaperworkUpload', { uploadToken: st.uploadToken, kind: 'report', name: fRep.name, data: await readBase64(fRep) });
       say('Filing…', 'muted');
-      const r = await api('eborPaperworkSavePartial', { session, uploadToken: st.uploadToken, layout: { report: docs.report.sigRects } });
+      const r = await api('eborPaperworkSavePartial', { session, uploadToken: st.uploadToken });
       dirty = false;
       say(r.message, 'ok');
       renderSignatures(r.status);
@@ -901,7 +825,7 @@ export function initPaperwork(deps) {
     more.onclick = () => addLine();
     box.replaceChildren(
       el('h3', { textContent: 'Signatures outside the room' }),
-      el('p', { className: 'hint', textContent: (st.summary || 'Nobody has signed yet.') + '. Saving on this page again (Save both / Save partial) starts over.' }),
+      el('p', { className: 'hint', textContent: (st.summary || 'Nobody has signed yet.') + '. Saving on this page again (Save / Save partial) starts over.' }),
       shown.length ? table : '',
       free.length ? el('div', {}, el('h4', { textContent: 'Ask for signatures' }),
         el('p', { className: 'hint', textContent: 'Each signer gets an email, to them only, with a link to sign in their own browser (nothing to print). Pick the box(es) each one signs. Any address can be typed: a last-minute board member, or a corrected address.' }),
@@ -916,9 +840,9 @@ export function initPaperwork(deps) {
   async function loadSignerScout(seq, recordId) {
     sc = await api('signerDocs', { session, recordId });
     if (seq !== loadSeq) return;
-    /** @param {'application' | 'report'} kind @param {string} key */
+    /** @param {'application'} kind @param {string} key */
     const label = (kind, key) => ((sc.labels[kind] || []).find((/** @type {any} */ x) => x.key === key) || { label: key }).label;
-    for (const kind of /** @type {Array<'application' | 'report'>} */ (['application', 'report'])) {
+    for (const kind of /** @type {Array<'application'>} */ (['application'])) {
       docs[kind].slots = sc.slots[kind].map((/** @type {string} */ key) => ({ key, label: label(kind, key), rep: !!sc.rep, name: sc.name,
         dataUrl: '', aspect: 0, ink: null, px: 0, typed: null }));
     }
@@ -928,26 +852,20 @@ export function initPaperwork(deps) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(sc.boardYmd || '');
     box.replaceChildren(el('div', {}, el('b', { textContent: sc.scout }), ` · ${sc.unit}` + (m ? ` · Board of Review ${+m[2]}/${+m[3]}/${m[1]}` : '')),
       sc.signedBy.length ? el('div', { className: 'muted', textContent: 'Already signed: ' + sc.signedBy.map((/** @type {any} */ x) => `${x.name} (${x.label})`).join('; ') }) : '');
-    renderSlots(docs.application); renderSlots(docs.report);
+    renderSlots(docs.application);
     dirty = false;
     say('', 'muted');
     await openSignerDocs(seq);
-    showTab(docs.application.slots.length ? 'application' : 'report');
   }
   /** Open the current Partial copies; `base` (what was opened) goes with the save. @param {number} seq */
   async function openSignerDocs(seq) {
-    for (const kind of /** @type {Array<'application' | 'report'>} */ (['application', 'report'])) {
-      const d = docs[kind], note = kind === 'application' ? $('appNote') : $('repNote');
+    for (const kind of /** @type {Array<'application'>} */ (['application'])) {
+      const d = docs[kind], note = $('appNote');
       note.className = 'hint'; note.textContent = 'Opening…';
       const r = await api('signerFetch', { session, recordId: sc.recordId, kind });
       if (seq !== loadSeq) return;
       sc.files[kind] = { id: r.id, modified: r.modified };
       await openPdf(d, toBytes(r.data));
-      if (kind === 'report') {
-        d.sigRects = {};
-        for (const s of d.slots) d.sigRects[s.key] = (sc.layout && sc.layout.report && sc.layout.report[s.key]) || null;
-        refreshSlots(d);
-      }
       note.textContent = d.slots.length ? 'Sign, then place your signature on its line (drag to adjust; zoom in to line it up).' : 'Nothing for you to sign on this document: shown for reference.';
     }
   }
@@ -956,8 +874,8 @@ export function initPaperwork(deps) {
     if (!sc) return 'Pick the Scout.';
     for (const d of Object.values(docs)) {
       if (!d.slots.length) continue;
-      const label = d.kind === 'application' ? 'the Eagle Application' : 'the Advancement Report';
-      if (!d.baseBytes) return 'The documents are not open yet.';
+      const label = 'the Eagle Application';
+      if (!d.baseBytes) return 'The application is not open yet.';
       for (const s of d.slots) {
         if (s.name.trim().length < 2) return `Type your name (${s.label}).`;
         if (!s.dataUrl) return `Sign first: ${s.label} on ${label}.`;
@@ -968,9 +886,9 @@ export function initPaperwork(deps) {
   }
   /** After "someone else saved": the newest copies, with this signer's placed signatures put back. */
   async function reloadKeepingSignatures() {
-    const keep = { application: docs.application.marks.slice(), report: docs.report.marks.slice() };
+    const keep = docs.application.marks.slice();
     await openSignerDocs(loadSeq);
-    for (const kind of /** @type {Array<'application' | 'report'>} */ (['application', 'report'])) { docs[kind].marks = keep[kind]; afterMarksChanged(docs[kind]); }
+    docs.application.marks = keep; afterMarksChanged(docs.application);
   }
   async function saveSigner() {
     const p = problemBeforeSave();
@@ -979,11 +897,11 @@ export function initPaperwork(deps) {
     btn.disabled = true;
     try {
       say('Starting…', 'muted');
-      const first = docs.application.slots[0] || docs.report.slots[0];
-      const st = await api('signerStart', { session, recordId: sc.recordId, base: { application: sc.files.application, report: sc.files.report }, name: first ? first.name : sc.name });
+      const first = docs.application.slots[0];
+      const st = await api('signerStart', { session, recordId: sc.recordId, base: { application: sc.files.application }, name: first ? first.name : sc.name });
       for (const kind of st.kinds) {
-        say(`Preparing the ${kind === 'application' ? 'Eagle Application' : 'Advancement Report'}…`, 'muted');
-        const f = await pdfFileFor(docs[/** @type {'application' | 'report'} */ (kind)]);
+        say('Preparing the Eagle Application…', 'muted');
+        const f = await pdfFileFor(docs[/** @type {'application'} */ (kind)]);
         say(`Uploading (${sizeText(f.size)})…`, 'muted');
         await api('signerUpload', { uploadToken: st.uploadToken, kind, name: f.name, data: await readBase64(f) });
       }
@@ -1040,11 +958,6 @@ export function initPaperwork(deps) {
     syncDemoLink();
     buildInkRow($('inkRow'));
     $('app').hidden = false; $('msg').hidden = true;
-    if (!data.settings.templateSet) {
-      $('problems').hidden = false;
-      $('problems').textContent = 'No blank Advancement Report in Drive: put the PDF (name with 34403 or Advancement) in the Form Templates folder, or set advancementReportTemplateId (you can also choose it from this computer).';
-    }
-    showTab('application');
     await loadScout();
   }
 

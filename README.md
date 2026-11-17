@@ -290,7 +290,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `parentsSignIn` | FALSE | TRUE lets parent/guardian addresses sign in to the Scout's record |
 | `digestHours`, `digestTo` | 6 PM, | Committee digest schedule and recipients |
 | `intakeConfirmDays`, `intakePurgeDays`, `maxUploadMB` | 7, 14, 20 | Intake |
-| `formTemplatesFolderId` | | **Form Templates** Drive folder (stamps and blank forms): the stamp PNGs for the Sign Workshop (blank = no Stamp button), the blank Advancement Report and the blank Eagle Application (demo). Blank = the older `stampsFolderId` (same folder renamed; still read; Setup / repair copies it across once and leaves the old key) |
+| `formTemplatesFolderId` | | **Form Templates** Drive folder (stamps and blank forms): the stamp PNGs for the Sign Workshop (blank = no Stamp button) and the blank Eagle Application (demo). Blank = the older `stampsFolderId` (same folder renamed; still read; Setup / repair copies it across once and leaves the old key) |
 | `councilDomain`, `allowProduction` | (blank), FALSE | Menu items need a Council account; migration guard |
 | `approvalRep*` | | Council/District Project Approval Representative (proposal precheck, later) |
 | `*DateColumn`, `*WhoColumn`, `calendarId` | | Tracking columns filled on booking; calendar |
@@ -304,7 +304,6 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `councilAppFrom` | (blank = off) | Council Formsite application emails filed into Scout folders from this date |
 | `eborReminderDays`, `dayOfContact` | 3, | EBoR reminders drafted this many days before; "Running late?" line |
 | `councilAckDays`, `svmbcReceivedMark`, `councilEaglesEmail` | 7, `*`, (blank) | Waiting on Council; Council Eagle Services address (Self-check flags it when empty) |
-| `advancementReportTemplateId`, `districtName`, `advancementTitle` | (blank), Coyote Creek, Coyote Creek Advancement | EBoR paperwork page: Drive file id of the blank Advancement Report (form 34403, kept in Drive, never in this repo); blank = the PDF in the Form Templates folder whose name contains `34403` or `Advancement` (newest); the District and Title fields |
 | `eborDoneColor`, `exceptionsFolder`, `unitPipeline` | #93c47d, Exceptions, TRUE | Eagle earned paint; folder; unit page candidate list |
 | `closeReviewDays` | 180 | Proposal Not Approved / EBoR Paused with no log line or update for this many days: amber "Close?" tag and digest line (also at 18 or older). Beyond Age is never suggested |
 | `closeSnoozeDays` | 90 | "Keep open" hides the "Close?" suggestion for this many days |
@@ -337,7 +336,7 @@ members use the Action column, the schedule sheet and the committee page instead
 | Record a Proposal Review outcome (upload the signed Proposal) | `/committee/review` |
 | Check / send emails waiting for review | `/committee/outbox` (also a popup on the schedule) |
 | Held web submissions, unit requests, January archive, email preview | `/committee/admin` |
-| Sign the Verified Application + Advancement Report at the board | `/committee/ebor-paperwork` (link on Dev) |
+| Sign the Verified Application at the board | `/committee/ebor-paperwork` (link on Dev) |
 | Statistics | `/committee/stats` |
 | Book / cancel on the sheet | Schedule sheet: type / clear the Scout's name in a slot |
 | Promote / spam a submission | Intake Queue → Action column |
@@ -545,8 +544,8 @@ Each dashboard row has an **Action** dropdown (⋯) with the actions allowed for
 | Book an EBoR (schedule)… | Application Verified, EBoR Paused | (opens the schedule page: create-and-book) | | |
 | Schedule a follow-up / consult… | **Every stage except Eagle Earned** (side sections and Closed too) | (opens the schedule page's new-session dialog: `/committee/schedule?r=<id>&new=Followup`; see Committee schedule page) | | none from here; the booking sends its own (see Follow-Up / Consult) |
 | Resend EBoR next-steps email | Application Verified | | | "Book: Eagle Board of Review" again (Outbox draft; fills Emailed to set up EBoR when sent) |
-| **Eagle earned…** (one step) | EBoR Booked | EBoR Date = the board's date (default the row's EBoR date), cell painted green (Settings `eborDoneColor`) | Eagle Earned | Uploads: signed application + Advancement Report (PDF scans, both or neither) → `<Name>-<Unit>_EagleApplication-Signed.pdf` / `_AdvancementReport-Signed.pdf` in the folder; photos → `EBoR Photos/<Name>-<Unit>_EBoR-<yyyymmdd>-NN.jpg`. Drafts **"Council: Eagle paperwork"** (to `councilEaglesEmail`, Cc group + unit contacts, both scans attached; fills "signed paperwork sent" when sent) and **"New Eagle Scout"** (Scout, family, unit contacts, the board: district reps + Unit Board Members from the last EBoR slot, others to invite; Cc group; photos attached) |
-| Send signed paperwork to Council… | Eagle Earned | | | Both scans required; "Council: Eagle paperwork" as above |
+| **Eagle earned…** (one step) | EBoR Booked | EBoR Date = the board's date (default the row's EBoR date), cell painted green (Settings `eborDoneColor`) | Eagle Earned | Uploads: the signed application (PDF scan, optional) → `<Name>-<Unit>_EagleApplication-Signed.pdf` in the folder; photos → `EBoR Photos/<Name>-<Unit>_EBoR-<yyyymmdd>-NN.jpg`. Drafts **"Council: Eagle paperwork"** (to `councilEaglesEmail`, Cc group + unit contacts, the signed application attached; fills "signed paperwork sent" when sent) and **"New Eagle Scout"** (Scout, family, unit contacts, the board: district reps + Unit Board Members from the last EBoR slot, others to invite; Cc group; photos attached) |
+| Send signed paperwork to Council… | Eagle Earned | | | The signed application required; "Council: Eagle paperwork" as above |
 | Send congratulations… | Eagle Earned, **only while the EBoR date is at most `congratsDays` (Settings, default 30) ago**; older Eagles get no Action menu | | | Optional photos → `EBoR Photos/` (numbering continues); "New Eagle Scout" only (same recipients as above; unit Eagle numbers from the hidden `_eagle_no` set at Eagle earned). Can be sent again. No row move, no Council email |
 | Council received the paperwork | Eagle Earned, **only rows waiting on Council** | SVMBC Received = `*` (Settings `svmbcReceivedMark`, the sheet's mark) | | none |
 | EBoR paused… | EBoR Booked | EBoR Date | EBoR Paused | "EBoR paused" with what must be completed (Outbox draft) |
@@ -594,7 +593,8 @@ reviews first) and records **Approved**, **Revisions requested** or **Not approv
 ### EBoR paperwork page (`/committee/ebor-paperwork`, `lib/eborPaperwork.js`, `eborPaperworkActions.js`, `web/js/pdfPaperwork*.js`)
 
 For the Board of Review itself, on one device passed around the room. Pick a Scout at EBoR Booked or Paused (the next
-board on the schedule is preselected; the board's date can be changed on the page). Two documents, one tab each:
+board on the schedule is preselected; the board's date can be changed on the page). One document (the **Advancement
+Report**, BSA form 34403, was dropped 2026-11-17: Council no longer uses it):
 
 1. **Verified Eagle Application**, Requirement 7: the file with "verified" in its name in the Scout's folder (newest;
    or pick another, or choose one from the computer). The page finds Requirement 7 by its text (else page 2) and puts the
@@ -607,43 +607,39 @@ board on the schedule is preselected; the board's date can be changed on the pag
    a **typed** signature also keeps its text, script font and colour editable (the picture is re-made). A pen
    signature is redone with "Sign with pen…" and follows the Ink row.
 
-   **Zoom** (both documents here, and the Sign Workshop): − / + / Fit in that bar (in the Workshop, beside the page buttons), or Ctrl / ⌘ + mouse wheel
+   **Zoom** (here and in the Sign Workshop): − / + / Fit in that bar (in the Workshop, beside the page buttons), or Ctrl / ⌘ + mouse wheel
    (a trackpad pinch). 100% = fit the window, up to 400%; the last zoom is remembered in the browser (`pdfZoom.js`).
-2. **Advancement Report** (BSA form 34403): the blank is fetched from Drive (Settings `advancementReportTemplateId`, else the PDF in the Form Templates folder) and
-   prefilled: Scout's number, District and Title (Settings), Unit Leader name and address (Key 3), the date forwarded,
-   Board of Review date (MM/DD/YYYY; Date Award Earned as MM/DD/YY so it can be larger), "Eagle Scout", and the unit type. Three signatures, each placed in its form field's box.
 
 Each signer **types their name** (suggestions from the board on the schedule and the committee), ticks whether they are a
-District Advancement Committee / Council representative (at least one per document), and signs **typed or drawn** in a
+District Advancement Committee / Council representative (at least one), and signs **typed or drawn** in a
 dialog (ink palette: black, dark blue, blue, purple, dark green, brown, rust, dark red). Signatures live in the page
-only; nothing leaves the browser until **Save both**. Saving files `<Name>-<Unit>_EagleApplication-Signed.pdf` and
-`_AdvancementReport-Signed.pdf` in the Scout's folder, moves the Verified Application and earlier versions to Archive,
+only; nothing leaves the browser until **Save**. Saving files `<Name>-<Unit>_EagleApplication-Signed.pdf` in the Scout's folder, moves the Verified Application and earlier versions to Archive,
 drafts "Council: Eagle paperwork" in the Outbox (the existing path), logs it, and **moves the row to Eagle Earned**
 (2026-11-17: EBoR Date = the board's date, painted; Eagles to Date +1, kept in `_eagle_no`). The congratulations is its own
 step: *Send congratulations…* on the dashboard (from a phone with the photos at the event, or later). *Eagle earned…* on a row
-whose paperwork already went to Council asks for photos only and drafts the congratulations only. Actions: `eborPaperworkChoices`, `Scout`, `Template`, `Start`, `Upload`, `Finish`, `DemoReset`.
+whose paperwork already went to Council asks for photos only and drafts the congratulations only. Actions: `eborPaperworkChoices`, `Scout`, `Start`, `Upload`, `Finish`, `DemoReset`.
 
 **Demo Scout** (first entry in the Scout list, "Demo Scout (test: no email to Council)"): for showing the committee the page.
-Fictional Teddy Sample of T999, Unit Leader Pat Q Leader, board date = today, name suggestions = the committee. Files live in
+Fictional Teddy Sample of T999, board date = today, name suggestions = the committee. Files live in
 `<Scouts folder>/<year>/Demo Scout - T999 (test)/`; if that folder has no "verified" PDF, the blank Eagle Application from the
 Form Templates folder (name has "Eagle Application", not "Verified") is copied in as `Verified Eagle Application (demo).pdf`. Save
-works as for a real Scout (two `-Signed.pdf` files, earlier versions to Archive) but there is **no tracking-row lookup, no Scout
-log and no Council email**: instead a **[DEMO]** draft with both files attached waits in the Outbox, To the member who ran it only
+works as for a real Scout (the `-Signed.pdf` file, earlier versions to Archive) but there is **no tracking-row lookup, no Scout
+log and no Council email**: instead a **[DEMO]** draft with the file attached waits in the Outbox, To the member who ran it only
 (no Cc), and the Activity tab gets "EBoR paperwork demo run by <initials>". **Reset demo** (link under the list) moves the demo
 folder's signed files to its Archive. The demo is the fixed key `recordId: 'DEMO'`, handled by explicit branches
 (`eborDemoActions.js`; `mailFromTemplate_` refuses `demo` messages that are not a one-recipient Outbox draft); `test/eborDemo.test.js` runs the whole
 path against a fake Drive and fails on any tracking, Scout-log or Council call.
 
-After deploying: put the blank form in the Form Templates folder (or set `advancementReportTemplateId`; forms stay in Drive, outside this repo), check `districtName` and
-`advancementTitle`, run Setup / repair tabs (adds the Key 3 address headers).
+The Settings keys `advancementReportTemplateId`, `districtName` and `advancementTitle` are no longer read (2026-11-17); rows
+left on the Settings tab are harmless.
 
 ### Signing outside the room (`lib/signatures.js`, `remoteSigningActions.js`; Jim W., 2026-11-12; vault `ebor-remote-signing-design.md`)
 
 The fallback when the board's paperwork can't all be signed in the room (no laptop, no internet). In Dev with the
 paperwork page.
 
-1. **Save partial** (paperwork page): the documents as they are (filled, dated, any signatures done) go to the Scout's
-   folder as `…_EagleApplication-Partial.pdf` / `…_AdvancementReport-Partial.pdf` (earlier Partials to Archive; the
+1. **Save partial** (paperwork page): the application as it is (dated, any signatures done) goes to the Scout's
+   folder as `…_EagleApplication-Partial.pdf` (earlier Partials to Archive; the
    Verified Application stays until Finish). A new **series** starts on the hidden **`_Signatures`** tab: one row per
    signer (who, which boxes, DAC/Council rep or not); the room's signers are rows with Status Signed and no email. An
    earlier unfinished series for the Scout is cancelled.
@@ -661,11 +657,11 @@ paperwork page.
    email is drafted as for an in-room Finish. Missing boxes or no DAC/Council rep: listed, Finish needs a confirm. An
    in-room Finish also closes an open series.
 
-Pages: the paperwork page has **Save partial…** beside Save both, and a **Signatures outside the room** panel (who
+Pages: the paperwork page has **Save partial…** beside Save, and a **Signatures outside the room** panel (who
 signed, who is asked, fix email / Resend / Cancel, Ask for signatures with name → email suggestions from the board and
 the committee, Finish). **`/sign`** (`web/sign.html`, `initPaperwork({mode: 'signer'})`) is the same page for one signer:
-their boxes only, no Verified / template pickers; the Advancement Report's box positions travel with the Partial copies
-(Drive file description), so "Place on the form" still works on the flattened copy. A save refused because someone else
+their boxes only, no Verified picker. (Series started before 2026-11-17 may name Advancement Report boxes: they are
+ignored.) A save refused because someone else
 saved reloads the newest copies and puts the signer's placed signature back. `/signin` sends a signer-only address
 straight to `/sign` and shows "paperwork waiting for your signature" to everyone else who has some.
 
@@ -1153,7 +1149,7 @@ member's initials or the unit contact's email on every add/edit from the web, be
 A list of units (under review marked; units without a Unit Leader / Committee Chair email flagged) → the unit's
 contacts: **one list** (2026-11-01). **Key 3 rows** (Unit Leader, Committee Chair) first, looking like the others: only the
 committee can correct them (never add or delete; the next Key 3 import, about once a year, replaces them: these edits only bridge an
-early change of leadership). The Unit Leader row also has an optional **address** (Key 3 columns `Leader Address`, `Leader City`, `Leader State`, `Leader Zip`; found by the machine key if the tab has a machine row, else by header text, case and spaces ignored). It feeds the Advancement Report, is shown and edited here for the committee only, and the Key 3 import carries it over for the same unit and the same Unit Leader name. Not matched automatically beyond that: a renamed header leaves the column empty. **Unit Contacts rows** below: edit, remove, add (role,
+early change of leadership). The Unit Leader row also has an optional **address** (Key 3 columns `Leader Address`, `Leader City`, `Leader State`, `Leader Zip`; found by the machine key if the tab has a machine row, else by header text, case and spaces ignored). It fed the Advancement Report (dropped 2026-11-17), is shown and edited here for the committee only, and the Key 3 import carries it over for the same unit and the same Unit Leader name. Not matched automatically beyond that: a renamed header leaves the column empty. **Unit Contacts rows** below: edit, remove, add (role,
 name, email, phone, note; `Exclude` stops a Key 3 address from getting unit emails). The **unit page** has the same
 panel for the contact's own units, Key 3 rows read-only; a unit contact can't remove themselves. Rows are checked
 against what the page showed before a write; every change goes on the Activity tab ("Unit T964"). The Unit Contacts tab is kept

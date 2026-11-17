@@ -32,9 +32,6 @@ var SettingsModel = (function () {
     maxUploadMB: 20,
     formTemplatesFolderId: '',    // Form Templates folder (Drive): stamp PNGs (<= 2 MB each) and the blank forms; blank = the older stampsFolderId
     stampsFolderId: '',           // older name of the same folder (still read; Setup copies it into formTemplatesFolderId once)
-    advancementReportTemplateId: '', // Drive file id of the blank Advancement Report PDF (form 34403, fillable); blank = the PDF in Form Templates whose name has 34403 or Advancement
-    districtName: 'Coyote Creek',    // the Advancement Report's District box
-    advancementTitle: 'Coyote Creek Advancement', // the Advancement Report's Title box
     calendarId: 'primary',        // invites are created on the deploying account's calendar (M5)
     // Booking cutoffs (hours before the slot; Scouts' online booking only, committee "Book a slot" ignores them):
     bookingLeadHours: 48,         // Scouts can't book a Pre-Review Call sooner than this
