@@ -44,10 +44,15 @@ function eventsRead_() {
 function reviewStats_(year) {
   var sessions = [];
   try { sessions = statsSessions_(); } catch (e) { console.warn('review stats schedule: ' + e); }
-  var aCol = approvedDateColumn_();
-  var records = aCol ? Records.all([aCol]).map(function (r) { return { recordId: r.recordId, approved: Intake.dateKey(r[aCol]) || '' }; }) : [];
+  var s = getSettings_(), aCol = approvedDateColumn_(), cols = Records.columns();
+  var rCol = cols.indexOf(s.proposalReviewDateColumn) >= 0 ? s.proposalReviewDateColumn : '', iCol = cols.indexOf(s.preReviewDateColumn) >= 0 ? s.preReviewDateColumn : '';
+  var d = function (v) { return Intake.dateKey(v) || ''; };
+  var records = aCol ? Records.all([aCol, rCol, iCol].filter(String)).map(function (r) {
+    return { recordId: r.recordId, approved: d(r[aCol]), reviewDate: rCol ? d(r[rCol]) : '', intakeDate: iCol ? d(r[iCol]) : '' };
+  }) : [];
   var input = { sessions: sessions, records: records, events: eventsRead_() };
-  return { year: ReviewStats.compute(input, String(year)), all: ReviewStats.compute(input, ''), approvedColumn: !!aCol };
+  return { year: ReviewStats.compute(input, String(year)), all: ReviewStats.compute(input, ''), approvedColumn: !!aCol,
+    toApproval: ReviewStats.timeToApproval(records, sessions), columns: { review: rCol, intake: iCol } };
 }
 
 // ---------- timings ----------

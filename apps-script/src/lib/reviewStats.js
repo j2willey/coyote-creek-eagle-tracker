@@ -90,7 +90,40 @@ var ReviewStats = (function () {
     return out;
   }
 
-  return { compute: compute, sessionOn: sessionOn, spread: spread };
+  /**
+   * Time from the Proposal Review to approval (Jim W., 2026-11-17: are Pre-Review Calls bringing it down?).
+   * records: [{recordId, approved, reviewDate, intakeDate}] from the tracking tab's date columns (years of history);
+   * sessions: as compute() (the schedule, app era). Review date = the earlier of the tracking date and the first
+   * Proposal Review on the schedule (booking a second review can overwrite the tracking date). A Pre-Review Call counts
+   * when its date (tracking, or a call on the schedule) is on or before the review date. Same-day approval = 0 days.
+   * -> {with: spread, without: spread, open: {with, without}, byYear: [{year, with, without}]}  (year of the review)
+   */
+  function timeToApproval(records, sessions) {
+    var firstOf = function (type) {
+      var m = {};
+      (sessions || []).forEach(function (s) { if (s.type === type && s.recordId && s.ymd && (!m[s.recordId] || s.ymd < m[s.recordId])) m[s.recordId] = s.ymd; });
+      return m;
+    };
+    var rev = firstOf('ESSPPR'), call = firstOf('Intake');
+    var lists = { with: [], without: [] }, open = { with: 0, without: 0 }, years = {};
+    (records || []).forEach(function (r) {
+      var cands = [str(r.reviewDate), rev[r.recordId] || ''].filter(function (d) { return ms(d) !== null; }).sort();
+      var review = cands[0];
+      if (!review) return;
+      var intake = [str(r.intakeDate), call[r.recordId] || ''].filter(function (d) { return ms(d) !== null && d <= review; }).sort()[0];
+      var g = intake ? 'with' : 'without', ap = str(r.approved);
+      if (ms(ap) === null) { open[g]++; return; }
+      var d = days(review, ap);
+      if (d === null || d < 0) return;                                  // approved before the review on record: not comparable
+      lists[g].push(d);
+      var y = years[review.slice(0, 4)] = years[review.slice(0, 4)] || { with: [], without: [] };
+      y[g].push(d);
+    });
+    return { with: spread(lists.with), without: spread(lists.without), open: open,
+      byYear: Object.keys(years).sort().map(function (y) { return { year: y, with: spread(years[y].with), without: spread(years[y].without) }; }) };
+  }
+
+  return { compute: compute, sessionOn: sessionOn, spread: spread, timeToApproval: timeToApproval };
 })();
 
 if (typeof module !== 'undefined') module.exports = ReviewStats;

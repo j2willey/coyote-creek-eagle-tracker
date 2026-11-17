@@ -86,3 +86,25 @@ describe('Perf (Timings tab)', () => {
     expect(Perf.summarize('', 'x')).toEqual([]);
   });
 });
+
+describe('ReviewStats.timeToApproval (2026-11-17)', () => {
+  it('days from the review to approval, with vs without a Pre-Review Call first, by year', () => {
+    const recs = [
+      { recordId: 'A', reviewDate: '2025-03-01', approved: '2025-03-01', intakeDate: '' },             // without, 0 days
+      { recordId: 'B', reviewDate: '2025-04-01', approved: '2025-05-01', intakeDate: '' },             // without, 30
+      { recordId: 'C', reviewDate: '2026-10-10', approved: '2026-10-12', intakeDate: '2026-10-01' },   // with, 2
+      { recordId: 'D', reviewDate: '2026-10-20', approved: '', intakeDate: '2026-10-05' },             // with, open
+      { recordId: 'E', reviewDate: '2026-10-25', approved: '2026-11-04', intakeDate: '2026-10-30' },   // call AFTER the review: without, 10
+      { recordId: 'F', reviewDate: '2026-11-10', approved: '2026-11-10', intakeDate: '' },             // schedule shows a call: with, 0
+      { recordId: 'G', reviewDate: '2026-11-12', approved: '2026-11-15', intakeDate: '' },             // tracking date overwritten by a 2nd review
+      { recordId: 'H', reviewDate: '', approved: '2026-01-01', intakeDate: '' }];                      // no review date: left out
+    const sessions = [{ key: 'I', type: 'Intake', recordId: 'F', ymd: '2026-11-01', who: ['AB'] },
+      { key: 'P', type: 'ESSPPR', recordId: 'G', ymd: '2026-11-01', who: ['CD'] }];                  // G's first review: 14 days
+    const t = RS.timeToApproval(recs, sessions);
+    expect(t.with).toMatchObject({ n: 2, min: 0, max: 2, avg: 1 });
+    expect(t.without).toMatchObject({ n: 4, min: 0, max: 30, avg: 13.5, median: 12 });
+    expect(t.open).toEqual({ with: 1, without: 0 });
+    expect(t.byYear.map(y => [y.year, y.with.n, y.without.n])).toEqual([['2025', 0, 2], ['2026', 2, 2]]);
+    expect(RS.timeToApproval([], [])).toMatchObject({ with: { n: 0 }, without: { n: 0 }, byYear: [] });
+  });
+});

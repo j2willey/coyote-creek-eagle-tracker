@@ -144,7 +144,19 @@
         A.byIntake.map(x => el('tr', {}, td(x.who), td(fi(x.scouts)), td(x.decided ? x.atFirst + ' of ' + x.decided : '–'), td(fi(x.decided))))) : el('p', { className: 'muted', textContent: 'No Pre-Review Calls on the schedule yet.' });
       const io = A.intakeOutcomes.length ? table(['Pre-Review Call outcomes', 'Ready for review', 'Changes needed', 'Not approved'],
         A.intakeOutcomes.map(x => el('tr', {}, td(x.who), td(fi(x.ready)), td(fi(x.changes)), td(fi(x.notApproved))))) : el('p', { className: 'muted', textContent: 'Pre-Review Call outcomes are recorded from 11/17/2026 on.' });
-      $('reviews').replaceChildren(main, el('div', { className: 'statgrid', style: 'margin-top:12px' }, el('div', {}, by), el('div', {}, io)),
+      // Time to approval, with vs without a Pre-Review Call (tracking-tab dates: years of history)
+      const T = rv.toApproval, nb = (v) => v == null ? '–' : String(v);
+      const trow = (label, x, openN) => el('tr', {}, td(label), td(fi(x.n)), td(nb(x.avg)), td(nb(x.median)), td(nb(x.min)), td(nb(x.max)), td(fi(openN)));
+      const tta = T ? el('div', { style: 'margin-top:12px' },
+        el('h3', { textContent: 'Days from Proposal Review to approval' }),
+        table(['', 'Approved', 'Average', 'Median', 'Min', 'Max', 'Still open'], [
+          trow('With a Pre-Review Call first', T.with, T.open.with), trow('Without a Pre-Review Call', T.without, T.open.without)]),
+        ...(T.byYear.length ? [table(['Year of the review', 'With: count', 'With: avg', 'With: median', 'Without: count', 'Without: avg', 'Without: median'],
+          T.byYear.map(y => el('tr', {}, td(y.year), td(fi(y.with.n)), td(nb(y.with.avg)), td(nb(y.with.median)), td(fi(y.without.n)), td(nb(y.without.avg)), td(nb(y.without.median)))))] : []),
+        el('p', { className: 'hint', textContent: 'From the tracking tab\'s dates (' + (rv.columns.review || 'no Proposal Review date column') + ', ' +
+          (rv.columns.intake || 'no Pre-Review date column') + ', Approved Date), so it reaches back as far as the sheet does; the review date is the earlier of that column and the ' +
+          'first Proposal Review on the schedule. Approved the same day = 0 days. Scouts already moved to the Eagle Archive tab are not included.' })) : '';
+      $('reviews').replaceChildren(main, tta, el('div', { className: 'statgrid', style: 'margin-top:12px' }, el('div', {}, by), el('div', {}, io)),
         el('p', { className: 'hint', textContent: 'Each Scout counts once, by the first Proposal Review on the schedule. Its outcome is the one recorded on the Review page ' +
           '(from 11/17/2026), otherwise inferred: Approved Date on the review day = approved at the review, later = approved later. Rates leave out Scouts still open. ' +
           '"Pre-Review Call by": the members on the Scout\'s last call before that review (both members of a pair count). Small numbers: read "4 of 6", not the percentage.' }));
