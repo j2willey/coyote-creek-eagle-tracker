@@ -196,6 +196,11 @@ function refreshActionDropdowns_() {
         : SheetModel.isSectionKey(keys[r]) ? sectionRule : ruleFor(null)]);
     }
     sh.getRange(first, m.map.action + 1, rules.length, 1).setDataValidations(rules);
+    // The Eagle Candidate column must never carry the Action rule (2026-11-17: on a copy of production it covered B:C,
+    // so writing a Scout's name was rejected with the Action help text). Clear any rule there.
+    if (m.map.scout_name !== undefined && m.map.scout_name !== m.map.action) {
+      sh.getRange(first, m.map.scout_name + 1, sh.getMaxRows() - first + 1, 1).clearDataValidations();
+    }
   }
   var rest = sh.getMaxRows() - Math.max(lastRow, first - 1);
   if (rest > 0) sh.getRange(Math.max(lastRow, first - 1) + 1, m.map.action + 1, rest, 1).setDataValidation(ruleFor(null));
