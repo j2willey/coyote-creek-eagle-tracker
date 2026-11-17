@@ -966,6 +966,8 @@ move it is*. It holds the time of the oldest Scout file submission no member has
   schedule; approved at that review vs later (days: median, avg, min–max), reviews per approval, Pre-Review Call →
   Proposal Review gap, results by who ran the Pre-Review Call (shown as "4 of 6"), Pre-Review Call outcomes by member.
   Outcomes come from `_Events` when recorded (from 2026-11-17), otherwise inferred from the Approved Date.
+  Days from Proposal Review to approval, with vs without a Pre-Review Call first, by month of the review (tracking-tab
+  review dates exist only from mid-2026, so the numbers are small).
   Sessions per member per type were already on the page (Committee sessions held).
 - **`Timings` tab**: every response carries `ms` (server time); the page sends the round trip of its previous request
   as `_perf`; samples collect in the script cache per hour and the hourly trigger writes one row per action: calls,
