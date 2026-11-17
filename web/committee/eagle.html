@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+  <meta name="robots" content="noindex">
+  <title>Eagle earned · Coyote Creek Eagle</title>
+  <link rel="stylesheet" href="/css/site.css">
+  <link rel="stylesheet" href="/css/committee.css">
+  <style>
+    /* The Eagle earned page (2026-11-17): made for a phone at the board. Big, plain, one thing at a time. */
+    .eg-boards { display: grid; gap: .5rem; margin: .6rem 0 1rem; }
+    .eg-board { display: block; width: 100%; text-align: left; padding: .7rem .9rem; border: 1px solid var(--line); border-radius: 10px;
+      background: var(--card); color: inherit; font: inherit; cursor: pointer; }
+    .eg-board.on { border: 2px solid var(--fg); }
+    .eg-board b { font-size: 1.1rem; }
+    .eg-who { font-size: 1.7rem; font-weight: 700; margin: .2rem 0 0; line-height: 1.2; }
+    .eg-unit { font-size: 1.2rem; margin: .1rem 0 .4rem; }
+    .eg-card { border: 2px solid var(--fg); border-radius: 12px; padding: .9rem 1rem; margin: .8rem 0; }
+    .eg-form label { display: block; margin-top: .8rem; font-weight: 600; }
+    .eg-form input[type=date], .eg-form textarea { width: 100%; max-width: 28rem; font-size: 1.05rem; }
+    .eg-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; align-items: center; }
+    .eg-actions button.primary { font-size: 1.1rem; padding: .7rem 1.2rem; }
+    .eg-done { border-left: 4px solid var(--ok); padding: .6rem .9rem; margin: .8rem 0; background: color-mix(in srgb, var(--ok) 8%, transparent); border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="brand" data-site-header data-committee></header><script src="/js/header.js"></script>
+    <div class="topbar">
+      <h1>Eagle earned</h1>
+      <nav id="cnav"></nav>
+    </div>
+    <p class="muted env-note" hidden></p>
+    <p id="msg" class="muted">Loading…</p>
+    <div id="app" hidden>
+      <div id="boardsBox"></div>
+      <div id="warnBox"></div>
+      <div id="scoutBox"></div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { api } from '/js/api.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    import { readBase64, sizeText } from '/js/files.js';
+    import { preparePhoto, MAX_PHOTOS } from '/js/photos.js';
+    const meLine = renderNav($('cnav'), 'home');
+    const params = new URLSearchParams(location.search);
+    let data = null;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const todayYmd = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+    const nice = (ymd) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || ''); return m ? `${+m[2]}/${+m[3]}/${m[1]}` : ''; };
+    const boardLine = (b) => [b.when, b.where].filter(Boolean).join(' · ');
+    const people = (b) => [b.district && b.district.length ? b.district.join(', ') : '', b.unitMembers && b.unitMembers.length ? 'unit: ' + b.unitMembers.join(', ') : ''].filter(Boolean).join(' · ');
+
+    function go(recordId) {
+      const u = new URL(location.href);
+      if (recordId) u.searchParams.set('r', recordId); else u.searchParams.delete('r');
+      u.searchParams.delete('pick');
+      history.replaceState(null, '', u);
+      load(recordId, true);
+    }
+
+    function boardButton(b, current) {
+      const btn = el('button', { type: 'button', className: 'eg-board' + (b.recordId === current ? ' on' : '') },
+        el('b', { textContent: b.scout }), ' (' + b.unit + ')', el('div', { className: 'muted', textContent: boardLine(b) }),
+        people(b) ? el('div', { className: 'hint', textContent: people(b) }) : '');
+      btn.onclick = () => go(b.recordId);
+      return btn;
+    }
+
+    function renderBoards() {
+      const d = data.decide, mine = data.mine, others = data.all.filter(b => !d.own.includes(b.recordId));
+      const box = $('boardsBox');
+      box.replaceChildren();
+      if (mine.length) {
+        box.append(el('h2', { textContent: mine.length > 1 ? 'Your boards' : 'Your board' }),
+          el('div', { className: 'eg-boards' }, ...mine.map(b => boardButton(b, d.recordId))));
+      } else if (d.mode === 'none') {
+        box.append(el('p', { textContent: 'You are not listed on a Board of Review yesterday or today. Pick the Scout on the dashboard, or below.' }));
+      }
+      if ((d.mode === 'none' || d.mode === 'choose') && others.length) {
+        box.append(el('details', { open: d.mode === 'none' }, el('summary', { textContent: 'Other boards yesterday and today (' + others.length + ')' }),
+          el('div', { className: 'eg-boards' }, ...others.map(b => boardButton(b, d.recordId)))));
+      }
+    }
+
+    function renderWarn() {
+      const d = data.decide, box = $('warnBox');
+      box.replaceChildren();
+      if (d.mode !== 'warn' || !data.scout) return;
+      const own = data.mine.map(b => b.scout + ' (' + b.unit + ')');
+      const sw = data.mine.map(b => { const x = el('button', { type: 'button', className: 'primary', textContent: 'Switch to ' + b.scout }); x.onclick = () => go(b.recordId); return x; });
+      const stay = el('button', { type: 'button', textContent: 'Continue with ' + data.scout.name });
+      stay.onclick = () => { box.replaceChildren(el('p', { className: 'hint', textContent: 'Continuing with ' + data.scout.name + '. Saving notes in the log that you are not listed on this board.' })); };
+      box.append(el('div', { className: 'warnbox' },
+        el('p', { style: 'margin:.2rem 0' }, el('strong', { textContent: 'Check the Scout. ' }),
+          'You are listed on ' + (own.length > 1 ? 'these boards: ' : 'the board for ') + own.join(', ') + '. You picked ',
+          el('strong', { textContent: data.scout.name + ' (' + data.scout.unit + ')' }), ', whose board you are not listed on.'),
+        el('div', { className: 'eg-actions' }, ...sw, stay)));
+    }
+
+    function renderScout() {
+      const sc = data.scout, box = $('scoutBox');
+      box.replaceChildren();
+      if (!sc) return;
+      const b = sc.board;
+      const card = el('section', { className: 'eg-card' },
+        el('p', { className: 'eg-who', textContent: sc.name }), el('p', { className: 'eg-unit', textContent: sc.unit + ' · ' + sc.stage }),
+        b ? el('p', { textContent: 'Board of Review ' + nice(b.ymd) + (b.time ? ' ' + b.time : '') }) : el('p', { className: 'muted', textContent: 'No Board of Review on the schedule.' }),
+        b && (b.district.length || b.unitMembers.length) ? el('p', { className: 'hint', textContent: 'Board: ' + people(b) }) : '',
+        sc.eagleNumber ? el('p', { className: 'hint', textContent: 'Announce: ' + sc.eagleNumber }) : '');
+      box.append(card);
+      if (sc.section === 'eagle_earned') {
+        box.append(el('div', { className: 'eg-done' }, el('p', { style: 'margin:0', textContent: sc.name + ' is already at Eagle Earned.' })));
+        if (sc.undo) box.append(undoBlock(sc.undo.until));
+        box.append(el('p', {}, el('a', { href: '/committee', textContent: '← Dashboard' })));
+        return;
+      }
+      if (sc.section !== 'ebor_booked') {
+        box.append(el('p', { className: 'err', textContent: sc.name + ' is at ' + sc.stage + ', not EBoR Booked: Eagle earned is not offered.' }),
+          el('p', {}, el('a', { href: '/committee', textContent: '← Dashboard' })));
+        return;
+      }
+      box.append(form(sc));
+    }
+
+    function form(sc) {
+      const a = data.action, sent = !!sc.councilSent;
+      const fileKinds = sent ? (a.filesSent || ['photo']) : (a.files || ['application', 'photo']);
+      const date = el('input', { type: 'date', max: todayYmd(), value: sc.board && sc.board.ymd <= todayYmd() ? sc.board.ymd : (sc.ebor && sc.ebor <= todayYmd() ? sc.ebor : todayYmd()) });
+      const note = el('textarea', { rows: 2, placeholder: 'Optional: goes into the Notes cell and the Scout\'s log' });
+      const app = fileKinds.includes('application') ? el('input', { type: 'file', accept: '.pdf,application/pdf' }) : null;
+      const photos = el('input', { type: 'file', accept: 'image/*,.heic,.heif', multiple: true });
+      const photoNote = el('p', { className: 'hint' });
+      photos.onchange = () => {
+        const n = photos.files.length;
+        photoNote.textContent = n ? n + ' photo' + (n > 1 ? 's' : '') + ', resized before upload' + (n > MAX_PHOTOS ? '. More than ' + MAX_PHOTOS + ': the committee group\'s copy may bounce (8 MB).' : '.') : '';
+      };
+      const warn = el('div', { className: 'warnbox', hidden: true });
+      const out = el('p', { role: 'status', className: 'muted' });
+      const save = el('button', { type: 'button', className: 'primary', textContent: 'Mark ' + sc.name.split(' ')[0] + ' Eagle earned' });
+      let confirmNext = false;
+      const reset = () => { confirmNext = false; warn.hidden = true; save.textContent = 'Mark ' + sc.name.split(' ')[0] + ' Eagle earned'; };
+      [date, note].forEach(x => x.addEventListener('input', reset));
+      save.onclick = async () => {
+        if (!date.value) { out.textContent = 'Pick the date of the Board of Review.'; out.className = 'err'; return; }
+        save.disabled = true; out.className = 'muted'; out.textContent = 'Saving… (this takes several seconds; please stay on this page)';
+        try {
+          const files = [];
+          if (app && app.files[0]) files.push({ kind: 'application', file: app.files[0] });
+          [...photos.files].forEach(f => files.push({ kind: 'photo', file: f }));
+          let r = await api('rowAction', { session, recordId: sc.recordId, kind: 'eagle_earned', date: date.value, note: note.value,
+            confirm: confirmNext, files: [...new Set(files.map(x => x.kind))] });
+          if (r.needsConfirm) {
+            warn.replaceChildren(el('strong', { textContent: 'Please check:' }), el('ul', {}, ...r.warnings.map(w => el('li', { textContent: w }))));
+            warn.hidden = false; confirmNext = true; save.textContent = 'Save anyway'; out.textContent = '';
+            return;
+          }
+          if (r.uploadToken) {
+            let i = 0;
+            for (const x of files) {
+              i++;
+              let name = x.file.name, data64;
+              if (x.kind === 'photo') {
+                out.textContent = `Preparing photo ${i} of ${files.length}…`;
+                const ph = await preparePhoto(x.file, date.value);
+                data64 = ph.base64; name = name.replace(/\.[^.]+$/, '') + '.jpg';
+              } else data64 = await readBase64(x.file);
+              out.textContent = `Uploading ${i} of ${files.length}: ${name}…`;
+              await api('uploadRowFile', { uploadToken: r.uploadToken, kind: x.kind, name, data: data64 });
+            }
+            out.textContent = 'Filing and drafting the emails…';
+            r = await api('rowFinish', { session, uploadToken: r.uploadToken });
+          }
+          try { localStorage.removeItem('ccacHome'); } catch {}
+          showDone(sc, r);
+        } catch (e) {
+          if (isSignedOut(e)) { needSignIn($('msg'), e.message); $('msg').hidden = false; $('app').hidden = true; return; }
+          out.textContent = e.message; out.className = 'err';
+        } finally { save.disabled = false; }
+      };
+      return el('div', { className: 'eg-form' },
+        el('p', { className: 'hint', textContent: sent ? (a.emailHintSent || a.emailHint) : a.emailHint }),
+        el('label', {}, 'Date of the Board of Review'), date,
+        app ? el('label', {}, 'Signed Eagle Scout Rank Application ', el('span', { className: 'opt', textContent: '(optional, PDF scan)' })) : '', app || '',
+        el('label', {}, 'EBoR photos ', el('span', { className: 'opt', textContent: '(optional)' })), photos, photoNote,
+        el('label', {}, 'Note ', el('span', { className: 'opt', textContent: '(optional)' })), note,
+        warn, el('div', { className: 'eg-actions' }, save, el('a', { href: '/committee', textContent: 'Cancel' })), out);
+    }
+
+    function undoBlock(until) {
+      const left = el('span', { className: 'hint' });
+      const btn = el('button', { type: 'button', textContent: 'Undo' });
+      const msg = el('p', { role: 'status', className: 'muted' });
+      const tick = () => {
+        const s = Math.max(0, Math.round((until - Date.now()) / 1000));
+        left.textContent = s ? ` Undo is possible for ${Math.floor(s / 60)}:${pad(s % 60)} more (back to EBoR Booked, Eagles to Date back, unsent drafts discarded).` : ' Undo is no longer possible.';
+        btn.disabled = !s;
+        if (!s) clearInterval(timer);
+      };
+      const timer = setInterval(tick, 1000); tick();
+      btn.onclick = async () => {
+        if (!confirm('Undo Eagle earned for ' + data.scout.name + '?')) return;
+        btn.disabled = true; msg.textContent = 'Undoing… (several seconds)';
+        try { const r = await api('eagleUndo', { session, recordId: data.scout.recordId }); clearInterval(timer); msg.textContent = r.message; msg.className = 'ok'; btn.hidden = true; left.hidden = true;
+          try { localStorage.removeItem('ccacHome'); } catch {} }
+        catch (e) { msg.textContent = e.message; msg.className = 'err'; btn.disabled = false; }
+      };
+      return el('div', {}, el('div', { className: 'eg-actions' }, btn, left), msg);
+    }
+
+    function showDone(sc, r) {
+      const box = $('scoutBox');
+      const links = (r.outboxIds || []).length
+        ? el('p', {}, el('a', { href: '/committee/outbox?id=' + encodeURIComponent(r.outboxIds[0]), textContent: 'Open the draft' + (r.outboxIds.length > 1 ? 's' : '') + ' in the Outbox →' }))
+        : '';
+      box.replaceChildren(
+        el('section', { className: 'eg-card' }, el('p', { className: 'eg-who', textContent: sc.name }), el('p', { className: 'eg-unit', textContent: sc.unit + ' · Eagle Earned' })),
+        el('div', { className: 'eg-done' }, el('p', { style: 'margin:0', textContent: r.message })),
+        r.undoUntil ? undoBlock(r.undoUntil) : '', links,
+        el('p', {}, el('a', { href: '/committee', textContent: '← Dashboard' })));
+      $('warnBox').replaceChildren();
+    }
+
+    async function load(recordId, quiet) {
+      if (!quiet) { $('msg').hidden = false; $('msg').textContent = 'Loading…'; }
+      try {
+        data = await api('eagleBoards', { session, ...(recordId ? { recordId } : {}) });
+        meLine.textContent = meText(data.me, data.testMode);
+        $('msg').hidden = true; $('app').hidden = false;
+        renderBoards(); renderWarn(); renderScout();
+        if (data.scout && data.decide.recordId && data.decide.recordId !== (params.get('r') || '')) {
+          const u = new URL(location.href); u.searchParams.set('r', data.decide.recordId); history.replaceState(null, '', u);
+        }
+      } catch (e) {
+        if (isSignedOut(e)) needSignIn($('msg'), e.message);
+        else { $('msg').hidden = false; $('msg').textContent = e.message; $('msg').className = 'err'; }
+      }
+    }
+
+    if (!session) needSignIn($('msg'));
+    else load(params.get('r') || '');
+  </script>
+</body>
+</html>

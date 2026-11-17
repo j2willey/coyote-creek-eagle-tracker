@@ -114,7 +114,11 @@
       actionButton({ label: 'Record outcomes', href: '/committee/review', icon: 'check', primary: true, count: 'review', id: 'recBtn',
         title: 'Record the outcome of a review that was held' }),
       actionButton({ label: 'Email open times', href: '/committee/schedule?ot=1', icon: 'mail',
-        title: 'Email the Scouts who are ready to book about the open times (on the Schedule page)' })]);
+        title: 'Email the Scouts who are ready to book about the open times (on the Schedule page)' }),
+      // Eagle earned page (2026-11-17): shown when a board was held yesterday or is today; your own boards come first there.
+      actionButton({ label: '🦅 Today\'s boards', href: '/committee/eagle', id: 'egBtn', title: 'Mark Eagle earned for a board held yesterday or today' })]);
+    $('egBtn').hidden = true;
+    const NARROW = () => window.matchMedia('(max-width: 700px)').matches;   // phones: Eagle earned opens its own page
     // Sort per tab, in this page only (each load starts in sheet order = order of arrival in the stage).
     const sorts = {};
     const SORT_OF = { Candidate: 'arrival', Unit: 'unit', Age: 'age', Approved: 'approved', EBoR: 'ebor', Session: 'session' };
@@ -491,6 +495,7 @@
         sel.value = '';
         if (!a) return;
         if (a.page) { location.href = a.page + '?r=' + encodeURIComponent(r.recordId) + (a.pageQuery ? '&' + a.pageQuery : ''); return; }
+        if (a.key === 'eagle_earned' && NARROW()) { location.href = '/committee/eagle?r=' + encodeURIComponent(r.recordId); return; }
         openAction(r, g, a);
       };
       return [sel];
@@ -617,6 +622,16 @@
 
     function show(d, stale) {
       data = d;
+      // "Today's boards": an EBoR Booked row whose board is yesterday or today
+      {
+        const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+        const from = t0.getTime() - 86400000, to = t0.getTime() + 86400000;
+        const ymd = (ms) => { const x = new Date(ms); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+        const days = [ymd(from), ymd(t0.getTime())];
+        const any = (d.tabs || []).some(t => t.groups.some(g => g.key === 'ebor_booked' && g.rows.some(r =>
+          days.includes(r.ebor) || (r.session && r.session.start >= from && r.session.start < to))));
+        $('egBtn').hidden = !any;
+      }
       const c = d.counts;
       meLine.textContent = meText(d.me, d.testMode) + (stale ? ' · refreshing…' : '');
       setReviewCount(c.toApprove + (c.signing || 0));

@@ -588,7 +588,24 @@ reviews first) and records **Approved**, **Revisions requested** or **Not approv
   email is drafted as above. Otherwise tick More signatures again for a third signer. **Finish with the signatures we
   have** drafts the approval email with the copy on file. The digest lists signatures waiting `signingNudgeDays` (3).
 
-### EBoR paperwork page (`/committee/ebor-paperwork`, `lib/eborPaperwork.js`, `eborPaperworkActions.js`, `web/js/pdfPaperwork*.js`)
+### Eagle earned page (`/committee/eagle`, `lib/eagleBoards.js`, `eagleEarnedActions.js`; Jim W., 2026-11-17)
+
+"Eagle earned…" made for a phone at the board. On narrow screens (≤ 700 px) the dashboard action opens this page
+instead of the dialog; the dashboard's **🦅 Today's boards** button (shown when an EBoR Booked row's board is yesterday
+or today) opens it on any screen. The same save path as the dialog (`rowAction` / `uploadRowFile` / `rowFinish`).
+
+- **The member's own boards first:** EBoR slots from yesterday through today whose reps include the member's initials.
+  One board: it opens straight away; several: pick one. The Scout's name, unit, board time and board members are shown
+  large, so the right Scout is easy to confirm.
+- **A different Scout is never a silent redirect:** picking a Scout whose board the member is not listed on shows a
+  warning with **Switch to <own board's Scout>** and **Continue with <picked Scout>**. Continuing is allowed (an Admin,
+  a fill-in, two boards of one unit in an evening); the log notes that the member was not listed on that board.
+- **Undo for 10 minutes** (`eagleUndo`; the member who saved or an Admin): back to EBoR Booked, EBoR date as it was and
+  unpainted, Eagles to Date back where it still shows the number given (`unbumpEagleCounts_`), `_eagle_no` cleared,
+  unsent drafts discarded (a sent one is reported). Files already saved in the folder stay. The undo ticket lives in the
+  script cache (`eu:<recordId>`).
+
+, `lib/eborPaperwork.js`, `eborPaperworkActions.js`, `web/js/pdfPaperwork*.js`)
 
 For the Board of Review itself, on one device passed around the room. Pick a Scout at EBoR Booked or Paused (the next
 board on the schedule is preselected; the board's date can be changed on the page). One document (the **Advancement

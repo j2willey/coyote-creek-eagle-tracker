@@ -313,9 +313,20 @@ function rowExecute_(c, ck, req, uploads) {
       subject: plain.subject, body: plain.body,
       onSent: a.onSent && cols[a.onSent] ? { column: cols[a.onSent], label: StageActions.COLUMNS[a.onSent].label } : null }));
   }
+  // Eagle earned page (2026-11-17): Undo for a few minutes; a member not listed on the board is named in the log.
+  var undoUntil = 0;
+  if (a.key === 'eagle_earned') {
+    rememberEagleUndo_(rec.recordId, { by: c.email, at: Date.now(), nums: eagleNums, outboxIds: outboxIds.slice(),
+      prevEbor: ck.dates.ebor || '', ebor: p.set.ebor || ck.dates.ebor || '' });
+    undoUntil = Date.now() + EagleBoards.UNDO_MINUTES * 60000;
+    var slotNow = lastEborSlot_(rec.recordId);
+    if (slotNow && !EagleBoards.onBoard(Booking.splitWho(slotNow.reps), c.me.initials)) {
+      addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [' + by + '] Note: Eagle earned was marked by a member not listed on this board.');
+    }
+  }
   if (outboxIds.length) msg += ' ' + (outboxIds.length === 1 ? 'The email is' : outboxIds.length + ' emails are') + ' ready in the Outbox.';
   if (notes.length) msg += ' (' + notes.join('; ') + ')';
-  return { message: msg, outboxId: outboxIds[0] || '', outboxIds: outboxIds };
+  return { message: msg, outboxId: outboxIds[0] || '', outboxIds: outboxIds, undoUntil: undoUntil };
 }
 
 /** Keep the note the family was sent, for their page (hidden _request column; see ScoutFiles.requestFor). */

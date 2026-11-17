@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.80.1';
+var API_VERSION = '0.81.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -41,6 +41,8 @@ var ACTIONS_ = {
   // EBoR: Unit Contacts (unitActions.js)
   unitEbors: function (req) { return actionUnitEbors_(req); },
   saveBoard: function (req) { return actionSaveBoard_(req); },
+  eagleBoards: function (req) { return actionEagleBoards_(req); },
+  eagleUndo: function (req) { return actionEagleUndo_(req); },
   unitCalendar: function (req) { return actionUnitCalendar_(req); },
   saveCc: function (req) { return actionSaveCc_(req); },
   // Committee schedule page (committeeActions.js)

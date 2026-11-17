@@ -75,3 +75,34 @@ function eaglesThisYear_() {
   var recs = Records.all(['unit', eCol].filter(String)).map(function (r) { return { section: r.section, unit: r.unit, ebor: eCol ? (Intake.dateKey(r[eCol]) || '') : '' }; });
   return EagleCount.yearCounts(recs, todayYmd_().slice(0, 4));
 }
+
+/**
+ * Undo of "Eagle earned" (eagleEarnedActions.js): Eagles to Date back to what it was, for each unit that still shows the
+ * number Eagle earned gave it (EagleBoards.unbump). nums: [{code, n, was}]. -> [{code, from, to}] (logged per unit).
+ */
+function unbumpEagleCounts_(rec, nums, by) {
+  if (!(nums || []).length) return [];
+  var done = withLock_(function () {
+    var head = ensureUnitInfoColumns_();
+    var col = UnitDirectory.actualColumn(head, 'Eagles to Date');
+    var ci = head.indexOf(col) + 1;
+    if (!ci) return [];
+    var sh = SpreadsheetApp.getActive().getSheetByName(UNIT_INFO_TAB);
+    var rows = unitInfoDisplayRows_();
+    var current = {}, rowOf = {};
+    rows.forEach(function (r) { var c = Units.code(r['Unit']); if (c) { current[c] = EagleCount.parseCount(UnitDirectory.cell(r, 'Eagles to Date')); rowOf[c] = r; } });
+    var plan = EagleBoards.unbump(nums, current);
+    plan.forEach(function (x) {
+      var r = rowOf[x.code];
+      sh.getRange(r._row, ci).setNumberFormat('@').setValue(String(x.to));
+      var upd = {};
+      upd[UnitDirectory.actualColumn(head, 'Last Updated')] = new Date();
+      upd[UnitDirectory.actualColumn(head, 'Updated By')] = by + ' (Eagle earned undone)';
+      Tabs.update(UNIT_INFO_TAB, r._row, upd);
+    });
+    return plan;
+  });
+  done.forEach(function (x) { unitLog_(x.code, 'Eagles to Date ' + x.from + ' → ' + x.to + ' (' + String(rec.fields.scout_name || '') + ': Eagle earned undone)', by); });
+  if (done.length) uncache_(['c:units']);
+  return done;
+}
