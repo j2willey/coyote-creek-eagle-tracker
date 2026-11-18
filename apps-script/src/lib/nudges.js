@@ -99,7 +99,7 @@ var Nudges = (function () {
     var age = function (d) { return d === 0 ? 'today' : d === 1 ? '1 day' : d + ' days'; };
     var g = [
       { title: 'New files to check', items: (a.files || []).map(function (w) { return w.title + ', waiting ' + age(w.days); }) },
-      { title: 'Council applications to check (tick Checked on the Council Applications tab when done)',
+      { title: 'Council emails to check (tick Checked on the Council Applications / Council Verified tab when done)',
         items: (a.councilApps || []).map(function (x) { return x.title + ': ' + x.why; }) },
       { title: 'Proposal signatures waiting (Record outcomes page: add a signature, or finish with the signatures there are)',
         items: (a.signing || []).map(function (x) { return x.title + ': waiting on ' + x.waiting + ', ' + age(x.days); }) },

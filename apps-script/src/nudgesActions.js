@@ -174,7 +174,7 @@ function digestAwaiting_() {
     return AdminRules.intakeExceptions(Tabs.read(QUEUE_TAB), now).filter(function (x) { return x.why.indexOf('Waiting for the family') !== 0; })
       .map(function (x) { return { title: (x.scout || x.queueId) + (x.unit ? ' (' + x.unit + ')' : ''), why: x.why }; });
   });
-  part('councilApps', function () { return councilAppsToCheck_(); });
+  part('councilApps', function () { return councilAppsToCheck_().concat(councilVerifiedToCheck_()); });   // Formsite + Ready for EBOR
   part('signing', function () {                              // Proposal signatures in progress, waiting too long
     return ProposalOutcome.signingOverdue(reviewRecords_().filter(function (r) { return r.section === 'proposal_approved'; }).map(function (r) {
       return { title: byId[r.recordId] ? title(byId[r.recordId]) : String(r.scout_name || ''), signing: r.signing };

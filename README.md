@@ -121,6 +121,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     scheduleCheck.js      schedule sheet vs tracking dates (transition helper)
     anonymize.js          staging playground: fake Scouts, scrubbing names/emails/phones
     councilApp.js         Council Formsite Eagle application emails: which Scout (graded match), which file is which, names
+    councilVerified.js    Council "Ready for EBOR" emails: subject → Scout, OCR → which file is which, Verified Application name, archive
     eagleCount.js         Eagles to Date per unit: the number to announce, "+1" on Eagle earned, {eagleNumberLine}
   src/*.js                thin adapters over SpreadsheetApp / DriveApp / MailApp / Calendar / Docs / LockService
     router.js             doPost → actions (sign-in, intake, update, booking, units, committee, Outbox); timing log
@@ -162,6 +163,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     folders.js            cutover: folder report + apply, mock folders
     anonymizeStaging.js   Admin → Anonymize this STAGING sheet
     councilAppActions.js  hourly: file Council Formsite application emails into Scout folders; Council Applications tab
+    councilVerifiedActions.js  hourly: file Council "Ready for EBOR" emails (Verified Application); Council Verified tab; OCR
     eagleCountActions.js  Unit Info → Eagles to Date (unit page / Units page edits; +1 on Eagle earned)
     tabs.js settings.js mail.js menu.js setup.js
   src/tools/              migrate.js, fakeSchedule.js
@@ -300,6 +302,7 @@ The production cutover steps (folders, logs, Unit Info highlight, protections) a
 | `signingNudgeDays` | 3 | Proposal signatures in progress: listed in the digest after this many days waiting on a signer |
 | `signatureDays` | 14 | EBoR paperwork signed outside the room: each signer's request stays open this many days |
 | `councilAppFrom` | (blank = off) | Council Formsite application emails filed into Scout folders from this date |
+| `councilVerifiedFrom` | (blank = off) | Council "Ready for EBOR" emails (Verified Application) filed into Scout folders from this date |
 | `eborReminderDays`, `dayOfContact` | 3, | EBoR reminders drafted this many days before; "Running late?" line |
 | `councilAckDays`, `svmbcReceivedMark`, `councilEaglesEmail` | 7, `*`, (blank) | Waiting on Council; Council Eagle Services address (Self-check flags it when empty) |
 | `eborDoneColor`, `exceptionsFolder`, `unitPipeline` | #93c47d, Exceptions, TRUE | Eagle earned paint; folder; unit page candidate list |
@@ -465,6 +468,36 @@ When a Scout submits the Eagle application on the Council's Formsite form, Forms
   Filed and No match are archived (out of the inbox, under their label); Error stays in the inbox.
 - **Off until** Settings `councilAppFrom` = a date (YYYY-MM-DD): only emails from that day on.
 - Needs the `https://mail.google.com/` scope (Apps Script's Gmail service): cc-advancement approves it once.
+
+### Council "Ready for EBOR" emails (`lib/councilVerified.js`, `councilVerifiedActions.js`)
+
+After Council verifies an Eagle application, a Council staff member emails cc-advancement from their own address,
+subject `<Scout name>, <Unit>, Ready for EBOR`, with the **Verified Eagle Application** (the submitted application
+plus Council's verification signature) and sometimes corrected documents. The sender varies, so only the subject is
+used (`Fwd:` / `Re:` prefixes are fine). The hourly trigger, right after the Formsite emails (and Admin menu →
+**Council verified: file new "Ready for EBOR" emails now**), files them:
+- **Which Scout:** the subject's name and unit through the same graded match as Formsite (`CouncilApp.matchRecord`):
+  **Matched** = same first and last name in the unit; anything looser is **Check**.
+- **Which file is which:** one attachment = the Verified Application. Several: each is OCR'd (Drive converts a copy to a
+  Google Doc, read, deleted; the **Drive advanced service v3**) and recognised by its first page: Eagle Scout Rank
+  Application, project workbook, statement of ambitions, letter of recommendation. Exactly one application = the
+  Verified one; anything not recognised (or two applications) is **to identify**. Small images (signature logos) are skipped.
+- **Files, at the top of the Scout's folder:** `<Name>-<Unit>_EagleApplication-Verified.pdf` (the only one with
+  "verified" in its name, so the EBoR paperwork page picks it), `_Council-Workbook`, `_Council-Statement`,
+  `_Council-Reference`, `_Council-Doc-01…` (not recognised), plus `_Council-ReadyForEBoR-Email.pdf` (what Council wrote).
+- **Archive/:** when a Verified Application was identified, the application as submitted (`-Application_RankApplication`)
+  and any earlier `_EagleApplication-Verified`; always an earlier file with the same name as a new one.
+- **Promotion:** only a Matched Scout in Application Submitted (or Proposal Approved) moves to **Application Verified**,
+  through the "Application verified…" row action as "Council" (date = the email's; the EBoR next-steps email is drafted
+  into the Outbox). Matched and already at/after Application Verified: nothing moves. A close match in an earlier stage is
+  **Stage?**; **Check** never moves.
+- **No match:** files + email PDF go to the intake folder → `Council verified (no match)/<date> <name> (<unit>)`.
+- **Council Verified tab:** one row per email (Received, Subject, name/unit on the email, Match, Scout, How, Files,
+  **To identify**, Folder, Email link, **Checked**, Stage). Anything not Matched, or with files to identify, is in the
+  digest's Awaiting action ("Council emails to check") and shows a red **Council** tag on the dashboard row until a
+  member ticks **Checked** (to identify a file: rename it in the folder, then tick Checked).
+- **Once per email:** the same Gmail labels as Formsite (`Eagle Tracker/Filed`, `…/No match`, `…/Error`).
+- **Off until** Settings `councilVerifiedFrom` = a date (YYYY-MM-DD).
 
 ### Emails with attachments
 

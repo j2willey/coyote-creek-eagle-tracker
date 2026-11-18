@@ -213,9 +213,9 @@
                   (r.closed.from ? '\nWas in: ' + r.closed.from : '') + '\n\nReopen is in the Action menu.' }), ' '] : []),
               ...(r.closeWhy ? [el('span', { className: 'tag closeq', textContent: 'Close?',
                 title: r.closeWhy + '\n\nAction menu: Close record…, or Keep open to hide this for a while.' }), ' '] : []),
-              ...(r.formsite ? [el(r.formsite.folder ? 'a' : 'span', { className: 'tag formsite', textContent: 'Formsite',
+              ...(r.formsite ? [el(r.formsite.folder ? 'a' : 'span', { className: 'tag formsite', textContent: r.formsite.label || 'Formsite',
                 ...(r.formsite.folder ? { href: r.formsite.folder, target: '_blank', rel: 'noopener' } : {}),
-                title: r.formsite.why + '\n\nClick: open the Scout\'s folder. When sorted out, tick Checked on the Council Applications tab.' }), ' '] : []),
+                title: r.formsite.why + '\n\nClick: open the Scout\'s folder. When sorted out, tick Checked on the ' + (r.formsite.tab || 'Council Applications') + ' tab.' }), ' '] : []),
               ...(r.boardState ? [el(r.session ? 'a' : 'span', { className: 'tag board-' + r.boardState, ...(r.session ? { href: sessionHref(r.session.key) } : {}),
                 textContent: 'Board ' + r.boardSize + (r.boardState === 'short' ? '/3' : r.boardState === 'ok' ? '/6' : ''),
                 title: (r.boardState === 'short' ? 'Only ' + r.boardSize + ' on the board (district/council members on the slot + Unit Board Members). An Eagle Board of Review needs at least 3.'

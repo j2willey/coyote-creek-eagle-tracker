@@ -76,7 +76,7 @@ var SettingsView = (function () {
       ['webOrigin', ''], ['trackingTab', ''], ['scheduleSheetId', ''], ['scheduleTab', ''], ['calendarId', ''],
       ['templatesDocId', ''], ['templatesCatalogId', ''], ['intakeFolderId', ''], ['scoutsFolderId', ''], ['inProgressFolder', ''],
       ['folderReportFolders', ''], ['exceptionsFolder', ''], ['closedFolder', ''], ['formTemplatesFolderId', ''], ['stampsFolderId', ''],
-      ['eagleArchiveTab', ''], ['councilAppFrom', ''], ['councilDomain', ''], ['allowProduction', ''],
+      ['eagleArchiveTab', ''], ['councilAppFrom', ''], ['councilVerifiedFrom', ''], ['councilDomain', ''], ['allowProduction', ''],
       ['eborDoneColor', ''], ['svmbcReceivedMark', ''], ['eborSignupUrl', ''], ['reviewSignupUrl', ''],
       ['eborDateColumn', ''], ['eborWhoColumn', ''], ['proposalReviewDateColumn', ''], ['proposalReviewWhoColumn', ''],
       ['preReviewDateColumn', ''], ['preReviewWhoColumn', ''], ['approvedDateColumn', ''], ['appSubmittedColumn', ''],

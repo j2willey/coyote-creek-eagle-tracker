@@ -261,6 +261,9 @@ The name a Scout goes by when it differs from the legal name (Theodore Sample â†
 **Council application**:
 A Scout's Eagle Application as submitted on Council's Formsite form. The tool files the email's answers and uploads into the Scout's folder, records the match (Matched / Check / Stage? / No match) on the Council Applications tab, and moves a matched Scout from Proposal Approved to Application Submitted.
 
+**Verified Application**:
+The Eagle Application after Council has checked it: the submitted application plus Council's verification signature, emailed to the committee as "<Scout>, <Unit>, Ready for EBOR". The tool files it as `_EagleApplication-Verified`, archives the application as submitted, records the email on the Council Verified tab and moves a matched Scout from Application Submitted to Application Verified. It is the document the Eagle Board of Review signs.
+
 **Open-times email**:
 One email To all the Scouts ready to book a session type, Cc their parents and the committee, listing the open times. Sent after the committee adds sessions.
 

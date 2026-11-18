@@ -61,6 +61,7 @@ var SettingsModel = (function () {
     congratsDays: 30,             // "Send congratulations…" on Eagle Earned rows whose EBoR date is at most this many days ago (lib/board.js)
     unitPipeline: true,           // unit page: read-only list of the unit's Eagle candidates (stage, age); FALSE hides it
     councilAppFrom: '',           // Council Formsite application emails filed into Scout folders from this date (YYYY-MM-DD); blank = off
+    councilVerifiedFrom: '',      // Council "Ready for EBOR" emails (Verified Application) filed from this date (YYYY-MM-DD); blank = off
     pleaseBookDays: 'Intake 7,14; ESSPPR 7,14; EBoR 7',   // "Please book" reminders: days in the To Book stage per session type; a type with no days = none
     signingNudgeDays: 3,          // Proposal signatures in progress: listed in the digest after this many days waiting on a signer
     signatureDays: 14,            // EBoR paperwork signed outside the room: a signer's request is open this many days (lib/signatures.js)

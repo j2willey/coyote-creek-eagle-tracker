@@ -41,6 +41,7 @@ function digestHourly() {
   try { runReminders_(); } catch (e) { console.error('runReminders_: ' + (e && e.stack || e)); }    // EBoR reminder (4.3.c)
   try { runNudges_(); } catch (e) { console.error('runNudges_: ' + (e && e.stack || e)); }          // 4.1.h, 6.2.b, 6.2.c
   try { runCouncilApps_(); } catch (e) { console.error('runCouncilApps_: ' + (e && e.stack || e)); }  // Formsite → Scout folder
+  try { runCouncilVerified_(); } catch (e) { console.error('runCouncilVerified_: ' + (e && e.stack || e)); }  // Ready for EBOR → Scout folder
   try { healthCheck_(); } catch (e) { console.error('healthCheck_: ' + (e && e.stack || e)); }      // 6.9.e
   try { flushPerf_(); } catch (e) { console.error('flushPerf_: ' + (e && e.stack || e)); }          // Timings tab
 }

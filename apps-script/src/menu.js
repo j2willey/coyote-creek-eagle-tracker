@@ -47,6 +47,7 @@ function onOpen() {
       .addItem('Sort EBoR Booked by EBoR date', 'menuSortEborBooked')
       .addItem('Council applications: file new Formsite emails now', 'menuCouncilApps')
       .addItem('Council applications: fetch linked files (earlier emails)', 'menuCouncilFetchLinks')
+      .addItem('Council verified: file new "Ready for EBOR" emails now', 'menuCouncilVerified')
       .addSeparator()
       .addItem('Unit contacts: import Key 3', 'menuImportKey3'))
     .addToUi();
