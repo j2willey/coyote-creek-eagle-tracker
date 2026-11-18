@@ -77,4 +77,22 @@ describe('Eagle earned page: boards, warning, undo', () => {
     expect(log.notes[0]).toMatch(/\[AB\] Eagle earned undone/);
     expect(call({ action: 'eagleUndo', session: 'AB', recordId: 'R-5' }).error).toMatch(/10 minutes/);   // once only
   });
+
+  it('the Verified Application for the photo: the Scout\'s own; a blank stands in on STAGING only', () => {
+    const file = (id, name) => ({ getName: () => name, getSize: () => 10, getBlob: () => ({ getBytes: () => [37, 80, 68, 70] }) });
+    const files = { V1: file('V1', 'Verified Eagle Application.pdf'), B1: file('B1', 'Blank Eagle Application.pdf') };
+    let sheetName = 'STAGING Tracker', folderFiles = [];
+    Object.assign(ctx, {
+      folderForRecord_: () => ({}), paperworkFiles_: () => folderFiles,
+      formTemplateFiles_: () => [{ id: 'B1', name: 'Blank Eagle Application.pdf', mime: 'application/pdf', modified: 1 }],
+      DriveApp: { getFileById: id => files[id] }, SpreadsheetApp: { getActive: () => ({ getName: () => sheetName }) },
+      Utilities: { formatDate: fmt, base64Encode: b => Buffer.from(b).toString('base64') }
+    });
+    folderFiles = [{ id: 'V1', name: 'Verified Eagle Application.pdf', mime: 'application/pdf', modified: 5 }];
+    expect(call({ action: 'eagleVerifiedPdf', session: 'AB', recordId: 'R-5' })).toMatchObject({ name: 'Verified Eagle Application.pdf', stand_in: false });
+    folderFiles = [];
+    expect(call({ action: 'eagleVerifiedPdf', session: 'AB', recordId: 'R-5' })).toMatchObject({ name: 'Blank Eagle Application.pdf', stand_in: true });
+    sheetName = 'Coyote_Creek_Life_to_Eagle_Tracker';                  // production: never a blank
+    expect(call({ action: 'eagleVerifiedPdf', session: 'AB', recordId: 'R-5' }).error).toMatch(/No Verified Application/);
+  });
 });

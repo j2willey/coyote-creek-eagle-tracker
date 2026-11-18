@@ -43,6 +43,7 @@ var ACTIONS_ = {
   saveBoard: function (req) { return actionSaveBoard_(req); },
   eagleBoards: function (req) { return actionEagleBoards_(req); },
   eagleUndo: function (req) { return actionEagleUndo_(req); },
+  eagleVerifiedPdf: function (req) { return actionEagleVerifiedPdf_(req); },
   unitCalendar: function (req) { return actionUnitCalendar_(req); },
   saveCc: function (req) { return actionSaveCc_(req); },
   // Committee schedule page (committeeActions.js)

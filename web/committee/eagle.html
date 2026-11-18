@@ -167,9 +167,7 @@
       const toBytes = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
       async function buildFromPhoto(edit) {
         ppMsg.textContent = 'Getting the Verified Application from the Scout\'s folder…';
-        const sp = await api('eborPaperworkScout', { session, recordId: sc.recordId });
-        if (!sp.verifiedId) throw new Error('No Verified Application in the Scout\'s folder (a PDF with "verified" in its name). Upload the signed PDF instead.');
-        const vf = await api('fetchScoutFile', { session, recordId: sc.recordId, fileId: sp.verifiedId });
+        const vf = await api('eagleVerifiedPdf', { session, recordId: sc.recordId });
         const vbytes = toBytes(vf.data);
         const { PDFLib, pdfjsLib } = await ensurePdfLibs();
         ppMsg.textContent = 'Finding Requirement 7…';
@@ -195,6 +193,7 @@
           ppReady.replaceChildren(el('div', { className: 'pp-ready' }, el('img', { src: img.dataUrl, alt: 'The signed page' }),
             el('div', {}, el('div', {}, 'Ready: ', el('b', { textContent: vf.name || 'Verified Application' }), ' with ', sel, ' replaced by the photo (' + sizeText(photoApp.size) + ').'),
               el('div', { className: 'hint', textContent: r7.how === 'text' ? 'Requirement 7 was found on page ' + (r7.index + 1) + '.' : 'Requirement 7 text not found (a scan?): check the page number.' }),
+              vf.stand_in ? el('div', { className: 'hint err', textContent: 'Staging: no Verified Application in this Scout\'s folder, so the blank form from Form Templates stands in.' }) : '',
               el('div', { className: 'eg-actions' }, remove))));
           ppMsg.textContent = '';
         };

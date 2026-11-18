@@ -7,6 +7,7 @@
  * Router actions:
  *   eagleBoards {session, recordId?}  -> {me, today, mine: [board], all: [board], decide: {mode, recordId, own}, scout, action}
  *   eagleUndo   {session, recordId}   -> {message}
+ *   eagleVerifiedPdf {session, recordId} -> {name, data, stand_in}   for "Photo of the signed page" (staging: a blank stands in)
  */
 var EAGLE_UNDO_PREFIX = 'eu:';
 
@@ -123,4 +124,28 @@ function actionEagleUndo_(req) {
   addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [' + by + '] Eagle earned undone' + (notes.length ? ': ' + notes.join('; ') : '') + '.');
   return { message: String(rec.fields.scout_name || '') + ' is back at EBoR Booked.' + (notes.length ? ' ' + notes.join('; ') + '.' : '') +
     ' Files already saved in the folder stay there.' };
+}
+
+/**
+ * The Verified Application for "Photo of the signed page" (step 2): the newest "verified" PDF in the Scout's folder.
+ * On a STAGING / Test Copy sheet only, when the folder has none, the blank Eagle Application from the Form Templates
+ * folder stands in (Jim W., 2026-11-17: staging Scouts have no Council scans). Never on production: a signed blank form
+ * would go to Council. -> {name, data (base64), stand_in}
+ */
+function actionEagleVerifiedPdf_(req) {
+  committeeMe_(req.session);
+  var rec = Records.get(String(req.recordId || ''));
+  if (!rec) throw userError_('That Scout is no longer on the tracking tab. Reload the page.');
+  var folder = folderForRecord_(rec, false);
+  var files = folder ? paperworkFiles_(folder) : [];
+  var v = EborPaperwork.pickVerified(files), standIn = false, file = null;
+  if (v) file = DriveApp.getFileById(v.id);
+  else if (SheetKind.isNonProduction(SpreadsheetApp.getActive().getName())) {
+    var blank = FormTemplates.pickApplication(formTemplateFiles_());
+    if (blank) { file = DriveApp.getFileById(blank.id); standIn = true; }
+  }
+  if (!file) throw userError_('No Verified Application in ' + String(rec.fields.scout_name || 'the Scout') + '\'s folder (a PDF with "verified" in its name). Upload the signed PDF instead.');
+  var maxMB = Number(getSettings_().maxUploadMB) || 20;
+  if ((Number(file.getSize()) || 0) > maxMB * 1048576) throw userError_(file.getName() + ' is over the ' + maxMB + ' MB limit.');
+  return { name: String(file.getName() || 'Verified Eagle Application.pdf'), data: Utilities.base64Encode(file.getBlob().getBytes()), stand_in: standIn };
 }
