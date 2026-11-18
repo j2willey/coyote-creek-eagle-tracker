@@ -23,7 +23,7 @@
     <section id="mySess" class="mysess" style="max-width:40rem" hidden>
       <h2 id="mySessHead">Your sessions (yesterday and today)</h2>
       <div id="mySessList" class="tonight"></div>
-      <p class="hint">Another Eagle Board of Review from yesterday or today? <a href="/committee/eagle">Today's boards →</a></p>
+      <p class="hint"><span id="mySessAsk">An Eagle Board of Review from yesterday or today?</span> <a href="/committee/eagle">Today's boards →</a></p>
     </section>
     <form id="form" class="card" style="max-width:40rem" hidden>
       <p class="hint">After a Proposal Review: record the outcome. Approved = upload the Proposal you signed (PDF). The tool renames it
@@ -356,6 +356,7 @@
       const mine = data.mine || [];
       $('mySessList').replaceChildren(...sessionLinks(mine));
       $('mySessHead').hidden = $('mySessList').hidden = !mine.length;
+      if (mine.length) $('mySessAsk').textContent = 'Another Eagle Board of Review from yesterday or today?';
       $('mySess').hidden = false;
       const go = !want && isPhone() ? openSessionHref(mine) : '';
       if (go && !go.startsWith('/committee/review')) { location.replace(go); return; }
