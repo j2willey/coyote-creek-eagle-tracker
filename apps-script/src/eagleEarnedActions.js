@@ -11,8 +11,12 @@
  */
 var EAGLE_UNDO_PREFIX = 'eu:';
 
-/** EBoR slots (with a Scout) from yesterday through today, with what the page shows about each. */
-function eagleWindowBoards_(today) {
+/**
+ * Booked slots (with a Scout) from yesterday through today, with what the page shows about each. types: slot type codes
+ * (default EBoR only; My sessions adds Proposal Reviews).
+ */
+function eagleWindowBoards_(today, types) {
+  types = types || ['EBoR'];
   var tz = Session.getScriptTimeZone();
   var yesterday = Utilities.formatDate(new Date(new Date(today + 'T12:00:00').getTime() - 86400000), tz, 'yyyy-MM-dd');
   var committee = [];
@@ -20,7 +24,8 @@ function eagleWindowBoards_(today) {
   var out = [];
   readSchedule_().rows.forEach(function (r) {
     var id = String(r.record_id || '').trim();
-    if (!id || Booking.typeCode(r.slot_type) !== 'EBoR') return;
+    var type = Booking.typeCode(r.slot_type);
+    if (!id || types.indexOf(type) < 0) return;
     var start = Booking.slotStart(r.date, r.time);
     if (isNaN(start)) return;
     var ymd = Utilities.formatDate(new Date(start), tz, 'yyyy-MM-dd');
@@ -28,7 +33,7 @@ function eagleWindowBoards_(today) {
     var rec = Records.get(id);
     if (!rec) return;
     var reps = Booking.splitWho(r.reps);
-    out.push({ key: String(r._key || ''), recordId: id, ymd: ymd, start: start, reps: reps,
+    out.push({ key: String(r._key || ''), recordId: id, type: type, ymd: ymd, start: start, reps: reps,
       when: Utilities.formatDate(new Date(start), tz, ymd === today ? "'Today' h:mm a" : "EEE M/d h:mm a"),
       where: String(r.location || r.place || '').trim(),
       scout: EagleDone.display(rec.fields.scout_name, rec.fields.preferred_name), unit: String(rec.fields.unit || ''),
@@ -36,6 +41,12 @@ function eagleWindowBoards_(today) {
       unitMembers: Units.parseBoard(r.board_members).map(function (m) { return m.name; }).filter(String) });
   });
   return out.sort(function (a, b) { return a.start - b.start; });
+}
+
+/** My sessions (2026-11-17): the member's EBoRs and Proposal Reviews yesterday and today, for a phone. [] on any trouble. */
+function mySessions_(c, today) {
+  try { return MySessions.list(eagleWindowBoards_(today, MySessions.TYPES), c.me.initials); }
+  catch (e) { console.warn('mySessions: ' + e); return []; }
 }
 
 function actionEagleBoards_(req) {

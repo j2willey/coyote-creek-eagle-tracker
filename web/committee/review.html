@@ -20,6 +20,11 @@
     </div>
     <p class="muted env-note" hidden></p>
     <p id="msg" class="muted">Loading…</p>
+    <section id="mySess" class="mysess" style="max-width:40rem" hidden>
+      <h2 id="mySessHead">Your sessions (yesterday and today)</h2>
+      <div id="mySessList" class="tonight"></div>
+      <p class="hint">Another Eagle Board of Review from yesterday or today? <a href="/committee/eagle">Today's boards →</a></p>
+    </section>
     <form id="form" class="card" style="max-width:40rem" hidden>
       <p class="hint">After a Proposal Review: record the outcome. Approved = upload the Proposal you signed (PDF). The tool renames it
         to the standard name, files it in the Scout's folder (older Proposal versions go to Archive), fills the dates, moves the row and
@@ -84,7 +89,7 @@
 
   <script type="module">
     import { api } from '/js/api.js';
-    import { $, el, session, renderNav, meText, needSignIn, isSignedOut } from '/js/committee.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut, sessionLinks, openSessionHref, isPhone } from '/js/committee.js';
     import { readBase64, sizeText, uploadText } from '/js/files.js';
     import { planFolderFiles, roleLabel, fetchProblem } from '/js/pdfPlan.js';
     import { openSignWorkshop } from '/js/pdfWorkshop.js';
@@ -345,7 +350,16 @@
       ['fInitials', 'fDate', 'fNote'].forEach(id => $(id).addEventListener('input', () => { resetConfirm(); refresh(); }));
       ['fMore', 'fSendNow'].forEach(id => $(id).addEventListener('change', () => { resetConfirm(); refresh(); }));
       $('fScout').addEventListener('change', scoutChanged);
-      const want = new URLSearchParams(location.search).get('r');       // from the dashboard row Action
+      // My sessions (2026-11-17): the member's EBoRs + Proposal Reviews yesterday and today, at the top. A phone with no
+      // Scout picked goes straight to the one still waiting (an EBoR -> the Eagle earned page; a Proposal Review -> picked here).
+      let want = new URLSearchParams(location.search).get('r');       // from the dashboard row Action or a session link
+      const mine = data.mine || [];
+      $('mySessList').replaceChildren(...sessionLinks(mine));
+      $('mySessHead').hidden = $('mySessList').hidden = !mine.length;
+      $('mySess').hidden = false;
+      const go = !want && isPhone() ? openSessionHref(mine) : '';
+      if (go && !go.startsWith('/committee/review')) { location.replace(go); return; }
+      if (go) want = new URLSearchParams(go.split('?')[1]).get('r');
       if (want && data.scouts.some(x => x.recordId === want)) $('fScout').value = want;
       scoutChanged();
       $('form').hidden = false; $('msg').hidden = true;

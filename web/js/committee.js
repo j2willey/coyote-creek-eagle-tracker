@@ -19,6 +19,9 @@ const PAGES = [
   ['admin', '/committee/admin', 'Admin'],
   ['dev', '/committee/dev', 'Dev']           // experimental pages before they roll out (Jim W., 2026-11-12)
 ];
+// Laptop-only tabs (Jim W., 2026-11-17): hidden on a phone so the menu fits on one row (committee.css, .cbar-tab.desk).
+// The pages still work by address, and the tab of the page you're on stays visible.
+const DESK_ONLY = ['stats', 'admin', 'dev'];
 const OB_KEY = 'ccacOutboxN', REV_KEY = 'ccacReviewN';   // last counts seen, so every page can show them at once
 
 const ICONS = {
@@ -67,7 +70,7 @@ export function renderNav(holder, active, actions = []) {
   const menu = el('details', { className: 'medrop' }, el('summary', {}, me), el('div', { className: 'medrop-pop' }, out));
   document.addEventListener('click', (ev) => { if (menu.open && !menu.contains(ev.target)) menu.open = false; });
   const tabs = el('div', { className: 'cbar-tabs' }, ...PAGES.map(([key, href, label]) => {
-    const a = el('a', { href, className: 'cbar-tab' + (key === active ? ' on' : '') }, label);
+    const a = el('a', { href, className: 'cbar-tab' + (key === active ? ' on' : '') + (DESK_ONLY.includes(key) ? ' desk' : '') }, label);
     if (key === active) a.setAttribute('aria-current', 'page');
     if (key === 'outbox') a.append(el('span', { className: 'badge obcount', hidden: true }));
     return a;
@@ -94,6 +97,28 @@ export function setReviewCount(n) {
   try { localStorage.setItem(REV_KEY, String(n)); } catch {}
   document.querySelectorAll('.badge.revcount').forEach(b => { b.textContent = String(n); b.hidden = !n; });
 }
+
+// ---- My sessions (Jim W., 2026-11-17): a phone at a board needs only tonight's session. The server lists the member's
+// EBoRs and Proposal Reviews from yesterday and today (MySessions in the Apps Script lib); these draw them.
+export const isPhone = () => window.matchMedia('(max-width: 700px)').matches;
+const localYmd = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+/** One link per session: "Your EBoR Today 7:00 PM: Scout_1 (T999) →"; a session whose outcome is recorded is shown as done. */
+export function sessionLinks(mine) {
+  return (mine || []).map(s => el('a', { href: s.href, className: s.done ? 'done' : '',
+    title: s.label + (s.where ? ' · ' + s.where : '') + (s.done ? ' (outcome recorded)' : '') },
+    (s.type === 'EBoR' ? '🦅 ' : '📝 ') + 'Your ' + s.short + ' ' + s.when + ': ', el('b', { textContent: s.scout }),
+    s.unit ? ' (' + s.unit + ')' : '', s.done ? el('span', { className: 'muted', textContent: ' · done' }) : ' →'));
+}
+
+/** The one session still waiting for its outcome (a phone goes straight there), or ''. */
+export function openSessionHref(mine) {
+  const open = (mine || []).filter(s => !s.done);
+  return open.length === 1 ? open[0].href : '';
+}
+
+/** Today's sessions still waiting for an outcome (the dashboard banner). */
+export const tonightSessions = (mine) => (mine || []).filter(s => !s.done && s.ymd === localYmd());
 
 export function meText(me, testMode) {
   return (me.name || me.email) + (me.initials ? ' (' + me.initials + ')' : '') + (testMode ? ' · test mode' : '');

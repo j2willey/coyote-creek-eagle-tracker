@@ -11,6 +11,20 @@ input:disabled { opacity: .45; }
 .cbar-tab, .cbar-tab:visited { padding: .6rem .8rem; color: var(--muted); text-decoration: none; border-bottom: 3px solid transparent; display: inline-flex; align-items: center; gap: .35rem; }
 .cbar-tab:hover { color: var(--fg); }
 .cbar-tab.on { color: var(--fg); font-weight: 600; border-bottom-color: var(--link); }
+/* Phones (Jim W., 2026-11-17): one row of tabs: Dashboard · Schedule · Outbox · Units. Stats, Admin and Dev stay laptop tabs. */
+@media (max-width: 600px) {
+  .cbar-tab, .cbar-tab:visited { padding: .6rem .5rem; }
+  .cbar-tab.desk:not(.on) { display: none; }
+}
+/* "Tonight" banner on the dashboard + My sessions on the Review outcome page (2026-11-17) */
+.tonight { display: grid; gap: .4rem; margin: .6rem 0 .2rem; }
+.tonight a { display: block; padding: .7rem .9rem; border-radius: 6px; border-left: 4px solid var(--link);
+  background: color-mix(in srgb, var(--link) 10%, transparent); color: var(--fg); text-decoration: none; font-size: 1.05rem; }
+.tonight a:hover { background: color-mix(in srgb, var(--link) 18%, transparent); }
+.tonight a .muted { font-size: .9rem; }
+.tonight a.done { border-left-color: var(--line); background: transparent; }
+.mysess { margin: 0 0 1rem; }
+.mysess h2 { margin: 0 0 .3rem; font-size: 1.1rem; }
 .badge { background: #d39b2a; color: #1d1d1b; border-radius: 999px; font-size: .75rem; font-weight: 700; padding: 0 .45rem; line-height: 1.5; }
 .medrop { position: relative; margin-bottom: .3rem; }
 .medrop summary { list-style: none; cursor: pointer; border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: .35rem .7rem; font-size: .9rem; }

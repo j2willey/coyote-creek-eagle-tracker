@@ -22,6 +22,7 @@
     <p id="msg" class="muted">Loading…</p>
     <p id="flash" class="ok" hidden></p>
     <div id="app" hidden>
+      <div id="tonight" class="tonight" hidden></div>
       <div class="strip">
         <span><b id="nPending">–</b> with new files<span id="pendAge"></span></span>
         <span id="councilStrip" hidden><b id="nCouncil">–</b> waiting on Council<span id="councilAge"></span></span>
@@ -106,7 +107,8 @@
 
   <script type="module">
     import { api } from '/js/api.js';
-    import { $, el, session, renderNav, meText, needSignIn, isSignedOut, actionButton, setOutboxCount, setReviewCount } from '/js/committee.js';
+    import { $, el, session, renderNav, meText, needSignIn, isSignedOut, actionButton, setOutboxCount, setReviewCount,
+      sessionLinks, openSessionHref, tonightSessions, isPhone } from '/js/committee.js';
     import { sortRows, stageRows } from '/js/boardSort.js';
     import { readBase64, sizeText, addFileRow, chosenFiles as chosenRows, uploadText } from '/js/files.js';
     import { preparePhoto, MAX_PHOTOS } from '/js/photos.js';
@@ -631,6 +633,15 @@
         const any = (d.tabs || []).some(t => t.groups.some(g => g.key === 'ebor_booked' && g.rows.some(r =>
           days.includes(r.ebor) || (r.session && r.session.start >= from && r.session.start < to))));
         $('egBtn').hidden = !any;
+      }
+      // My sessions (2026-11-17): a banner for the member's sessions today; on a phone, Record outcomes goes straight to
+      // the one session still waiting for its outcome (otherwise the Review outcome page, which lists them at the top).
+      {
+        const tn = tonightSessions(d.mine);
+        $('tonight').replaceChildren(...sessionLinks(tn));
+        $('tonight').hidden = !tn.length;
+        const go = isPhone() && openSessionHref(d.mine);
+        $('recBtn').setAttribute('href', go || '/committee/review');
       }
       const c = d.counts;
       meLine.textContent = meText(d.me, d.testMode) + (stale ? ' · refreshing…' : '');

@@ -614,6 +614,21 @@ browser: the Verified Application from the Scout's folder with the Requirement 7
 changeable) replaced by the photo at that page's size, form fields flattened first. It is uploaded as the signed
 application (same filing and Council email as a PDF scan). Council accepts a clear photo or scan.
 
+### Phone: My sessions, the Tonight banner, a one-row menu (`lib/mySessions.js`; Jim W., 2026-11-17)
+
+Committee members work at a laptop from the Dashboard and the Schedule. At a board, on a phone, they want only tonight's
+session. `MySessions.list` gives the member's **Eagle Boards of Review** and **Proposal Reviews** from yesterday and
+today (their initials among the slot's reps; `done` once the Scout has left the booked stage). A review not recorded by
+the next day is recorded at a laptop, so the window stays yesterday-today.
+
+- **Dashboard banner:** "🦅 Your EBoR Today 7:00 PM: <Scout> (<unit>) →" for each of today's sessions still waiting for an
+  outcome (`committeeHome` → `mine`).
+- **Record outcomes:** the Review outcome page lists the member's sessions at the top (`reviewChoices` → `mine`) with a
+  link to Today's boards. On a phone (≤ 700 px) with no Scout picked, the one session still waiting opens straight
+  away: an EBoR → the Eagle earned page, a Proposal Review → that Scout picked on this page. From the dashboard the
+  button links there directly. Several open sessions: pick one.
+- **Menu on a phone (≤ 600 px):** Dashboard · Schedule · Outbox · Units on one row. Stats, Admin and Dev are hidden
+  (`.cbar-tab.desk`); the pages still work by address, and the tab of the page you're on stays visible.
 ### EBoR paperwork page (`/committee/ebor-paperwork`, `lib/eborPaperwork.js`, `eborPaperworkActions.js`, `web/js/pdfPaperwork*.js`)
 
 For the Board of Review itself, on one device passed around the room. Pick a Scout at EBoR Booked or Paused (the next

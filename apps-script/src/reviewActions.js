@@ -110,6 +110,7 @@ function actionCommitteeHome_(req) {
     closing: { reasons: Closing.REASONS, stages: (s.sections || []).filter(function (x) { return x.key !== Closing.SECTION && x.label; })
       .map(function (x) { return { key: x.key, label: x.label }; }) },
     admin: adminCounts_(),
+    mine: mySessions_(c, todayYmd_()),   // the dashboard's "Tonight" banner + where Record outcomes goes
     testMode: s.testMode !== false
   };
 }
@@ -129,6 +130,7 @@ function actionReviewChoices_(req) {
       return { key: k, label: o.label, file: o.file };
     }),
     approvedDateColumn: approvedDateColumn_(),
+    mine: mySessions_(c, today),          // My sessions at the top of the page (phones jump to the one open session)
     testMode: s.testMode !== false
   };
 }
