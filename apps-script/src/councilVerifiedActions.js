@@ -65,8 +65,12 @@ function fileCouncilVerified_(msg) {
   var all = msg.getAttachments({ includeInlineImages: false });
   var atts = CouncilVerified.keep(all.map(function (a) { return { name: a.getName(), mime: a.getContentType(), bytes: a.getSize() }; }))
     .map(function (i) { return all[i]; });
-  // One attachment is the Verified Application (no OCR needed); several: read each one's first page.
-  var kinds = atts.map(function (a) { return atts.length > 1 ? CouncilVerified.classify(ocrText_(a.copyBlob())) : ''; });
+  // One attachment is the Verified Application (no OCR needed); several: the attachment's name, else its first page
+  // (OCR; Drive can't read files over 2 MB, so those are left for a member to name on the dashboard).
+  var found = atts.map(function (a) {
+    return atts.length > 1 ? CouncilVerified.kindOf(a.getName(), a.getSize(), function () { return ocrText_(a.copyBlob()); }) : { kind: '', big: false };
+  });
+  var kinds = found.map(function (f) { return f.kind; });
   var heading = 'Council: "' + subject + '", from ' + msg.getFrom() + ', received ' + Utilities.formatDate(msg.getDate(), tz, 'EEE M/d/yyyy h:mm a');
   var emailPdf = function (name) {
     return Utilities.newBlob(CouncilApp.emailHtml(msg.getBody(), heading), 'text/html', 'email.html').getAs('application/pdf').setName(name);
@@ -90,7 +94,7 @@ function fileCouncilVerified_(msg) {
   }
 
   var folder = folderForRecord_(rec, true);
-  var pl = CouncilVerified.plan(atts.map(function (a, i) { return { name: a.getName(), kind: kinds[i] }; }),
+  var pl = CouncilVerified.plan(atts.map(function (a, i) { return { name: a.getName(), kind: kinds[i], big: found[i].big }; }),
     rec.fields.scout_name, rec.fields.unit, Intake.namePart, Intake.unitPart);
   var old = CouncilVerified.toArchive(listFolder_(folder), pl);
   if (old.length) {

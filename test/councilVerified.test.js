@@ -172,3 +172,41 @@ describe('Naming the files to identify (dashboard panel)', () => {
     expect(V.renameNote(D1, 'Owen_Fairbanks-T999_Council-MeritBadges.pdf')).toBe('Council-Doc-01 → Council-MeritBadges');
   });
 });
+
+describe('What a Council attachment is, from its own name (before OCR)', () => {
+  it('classifyName', () => {
+    expect(V.classifyName('Project Report - signed.pdf')).toBe('report');
+    expect(V.classifyName('Rank Advancement History.pdf')).toBe('meritbadges');
+    expect(V.classifyName('Scout_1 Merit Badges.pdf')).toBe('meritbadges');
+    expect(V.classifyName('Owen Fairbanks Eagle Project.pdf')).toBe('workbook');
+    expect(V.classifyName('Owen Fairbanks Eagle.pdf')).toBe('');            // too vague: OCR or a member decides
+    expect(V.classifyName('Eagle_Scout_Service_Project_Workbook.pdf')).toBe('workbook');
+    expect(V.classifyName('Eagle Scout Rank Application.pdf')).toBe('application');
+    expect(V.classifyName('eagle-app-verified.pdf')).toBe('application');
+    expect(V.classifyName('Statement of Ambitions.pdf')).toBe('statement');
+    expect(V.classifyName('Reference letter - coach.pdf')).toBe('reference');
+    expect(V.classifyName('doc2026111910123.pdf')).toBe('');
+    expect(V.classifyName('scan0001.pdf')).toBe('');
+    expect(V.classifyName('')).toBe('');
+  });
+  it('kindOf: name first, OCR only up to 2 MB', () => {
+    let read = 0;
+    const ocr = () => { read++; return 'Eagle Scout Service Project Workbook'; };
+    expect(V.kindOf('Project Report.pdf', 50000, ocr)).toEqual({ kind: 'report', big: false });
+    expect(read).toBe(0);
+    expect(V.kindOf('doc2026.pdf', 900000, ocr)).toEqual({ kind: 'workbook', big: false });
+    expect(read).toBe(1);
+    expect(V.kindOf('doc2026.pdf', 12 * 1048576, ocr)).toEqual({ kind: '', big: true });
+    expect(read).toBe(1);
+  });
+  it('plan: names from the new kinds; too-big files say so', () => {
+    const p = V.plan([{ name: 'doc1.pdf', kind: 'application' }, { name: 'Project Report.pdf', kind: 'report' },
+      { name: 'Rank Advancement.pdf', kind: 'meritbadges' }, { name: 'doc2.pdf', kind: '', big: true }],
+      'Owen Patrick Fairbanks', 'T999', Intake.namePart, Intake.unitPart);
+    const names = p.files.map(f => f.name.replace(/^.*_/, '_'));
+    expect(names).toEqual(['_EagleApplication-Verified.pdf', '_Council-Workbook-Report.pdf', '_Council-MeritBadges.pdf', '_Council-Doc-01.pdf']);
+    expect(p.toIdentify).toHaveLength(1);
+    expect(p.toIdentify[0]).toMatch(/Council-Doc-01\.pdf \(too big to read automatically\)$/);
+    expect(V.identifyNames(p.toIdentify.join('; '))).toHaveLength(1);
+  });
+});

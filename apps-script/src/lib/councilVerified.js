@@ -10,7 +10,7 @@
  * the row moves. Gmail / Drive work is in councilVerifiedActions.js.
  *
  *   one attachment      -> it IS the Verified Application (Jim W.)
- *   several attachments -> OCR names each one; exactly one Eagle application = the Verified Application;
+ *   several attachments -> the attachment's own name, else OCR (up to 2 MB), names each one; exactly one Eagle application = the Verified Application;
  *                          anything not recognised (or two applications) is "to identify" (digest + dashboard tag)
  *
  * Names (top of the Scout's folder, beside the -Application_ files Formsite filed):
@@ -71,6 +71,35 @@ var CouncilVerified = (function () {
     return k ? k.kind : '';
   }
 
+  // What a file is, from the name Council's attachment came with (Jim W., 2026-11-19: "Project Report …", "Rank
+  // Advancement …", "<Scout> Eagle …" beside the scanner's "doc2026…" Verified Application). Checked before OCR.
+  var NAME_KINDS = [
+    { kind: 'meritbadges', re: /merit\s*badge|rank\s*advancement|advancement\s*(?:history|record|report)/ },
+    { kind: 'report', re: /project\s*report|signature/ },
+    { kind: 'statement', re: /statement|life\s*purpose|ambitions?\b/ },
+    { kind: 'reference', re: /reference|recommendation/ },
+    { kind: 'application', re: /rank\s*app|eagle\s*(?:scout\s*)?(?:rank\s*)?app(?:lication)?\b/ },
+    { kind: 'workbook', re: /workbook|service\s*project|eagle\s*(?:scout\s*)?project/ }
+  ];
+  /** "Project_Report-signed.pdf" -> 'report'; scanner names ("doc2026111614520.pdf") -> ''. */
+  function classifyName(name) {
+    var t = ' ' + str(name).replace(/\.[A-Za-z0-9]{1,5}$/, '').replace(/[_\-.]+/g, ' ').toLowerCase() + ' ';
+    var k = NAME_KINDS.filter(function (x) { return x.re.test(t); })[0];
+    return k ? k.kind : '';
+  }
+
+  var OCR_MAX = 2 * 1048576;   // Drive converts PDFs and images to text only up to 2 MB (and only the first 10 pages)
+  /**
+   * One of several attachments: its name first, then OCR (ocr() is only called for files Drive can read).
+   * -> {kind, big} (big: too big to read, so a member names it)
+   */
+  function kindOf(name, bytes, ocr) {
+    var k = classifyName(name);
+    if (k) return { kind: k, big: false };
+    if ((Number(bytes) || 0) > OCR_MAX) return { kind: '', big: true };
+    return { kind: classify(ocr ? ocr() : ''), big: false };
+  }
+
   /**
    * Attachments worth filing: drop small images (email signature logos that arrive as attachments).
    * atts: [{name, mime, bytes}] -> indexes kept.
@@ -85,7 +114,7 @@ var CouncilVerified = (function () {
     return out;
   }
 
-  var TAG = { workbook: 'Workbook', statement: 'Statement', reference: 'Reference' };
+  var TAG = { workbook: 'Workbook', report: 'Workbook-Report', meritbadges: 'MeritBadges', statement: 'Statement', reference: 'Reference' };
   function extOf(name) { var m = /\.([A-Za-z0-9]{1,5})$/.exec(str(name)); return m ? m[1].toLowerCase() : 'pdf'; }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
 
@@ -110,7 +139,8 @@ var CouncilVerified = (function () {
       } else {
         var d = count.doc = (count.doc || 0) + 1;
         name = base + '_Council-Doc-' + pad(d) + '.' + extOf(a.name);
-        toIdentify.push(name + (a.kind === 'application' ? ' (looks like an Eagle application: which one is the verified one?)' : ''));
+        toIdentify.push(name + (a.kind === 'application' ? ' (looks like an Eagle application: which one is the verified one?)'
+          : a.big ? ' (too big to read automatically)' : ''));
       }
       files.push({ index: i, name: name, kind: i === verified ? 'application' : a.kind });
     });
@@ -139,8 +169,9 @@ var CouncilVerified = (function () {
   // A member looks at each Doc-NN and gives it a type; the name keeps <Name>-<Unit>_Council- and the extension.
   var IDENTIFY_TYPES = [
     { key: 'Workbook', label: 'Project workbook (complete)' },
+    { key: 'Workbook-Report', label: 'Project report page(s)' },
     { key: 'Workbook-Signatures', label: 'Workbook signature page(s)' },
-    { key: 'MeritBadges', label: 'Merit badge record' },
+    { key: 'MeritBadges', label: 'Merit badge / rank advancement record' },
     { key: 'Statement', label: 'Statement of ambitions and life purpose' },
     { key: 'Reference', label: 'Reference letter' }
   ];
@@ -242,7 +273,7 @@ var CouncilVerified = (function () {
 
   return { QUERY: QUERY, isMatch: isMatch, parseSubject: parseSubject, unitCode: unitCode, classify: classify, keep: keep,
     plan: plan, toArchive: toArchive, decide: decide, TAB: TAB, HEADERS: HEADERS, toCheck: toCheck, flags: flags,
-    needsCheck: needsCheck, rowsToTick: rowsToTick,
+    needsCheck: needsCheck, rowsToTick: rowsToTick, classifyName: classifyName, kindOf: kindOf, OCR_MAX: OCR_MAX,
     IDENTIFY_TYPES: IDENTIFY_TYPES, identifyNames: identifyNames, keyword: keyword, identifyName: identifyName,
     afterIdentify: afterIdentify, renameNote: renameNote };
 })();
