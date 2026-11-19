@@ -159,10 +159,13 @@ var CouncilVerified = (function () {
 
   function checked(v) { return v === true || (v !== false && str(v) !== '' && str(v).toUpperCase() !== 'FALSE'); }
   /** Rows a member still has to look at: not Matched, or files to identify; until Checked. -> [{title, why, ms, recordId, folder, when}] */
+  function needsCheck(r) { return !!str(r['Match']) && (r['Match'] !== 'Matched' || !!str(r['To identify'])) && !checked(r['Checked']); }
+  /** Dashboard "✓ Council email checked" (2026-11-19): this Scout's rows that still raise the tag. -> rows (with _row) */
+  function rowsToTick(rows, recordId) {
+    return (rows || []).filter(function (r) { return str(recordId) && str(r['Record ID']) === str(recordId) && needsCheck(r); });
+  }
   function toCheck(rows, fmtDate) {
-    return (rows || []).filter(function (r) {
-      return str(r['Match']) && (r['Match'] !== 'Matched' || str(r['To identify'])) && !checked(r['Checked']);
-    }).map(function (r) {
+    return (rows || []).filter(needsCheck).map(function (r) {
       var d = r['Received'] instanceof Date ? r['Received'] : new Date(r['Received']);
       var who = str(r['Name on email']) + (str(r['Unit on email']) ? ' (' + str(r['Unit on email']) + ')' : '');
       var why = r['Match'] === 'No match' ? 'no matching Scout: files in ' + str(r['Folder'])
@@ -186,7 +189,8 @@ var CouncilVerified = (function () {
   }
 
   return { QUERY: QUERY, isMatch: isMatch, parseSubject: parseSubject, unitCode: unitCode, classify: classify, keep: keep,
-    plan: plan, toArchive: toArchive, decide: decide, TAB: TAB, HEADERS: HEADERS, toCheck: toCheck, flags: flags };
+    plan: plan, toArchive: toArchive, decide: decide, TAB: TAB, HEADERS: HEADERS, toCheck: toCheck, flags: flags,
+    needsCheck: needsCheck, rowsToTick: rowsToTick };
 })();
 
 if (typeof module !== 'undefined') module.exports = CouncilVerified;

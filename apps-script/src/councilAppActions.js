@@ -239,3 +239,29 @@ function councilFetchLinks_() {
   });
   return out;
 }
+
+/**
+ * Dashboard row action "✓ Council email checked" (Jim W., 2026-11-19): a member has looked at the Scout's Council
+ * email(s) (renamed files to identify, confirmed the match) and clears the red tag without opening the tab. Ticks
+ * Checked on this Scout's Council Applications / Council Verified rows that raise the tag; one log line.
+ */
+function actionCouncilChecked_(req) {
+  var c = committeeMe_(req.session);
+  var who = c.me.initials || c.email;
+  var rec = Records.get(String(req.recordId || ''));
+  if (!rec) throw userError_('That Scout is no longer on the tracking tab. Reload the page.');
+  var what = [];
+  withLock_(function () {
+    [{ M: CouncilApp, label: 'Formsite application' }, { M: CouncilVerified, label: 'Ready for EBOR' }].forEach(function (t) {
+      var rows;
+      try { rows = Tabs.read(t.M.TAB); } catch (e) { return; }                 // tab not made yet
+      t.M.rowsToTick(rows, rec.recordId).forEach(function (r) {
+        Tabs.update(t.M.TAB, r._row, { 'Checked': true });
+        what.push(t.label);
+      });
+    });
+  });
+  if (!what.length) throw userError_('Nothing left to check for ' + rec.fields.scout_name + ' (someone may have ticked it already). Reload the page.');
+  addRecordNote_(rec.recordId, CouncilApp.checkedLine(Intake.shortDate(new Date()), who, what));
+  return { message: 'Checked: the tag on ' + rec.fields.scout_name + '\'s row is cleared (' + what.length + ' row' + (what.length > 1 ? 's' : '') + ' ticked).' };
+}

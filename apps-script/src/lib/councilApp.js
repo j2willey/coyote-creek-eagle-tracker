@@ -175,8 +175,20 @@ var CouncilApp = (function () {
   }
   function checked(v) { return v === true || (v !== false && str(v) !== '' && str(v).toUpperCase() !== 'FALSE'); }
   /** Rows the committee still has to look at -> [{title, why, ms, recordId, folder}] oldest first. fmtDate(Date) -> "11/3". */
+  function needsCheck(r) { return !!str(r['Match']) && r['Match'] !== 'Matched' && !checked(r['Checked']); }
+  /** Dashboard "✓ Council email checked" (2026-11-19): this Scout's rows that still raise the tag. -> rows (with _row) */
+  function rowsToTick(rows, recordId) {
+    return (rows || []).filter(function (r) { return str(recordId) && str(r['Record ID']) === str(recordId) && needsCheck(r); });
+  }
+  /** "11/19 [JB] Council email checked on the dashboard: Ready for EBOR ×2" (what: ['Formsite application', ...]) */
+  function checkedLine(shortDate, by, what) {
+    var n = {};
+    (what || []).forEach(function (w) { n[w] = (n[w] || 0) + 1; });
+    return shortDate + ' [' + (str(by) || 'committee') + '] Council email checked on the dashboard: ' +
+      Object.keys(n).map(function (w) { return w + (n[w] > 1 ? ' ×' + n[w] : ''); }).join(', ');
+  }
   function toCheck(rows, fmtDate) {
-    return (rows || []).filter(function (r) { return str(r['Match']) && r['Match'] !== 'Matched' && !checked(r['Checked']); })
+    return (rows || []).filter(needsCheck)
       .map(function (r) {
         var d = r['Received'] instanceof Date ? r['Received'] : new Date(r['Received']);
         var form = str(r['Name on form']) + (str(r['Unit on form']) ? ' (' + str(r['Unit on form']) + ')' : '');
@@ -262,7 +274,7 @@ var CouncilApp = (function () {
       '<h2 style="font-size:14px">' + str(heading).replace(/</g, '&lt;') + '</h2>' + body + '</body></html>';
   }
 
-  return { FROM: FROM, SUBJECT_PREFIX: SUBJECT_PREFIX, QUERY: QUERY, isMatch: isMatch, rows: rows,
+  return { needsCheck: needsCheck, rowsToTick: rowsToTick, checkedLine: checkedLine, FROM: FROM, SUBJECT_PREFIX: SUBJECT_PREFIX, QUERY: QUERY, isMatch: isMatch, rows: rows,
     parse: parse, matchRecord: matchRecord, plan: plan, fetchProblem: fetchProblem, isSubmittedName: isSubmittedName, toArchive: toArchive, TAB: TAB, HEADERS: HEADERS, toCheck: toCheck, decide: decide, flags: flags, emailHtml: emailHtml,
     originalName: originalName, fieldOf: fieldOf };
 })();

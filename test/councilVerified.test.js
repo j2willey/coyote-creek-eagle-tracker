@@ -127,3 +127,17 @@ describe('Council "Ready for EBOR" emails', () => {
     expect(V.flags(rows, () => '11/18')).toEqual({ R2: expect.objectContaining({ folder: 'https://f', label: 'Council', tab: 'Council Verified' }) });
   });
 });
+
+describe('CouncilVerified.rowsToTick (dashboard "✓ Council email checked")', () => {
+  it('Matched rows with files to identify count until Checked; plain Matched rows never do', () => {
+    const rows = [
+      { _row: 2, 'Record ID': 'R1', 'Match': 'Matched', 'To identify': '', 'Checked': true },
+      { _row: 3, 'Record ID': 'R1', 'Match': 'Matched', 'To identify': 'Scout_1-T999_Council-Doc-01.pdf', 'Checked': false },
+      { _row: 4, 'Record ID': 'R1', 'Match': 'Matched', 'To identify': '', 'Checked': false },
+      { _row: 5, 'Record ID': 'R1', 'Match': 'Matched', 'To identify': 'x.pdf', 'Checked': true },
+      { _row: 6, 'Record ID': 'R2', 'Match': 'Check', 'To identify': '', 'Checked': false }
+    ];
+    expect(V.rowsToTick(rows, 'R1').map(r => r._row)).toEqual([3]);
+    expect(V.rowsToTick(rows, 'R2').map(r => r._row)).toEqual([6]);
+  });
+});

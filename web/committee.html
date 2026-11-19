@@ -215,7 +215,7 @@
                 title: r.closeWhy + '\n\nAction menu: Close record…, or Keep open to hide this for a while.' }), ' '] : []),
               ...(r.formsite ? [el(r.formsite.folder ? 'a' : 'span', { className: 'tag formsite', textContent: r.formsite.label || 'Formsite',
                 ...(r.formsite.folder ? { href: r.formsite.folder, target: '_blank', rel: 'noopener' } : {}),
-                title: r.formsite.why + '\n\nClick: open the Scout\'s folder. When sorted out, tick Checked on the ' + (r.formsite.tab || 'Council Applications') + ' tab.' }), ' '] : []),
+                title: r.formsite.why + '\n\nClick: open the Scout\'s folder. When sorted out: row menu → ✓ Council email checked.' }), ' '] : []),
               ...(r.boardState ? [el(r.session ? 'a' : 'span', { className: 'tag board-' + r.boardState, ...(r.session ? { href: sessionHref(r.session.key) } : {}),
                 textContent: 'Board ' + r.boardSize + (r.boardState === 'short' ? '/3' : r.boardState === 'ok' ? '/6' : ''),
                 title: (r.boardState === 'short' ? 'Only ' + r.boardSize + ' on the board (district/council members on the slot + Unit Board Members). An Eagle Board of Review needs at least 3.'
@@ -487,12 +487,15 @@
     function actionControl(r, g, list) {
       list = list.filter(a => (!a.ifPending || r.pending) && (!a.ifSuggest || r.closeWhy) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifCongrats || r.congratsOk) && (!a.ifNot || !r[a.ifNot]));
       const email = EMAIL_OK(g.key);
-      if (!list.length && !email) return [];
+      if (!list.length && !email && !r.formsite) return [];
       const sel = el('select', { className: 'actsel', title: 'Actions for ' + r.name },
         el('option', { value: '', textContent: '⋯' }), ...list.map(a => el('option', { value: a.key, textContent: a.label })),
+        // Red Formsite / Council tag (2026-11-19): tick Checked on its tab from here
+        ...(r.formsite ? [el('option', { value: '__council', textContent: '✓ Council email checked' })] : []),
         ...(email ? [el('option', { value: '__email', textContent: '✉ Email… (draft again)' })] : []));
       sel.onchange = () => {
         if (sel.value === '__email') { sel.value = ''; openEmail(r.recordId, r.name + (r.unit ? ' (' + r.unit + ')' : '') + ' · ' + g.label); return; }
+        if (sel.value === '__council') { sel.value = ''; councilChecked(r); return; }
         const a = list.find(x => x.key === sel.value);
         sel.value = '';
         if (!a) return;
@@ -501,6 +504,16 @@
         openAction(r, g, a);
       };
       return [sel];
+    }
+    async function councilChecked(r) {
+      if (!confirm('Mark the Council email checked for ' + r.name + '?\n\n' + r.formsite.why +
+        '\n\nThis ticks Checked on the ' + (r.formsite.tab || 'Council Applications') + ' tab and clears the tag. Nothing is moved or emailed.')) return;
+      try {
+        const res = await api('councilChecked', { session, recordId: r.recordId });
+        try { localStorage.removeItem(CACHE_KEY); } catch {}
+        $('flash').textContent = res.message; $('flash').className = 'ok'; $('flash').hidden = false;
+        await refresh();
+      } catch (e) { $('flash').textContent = e.message; $('flash').className = 'err'; $('flash').hidden = false; }
     }
     let act = null, confirmNext = false;
     const pad = (n) => String(n).padStart(2, '0');

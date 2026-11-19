@@ -142,3 +142,25 @@ describe('dashboard Formsite tag', () => {
     expect(rows.map(r => r.formsite)).toEqual([{ why: 'x', folder: 'f' }, null]);
   });
 });
+
+describe('Dashboard "✓ Council email checked" (rowsToTick, checkedLine)', () => {
+  const rows = [
+    { _row: 2, 'Record ID': 'R1', 'Match': 'Matched', 'Checked': true },
+    { _row: 3, 'Record ID': 'R1', 'Match': 'Stage?', 'Checked': false },
+    { _row: 4, 'Record ID': 'R1', 'Match': 'Check', 'Checked': 'FALSE' },
+    { _row: 5, 'Record ID': 'R1', 'Match': 'Check', 'Checked': true },
+    { _row: 6, 'Record ID': 'R2', 'Match': 'Check', 'Checked': false },
+    { _row: 7, 'Record ID': '', 'Match': 'No match', 'Checked': false }
+  ];
+  it('only this Scout\'s rows that still raise the tag', () => {
+    expect(C.rowsToTick(rows, 'R1').map(r => r._row)).toEqual([3, 4]);
+    expect(C.rowsToTick(rows, 'R2').map(r => r._row)).toEqual([6]);
+    expect(C.rowsToTick(rows, '')).toEqual([]);
+    expect(C.rowsToTick(rows, 'R9')).toEqual([]);
+  });
+  it('log line', () => {
+    expect(C.checkedLine('11/19', 'JB', ['Ready for EBOR', 'Ready for EBOR', 'Formsite application']))
+      .toBe('11/19 [JB] Council email checked on the dashboard: Ready for EBOR ×2, Formsite application');
+    expect(C.checkedLine('11/19', '', ['Formsite application'])).toBe('11/19 [committee] Council email checked on the dashboard: Formsite application');
+  });
+});
