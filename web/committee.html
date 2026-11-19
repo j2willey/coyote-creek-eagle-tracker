@@ -505,15 +505,98 @@
       };
       return [sel];
     }
+    // Red Formsite / Council tag (2026-11-19): tick Checked from the row menu. Files Council sent that the tool could not
+    // identify (…_Council-Doc-NN) are shown first, to look at and name (lib/councilVerified.js IDENTIFY_TYPES).
+    const flashMsg = (t, c) => { $('flash').textContent = t; $('flash').className = c || 'ok'; $('flash').hidden = !t; };
+    async function councilSubmit(r, renames) {
+      const res = await api('councilChecked', { session, recordId: r.recordId, renames });
+      try { localStorage.removeItem(CACHE_KEY); } catch {}
+      flashMsg(res.message, 'ok');
+      await refresh();
+    }
     async function councilChecked(r) {
+      flashMsg('Looking for files to identify…', 'muted');
+      let info;
+      try { info = await api('councilIdentify', { session, recordId: r.recordId }); }
+      catch (e) { flashMsg(e.message, 'err'); return; }
+      flashMsg('');
+      if (info.files.length) { openIdentify(r, info); return; }
       if (!confirm('Mark the Council email checked for ' + r.name + '?\n\n' + r.formsite.why +
         '\n\nThis ticks Checked on the ' + (r.formsite.tab || 'Council Applications') + ' tab and clears the tag. Nothing is moved or emailed.')) return;
+      try { await councilSubmit(r, []); } catch (e) { flashMsg(e.message, 'err'); }
+    }
+    const OPEN_MAX = 20 * 1048576;
+    async function openCouncilFile(r, f, msg, btn) {
+      btn.disabled = true; msg.textContent = 'Opening ' + f.name + ' (' + sizeText(f.bytes) + ')…'; msg.className = 'hint';
       try {
-        const res = await api('councilChecked', { session, recordId: r.recordId });
-        try { localStorage.removeItem(CACHE_KEY); } catch {}
-        $('flash').textContent = res.message; $('flash').className = 'ok'; $('flash').hidden = false;
-        await refresh();
-      } catch (e) { $('flash').textContent = e.message; $('flash').className = 'err'; $('flash').hidden = false; }
+        const x = await api('fetchScoutFile', { session, recordId: r.recordId, fileId: f.id });
+        const bytes = Uint8Array.from(atob(x.data), c => c.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: x.mime || f.mime || 'application/pdf' }));
+        const w = window.open(url, '_blank', 'noopener');
+        if (!w) { const a = el('a', { href: url, download: x.name || f.name }); document.body.append(a); a.click(); a.remove(); }
+        setTimeout(() => URL.revokeObjectURL(url), 120000);
+        msg.textContent = '';
+      } catch (e) { msg.textContent = e.message; msg.className = 'hint err'; }
+      finally { btn.disabled = false; }
+    }
+    function openIdentify(r, info) {
+      let dlg = $('idDlg');
+      if (!dlg) { dlg = el('dialog', { id: 'idDlg', className: 'detail' }); document.body.append(dlg); }
+      const say = el('p', { role: 'status' });
+      const picks = info.files.map(f => {
+        const sel = el('select', { title: 'What is this file?' },
+          el('option', { value: '', textContent: '— leave the name as it is —' }),
+          ...info.types.map(t => el('option', { value: t.key, textContent: t.label })),
+          el('option', { value: '__other', textContent: 'Something else (type a word or two)…' }));
+        const other = el('input', { type: 'text', maxLength: 40, placeholder: 'e.g. Workbook signature page, Life board record', hidden: true });
+        const preview = el('p', { className: 'hint' });
+        // Same rule as lib/councilVerified.js keyword() / identifyName() (the server numbers a taken name: -2, -3)
+        const kwOf = (t) => t.replace(/[^A-Za-z0-9\- ]+/g, ' ').split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('').slice(0, 40);
+        const showName = () => {
+          const kw = sel.value === '__other' ? kwOf(other.value) : sel.value;
+          preview.textContent = kw ? 'New name: ' + f.name.replace(/Doc-\d+(\.[A-Za-z0-9]+)$/, kw + '$1') : '';
+        };
+        sel.onchange = () => { other.hidden = sel.value !== '__other'; if (!other.hidden) other.focus(); showName(); };
+        other.oninput = showName;
+        const fmsg = el('p', { className: 'hint' });
+        const open = el('button', { type: 'button', textContent: 'Open', title: 'Open the file in a new tab' });
+        if (f.bytes > OPEN_MAX) { open.disabled = true; open.title = 'Too big to open here: use Drive ↗'; }
+        open.onclick = () => openCouncilFile(r, f, fmsg, open);
+        const thumb = f.thumb ? el('img', { src: f.thumb, alt: 'Preview of ' + f.name, title: 'Open', style: 'max-width:140px;max-height:180px;border:1px solid var(--line);border-radius:6px;cursor:pointer' })
+          : el('div', { className: 'hint', textContent: 'No preview' });
+        if (f.thumb) thumb.onclick = () => open.click();
+        const card = el('div', { className: 'card', style: 'display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start;margin:.6rem 0' }, thumb,
+          el('div', { style: 'flex:1 1 15rem;min-width:0' },
+            el('div', { style: 'word-break:break-all' }, el('b', { textContent: f.name })),
+            el('div', { className: 'hint', textContent: sizeText(f.bytes) }),
+            el('div', { className: 'actions' }, open,
+              el('a', { href: 'https://drive.google.com/file/d/' + encodeURIComponent(f.id) + '/view', target: '_blank', rel: 'noopener', textContent: 'Drive ↗' })),
+            el('label', { textContent: 'It is' }), sel, other, preview, fmsg));
+        return { f, sel, other, card };
+      });
+      const save = el('button', { type: 'button', className: 'primary', textContent: 'Save names and mark checked' });
+      const cancel = el('button', { type: 'button', textContent: 'Cancel' });
+      cancel.onclick = () => dlg.close();
+      save.onclick = async () => {
+        const renames = [];
+        for (const p of picks) {
+          const kw = p.sel.value === '__other' ? p.other.value.trim() : p.sel.value;
+          if (p.sel.value === '__other' && !kw) { say.textContent = 'Type what ' + p.f.name + ' is, or leave its name as it is.'; say.className = 'err'; p.other.focus(); return; }
+          if (kw) renames.push({ id: p.f.id, keyword: kw });
+        }
+        save.disabled = cancel.disabled = true; say.textContent = 'Saving…'; say.className = 'muted';
+        try { await councilSubmit(r, renames); dlg.close(); }
+        catch (e) { say.textContent = e.message; say.className = 'err'; save.disabled = cancel.disabled = false; }
+      };
+      dlg.replaceChildren(
+        el('div', { className: 'dethead' }, el('div', {}, el('h2', { textContent: 'Council email: files to identify' }),
+          el('p', { className: 'muted', textContent: r.name + (r.unit ? ' (' + r.unit + ')' : '') })),
+          el('button', { type: 'button', textContent: 'Close', onclick: () => dlg.close() })),
+        el('p', { className: 'hint', textContent: 'Council sent ' + (picks.length > 1 ? 'these files' : 'this file') + ' with the Verified Application, and the tool could not tell what ' +
+          (picks.length > 1 ? 'they are' : 'it is') + '. Look at each one and say what it is: the name keeps the Scout\'s name, unit and "Council-", and ends with your word. ' +
+          'Saving also ticks Checked and clears the tag; nothing is moved or emailed.' }),
+        ...picks.map(p => p.card), say, el('div', { className: 'actions' }, save, cancel));
+      dlg.showModal();
     }
     let act = null, confirmNext = false;
     const pad = (n) => String(n).padStart(2, '0');

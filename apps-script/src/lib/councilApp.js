@@ -180,12 +180,16 @@ var CouncilApp = (function () {
   function rowsToTick(rows, recordId) {
     return (rows || []).filter(function (r) { return str(recordId) && str(r['Record ID']) === str(recordId) && needsCheck(r); });
   }
-  /** "11/19 [JB] Council email checked on the dashboard: Ready for EBOR ×2" (what: ['Formsite application', ...]) */
-  function checkedLine(shortDate, by, what) {
+  /**
+   * "11/19 [JB] Council email checked on the dashboard: Ready for EBOR ×2; renamed Council-Doc-01 → Council-MeritBadges"
+   * (what: ['Formsite application', ...]; renamed: CouncilVerified.renameNote() parts)
+   */
+  function checkedLine(shortDate, by, what, renamed) {
     var n = {};
     (what || []).forEach(function (w) { n[w] = (n[w] || 0) + 1; });
     return shortDate + ' [' + (str(by) || 'committee') + '] Council email checked on the dashboard: ' +
-      Object.keys(n).map(function (w) { return w + (n[w] > 1 ? ' ×' + n[w] : ''); }).join(', ');
+      Object.keys(n).map(function (w) { return w + (n[w] > 1 ? ' ×' + n[w] : ''); }).join(', ') +
+      ((renamed || []).length ? '; renamed ' + renamed.join(', ') : '');
   }
   function toCheck(rows, fmtDate) {
     return (rows || []).filter(needsCheck)

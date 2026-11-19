@@ -141,3 +141,34 @@ describe('CouncilVerified.rowsToTick (dashboard "✓ Council email checked")', (
     expect(V.rowsToTick(rows, 'R2').map(r => r._row)).toEqual([6]);
   });
 });
+
+describe('Naming the files to identify (dashboard panel)', () => {
+  const D1 = 'Owen_Fairbanks-T999_Council-Doc-01.pdf', D2 = 'Owen_Fairbanks-T999_Council-Doc-02.jpg';
+  it('identifyNames reads the To identify cell', () => {
+    expect(V.identifyNames(D1 + '; ' + D2 + ' (looks like an Eagle application: which one is the verified one?)')).toEqual([D1, D2]);
+    expect(V.identifyNames('which file is the verified application?')).toEqual([]);
+    expect(V.identifyNames('')).toEqual([]);
+  });
+  it('keyword', () => {
+    expect(V.keyword('signature page')).toBe('SignaturePage');
+    expect(V.keyword('Merit-badge record!')).toBe('Merit-badgeRecord');
+    expect(V.keyword('Workbook-Signatures')).toBe('Workbook-Signatures');
+    expect(V.keyword('  ../  ')).toBe('');
+    expect(V.keyword('x'.repeat(60)).length).toBe(40);
+  });
+  it('identifyName keeps name, unit, Council- and the extension; numbers a taken name', () => {
+    expect(V.identifyName(D1, 'MeritBadges', [])).toBe('Owen_Fairbanks-T999_Council-MeritBadges.pdf');
+    expect(V.identifyName(D2, 'Workbook-Signatures', [])).toBe('Owen_Fairbanks-T999_Council-Workbook-Signatures.jpg');
+    expect(V.identifyName(D1, 'Workbook', ['owen_fairbanks-t999_council-workbook.pdf'])).toBe('Owen_Fairbanks-T999_Council-Workbook-2.pdf');
+    expect(V.identifyName(D1, 'Workbook', ['Owen_Fairbanks-T999_Council-Workbook.pdf', 'Owen_Fairbanks-T999_Council-Workbook-2.pdf']))
+      .toBe('Owen_Fairbanks-T999_Council-Workbook-3.pdf');
+    expect(V.identifyName('Owen_Fairbanks-T999_EagleApplication-Verified.pdf', 'Workbook', [])).toBe(null);
+    expect(V.identifyName(D1, ' !! ', [])).toBe(null);
+  });
+  it('afterIdentify drops renamed entries; renameNote', () => {
+    const cell = D1 + '; ' + D2 + ' (looks like an Eagle application: which one is the verified one?)';
+    expect(V.afterIdentify(cell, { [D2]: 'x' })).toBe(D1);
+    expect(V.afterIdentify(cell, { [D1]: 'x', [D2]: 'y' })).toBe('');
+    expect(V.renameNote(D1, 'Owen_Fairbanks-T999_Council-MeritBadges.pdf')).toBe('Council-Doc-01 → Council-MeritBadges');
+  });
+});

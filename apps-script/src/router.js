@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.86.0';
+var API_VERSION = '0.87.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -76,6 +76,7 @@ var ACTIONS_ = {
   committeeUploadFile: function (req) { return actionCommitteeUploadFile_(req); },
   committeeUploadFinish: function (req) { return actionCommitteeUploadFinish_(req); },
   councilChecked: function (req) { return actionCouncilChecked_(req); },          // councilAppActions.js
+  councilIdentify: function (req) { return actionCouncilIdentify_(req); },
   scoutReviewFiles: function (req) { return actionScoutReviewFiles_(req); },
   fetchScoutFile: function (req) { return actionFetchScoutFile_(req); },
   // EBoR paperwork page (eborPaperworkActions.js)

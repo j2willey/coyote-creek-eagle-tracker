@@ -134,6 +134,58 @@ var CouncilVerified = (function () {
     }).map(function (f) { return f.id; });
   }
 
+  // ---------- naming the files to identify (dashboard "✓ Council email checked", Jim W., 2026-11-19) ----------
+  // Extra documents Council forwards: a corrected signature page, the complete workbook again, a merit badge record...
+  // A member looks at each Doc-NN and gives it a type; the name keeps <Name>-<Unit>_Council- and the extension.
+  var IDENTIFY_TYPES = [
+    { key: 'Workbook', label: 'Project workbook (complete)' },
+    { key: 'Workbook-Signatures', label: 'Workbook signature page(s)' },
+    { key: 'MeritBadges', label: 'Merit badge record' },
+    { key: 'Statement', label: 'Statement of ambitions and life purpose' },
+    { key: 'Reference', label: 'Reference letter' }
+  ];
+  var DOC = /^(.*_Council-)Doc-\d+(\.[A-Za-z0-9]{1,5})$/;
+
+  /** The 'To identify' cell -> the Doc-NN file names in it ("…_Council-Doc-01.pdf (looks like …)" keeps the name). */
+  function identifyNames(cell) {
+    return str(cell).split(/;\s*/).map(function (x) { return str(x.replace(/\s+\(.*\)\s*$/, '')); })
+      .filter(function (n) { return DOC.test(n); });
+  }
+
+  /** "signature page" / "Merit-badge record!" -> "SignaturePage" / "Merit-BadgeRecord"; '' when nothing usable. Max 40. */
+  function keyword(text) {
+    var words = str(text).replace(/[^A-Za-z0-9\- ]+/g, ' ').split(/\s+/).filter(Boolean);
+    return words.map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join('').replace(/-{2,}/g, '-')
+      .replace(/^-+|-+$/g, '').slice(0, 40);
+  }
+
+  /**
+   * "Owen_Fairbanks-T999_Council-Doc-01.pdf" + "MeritBadges" -> "Owen_Fairbanks-T999_Council-MeritBadges.pdf" ("-2", "-3"
+   * when the name is taken; taken: names already in the folder). null when oldName isn't a Doc-NN or kw is empty.
+   */
+  function identifyName(oldName, kw, taken) {
+    var m = DOC.exec(str(oldName)), k = keyword(kw);
+    if (!m || !k) return null;
+    var have = (taken || []).map(function (n) { return str(n).toLowerCase(); });
+    var name = m[1] + k + m[2];
+    for (var n = 2; have.indexOf(name.toLowerCase()) >= 0; n++) name = m[1] + k + '-' + n + m[2];
+    return name;
+  }
+
+  /** The 'To identify' cell after renaming: renamed {old: new} entries leave it. */
+  function afterIdentify(cell, renamed) {
+    return str(cell).split(/;\s*/).filter(function (x) {
+      var n = str(x.replace(/\s+\(.*\)\s*$/, ''));
+      return x && !Object.prototype.hasOwnProperty.call(renamed || {}, n);
+    }).join('; ');
+  }
+
+  /** Log line part: "Council-Doc-01 → Council-MeritBadges" (the Scout's name and unit dropped). */
+  function renameNote(oldName, newName) {
+    var short = function (n) { return str(n).replace(/^.*_(Council-)/, '$1').replace(/\.[A-Za-z0-9]+$/, ''); };
+    return short(oldName) + ' → ' + short(newName);
+  }
+
   var MOVE_FROM = ['app_submitted', 'proposal_approved'];   // the "Application verified…" row action's stages
   var ALREADY = ['app_verified', 'ebor_booked', 'ebor_paused', 'eagle_earned', 'eagle_not_awarded'];
   /**
@@ -190,7 +242,9 @@ var CouncilVerified = (function () {
 
   return { QUERY: QUERY, isMatch: isMatch, parseSubject: parseSubject, unitCode: unitCode, classify: classify, keep: keep,
     plan: plan, toArchive: toArchive, decide: decide, TAB: TAB, HEADERS: HEADERS, toCheck: toCheck, flags: flags,
-    needsCheck: needsCheck, rowsToTick: rowsToTick };
+    needsCheck: needsCheck, rowsToTick: rowsToTick,
+    IDENTIFY_TYPES: IDENTIFY_TYPES, identifyNames: identifyNames, keyword: keyword, identifyName: identifyName,
+    afterIdentify: afterIdentify, renameNote: renameNote };
 })();
 
 if (typeof module !== 'undefined') module.exports = CouncilVerified;

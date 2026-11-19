@@ -162,5 +162,7 @@ describe('Dashboard "✓ Council email checked" (rowsToTick, checkedLine)', () =
     expect(C.checkedLine('11/19', 'JB', ['Ready for EBOR', 'Ready for EBOR', 'Formsite application']))
       .toBe('11/19 [JB] Council email checked on the dashboard: Ready for EBOR ×2, Formsite application');
     expect(C.checkedLine('11/19', '', ['Formsite application'])).toBe('11/19 [committee] Council email checked on the dashboard: Formsite application');
+    expect(C.checkedLine('11/19', 'JB', ['Ready for EBOR'], ['Council-Doc-01 → Council-MeritBadges', 'Council-Doc-02 → Council-Workbook']))
+      .toBe('11/19 [JB] Council email checked on the dashboard: Ready for EBOR; renamed Council-Doc-01 → Council-MeritBadges, Council-Doc-02 → Council-Workbook');
   });
 });
