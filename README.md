@@ -780,6 +780,16 @@ normal Approved path above.
   box (signer 2 and later go below signer 1's line); a second press of the same button on that page waits for a click.
   Marks can be dragged, resized from the corner and removed with ✕, on any Proposal page. **Nothing is applied until
   Sign & Attach PDF**; a signature is required, a missing printed name or date only warns.
+- **Others signing with you** (Jim W., 2026-11-18): at the in-person Proposal Review the members present sign on this
+  one device, so nothing is forwarded. Section 3 → **+ Add a signer**: each signer picks who they are (committee members
+  with initials, the slot's members offered first; not you, nor anyone already on the copy), types a signature in a
+  script font (a different one from yours by default) or uses **Sign with pen…**, picks ink and size, and places their own
+  Signature / Printed name / Date (amber marks). On the approval page signer 2's marks drop in the white space below
+  signer 1's line; a third signer places by click. Their marks are drawn as text and images, never into the workbook's
+  fields, and **nothing about them is saved** in the browser. After Sign & Attach, **Signed by** becomes you + them
+  (`…SignedBy-AB&CD.pdf`, one log line), and Save drafts the approval email to the Scout as usual. A co-signer with
+  no signature placed blocks Sign & Attach (place it or Remove the signer). Engine: `cosigners` in
+  `applyPlacedItemsAndFlatten`, items carry `signer: n`; checks in `checkCosigners` (`pdfPlan.js`).
 - **Guardrail (per page):** a page is locked only if **it** is identified as Project Plan, Fundraising Application or
   Project Report (`canPlaceOnPage`); locked pages are striped and refuse marks, with the reason shown as a toast next to
   the click as well as in the side panel. Any other page takes marks; one that sits after a locked page (and is not an

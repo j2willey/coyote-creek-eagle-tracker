@@ -454,3 +454,12 @@ dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .sysrow { display: flex; gap: .7rem; align-items: baseline; margin: .5rem 0; }
 .sysrow button { flex: none; min-width: 16rem; text-align: left; }
 .sysout { white-space: pre-wrap; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: .7rem .9rem; margin-top: .8rem; font-size: .85rem; max-height: 60vh; overflow: auto; }
+
+/* Sign Workshop: in-person co-signers (2026-11-18) */
+.ws-co-panel { border: 1px dashed #8a5a00; border-radius: 8px; padding: .5rem .6rem; margin: .5rem 0; display: grid; gap: .4rem; }
+.ws-co-panel select, .ws-co-panel input[type=text] { width: 100%; }
+.ws-co-placebar { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.ws-co-place { border-color: #8a5a00; color: #8a5a00; }
+.ws-co-place.active { background: #8a5a00; color: #fff; }
+.ws-place-box.ws-co-mark { border-color: #8a5a00; background: rgba(138, 90, 0, .10); }
+#wsAddSigner { margin-top: .3rem; }

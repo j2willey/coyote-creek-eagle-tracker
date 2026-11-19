@@ -16,6 +16,7 @@
 import {
   analyzeWorkbookPages,
   checkPlacement,
+  checkCosigners,
   flattenPageIndices,
   fitTextFontSize,
   normalizeRotation,
@@ -795,6 +796,8 @@ function sameBoxSizeAndPos(a, b) {
  * - Item coordinates are in VIEWER space (the page as displayed, `/Rotate` applied). Each page's rotation and crop box
  *   are read here and the marks are drawn rotated back, so they look upright and exactly where they were placed.
  * - A signature / stamp image fills its item box exactly (the Workshop keeps the box at the image's aspect ratio).
+ * - In-person co-signers (`cosigners`, 2026-11-18): an item with `signer: n` is drawn with cosigners[n - 1]'s
+ *   signature, printed name, date and ink; their name / date are always drawn as text, never into a field.
  * - Signer 1's printed name / date go into the workbook's own AcroForm field when the item sits at the default box on
  *   a detected approval page whose field has exactly one widget; otherwise they are drawn as text.
  *
@@ -810,7 +813,8 @@ function sameBoxSizeAndPos(a, b) {
  *   textFontSize?: number,
  *   ink?: string,
  *   stampPngs?: Record<string, Uint8Array>,
- *   flattenEarlier?: boolean
+ *   flattenEarlier?: boolean,
+ *   cosigners?: Array<{ signaturePngBytes: Uint8Array, printedName?: string, dateStr?: string, ink?: string, label?: string }>
  * }} opts
  * @returns {Promise<{ pdfBytes: Uint8Array, flattenedPages: number[] }>}
  */
@@ -826,13 +830,25 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
   const stampPngs = opts.stampPngs || {};
   const cleanName = String(opts.printedName || '').trim();
   const cleanDate = String(opts.dateStr || '').trim();
+  // In-person co-signers (2026-11-18): marks with `signer: n` use cosigners[n - 1]'s picture, name, date and ink.
+  const cosigners = Array.isArray(opts.cosigners) ? opts.cosigners : [];
+  const signerOf = (/** @type {PlacedItem} */ it) => Number(it.signer) || 0;
+  const mainItems = items.filter(it => signerOf(it) === 0 || it.kind === 'stamp');
+  for (const it of items) {
+    if (signerOf(it) > cosigners.length) throw new Error('A mark belongs to a signer who is not in the list. Remove it and place it again.');
+  }
 
-  const check = checkPlacement(analysis, items, {
+  const check = checkPlacement(analysis, mainItems, {
     signaturePresent: !!(signaturePngBytes && signaturePngBytes.byteLength),
     printedName: cleanName,
     dateStr: cleanDate
   });
-  if (check.errors.length) throw new Error(check.errors[0]);
+  const coCheck = checkCosigners(items, cosigners.map((c, k) => ({
+    label: c.label || `Signer ${k + 2}`, hasSignature: !!(c.signaturePngBytes && c.signaturePngBytes.byteLength),
+    printedName: c.printedName, dateStr: c.dateStr
+  })), { requireWho: false });
+  const errs = check.errors.concat(coCheck.errors);
+  if (errs.length) throw new Error(errs[0]);
   for (const it of items) {
     if (it.kind === 'stamp' && !(it.stampId && stampPngs[it.stampId] && stampPngs[it.stampId].byteLength)) {
       throw new Error('A stamp on the page has no image. Remove it and place it again.');
@@ -866,7 +882,7 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
   const filled = new Set();
   if (isFirstSigner && !hasCustomFontSize) {
     for (const it of items) {
-      if ((it.kind !== 'name' && it.kind !== 'date') || !analysis.approvalPageIndices.includes(it.pageIndex)) continue;
+      if ((it.kind !== 'name' && it.kind !== 'date') || signerOf(it) !== 0 || !analysis.approvalPageIndices.includes(it.pageIndex)) continue;
       const v = viewOf(it.pageIndex);
       const def = defaultSignPlacement(analysis.edition, signerIndex, v.size);
       const box = it.kind === 'name' ? def.printedName : def.date;
@@ -895,8 +911,15 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
   /** @type {Map<string, any>} */
   const stampImages = new Map();
   const ordered = [...items.filter(i => i.kind === 'stamp'), ...items.filter(i => i.kind !== 'stamp')];
-  /** @type {any} */
-  let sigImage = null;
+  /** @type {Map<number, any>} */
+  const sigImages = new Map();
+  /** Picture, name, date and ink of a mark's signer. */
+  const who = (/** @type {PlacedItem} */ it) => {
+    const n = signerOf(it);
+    if (!n) return { png: signaturePngBytes, name: cleanName, date: cleanDate, ink: opts.ink };
+    const c = cosigners[n - 1];
+    return { png: c.signaturePngBytes, name: String(c.printedName || '').trim(), date: String(c.dateStr || '').trim(), ink: c.ink };
+  };
   for (const it of ordered) {
     const page = pages[it.pageIndex];
     const v = viewOf(it.pageIndex);
@@ -908,14 +931,16 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
         if (!stampImages.has(sid)) stampImages.set(sid, await pdfDoc.embedPng(stampPngs[sid]));
         img = stampImages.get(sid);
       } else {
-        if (!sigImage) sigImage = await pdfDoc.embedPng(signaturePngBytes);
-        img = sigImage;
+        const n = signerOf(it);
+        if (!sigImages.has(n)) sigImages.set(n, await pdfDoc.embedPng(who(it).png));
+        img = sigImages.get(n);
       }
       const spec = markDrawSpec(it, v.size, v.rotation, v.origin);
       page.drawImage(img, { x: spec.x, y: spec.y, width: spec.width, height: spec.height, rotate: degrees(spec.angle) });
     } else {
       if (filled.has(it.id)) continue;
-      const text = it.kind === 'name' ? cleanName : cleanDate;
+      const w = who(it);
+      const text = it.kind === 'name' ? w.name : w.date;
       const fSize = fitTextFontSize(text, it.width, it.height, hasCustomFontSize ? textFontSize : 0);
       const spec = textDrawSpec(it, { dx: 2, dy: Math.max(2, (it.height - fSize) / 2) }, v.size, v.rotation, v.origin);
       page.drawText(text, {
@@ -923,7 +948,7 @@ export async function applyPlacedItemsAndFlatten(PDFLib, opts) {
         y: spec.y,
         size: fSize,
         font: helvetica,
-        color: rgb(...inkRgb(opts.ink)),
+        color: rgb(...inkRgb(w.ink)),
         rotate: degrees(spec.angle)
       });
     }

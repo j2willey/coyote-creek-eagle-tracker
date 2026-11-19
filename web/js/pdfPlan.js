@@ -110,6 +110,7 @@ export const TEXT_FONT_MAX_PT = 16;
  * @property {number} width
  * @property {number} height
  * @property {string} [stampId]
+ * @property {number} [signer]  0 / absent = the member who opened the Workshop; 1, 2… = in-person co-signers (2026-11-18)
  */
 
 /**
@@ -1106,6 +1107,38 @@ export function checkPlacement(analysis, items, texts) {
   }
   if (has('signature') && !has('name')) warnings.push('No printed name placed.');
   if (has('signature') && !has('date')) warnings.push('No date placed.');
+  return { errors, warnings };
+}
+
+/**
+ * In-person co-signers (Jim W., 2026-11-18): at the Proposal Review the members present sign on one device. Each
+ * co-signer's marks carry `signer: n` (1, 2…). cosigners[n - 1] = {label ("Signer 2 (AB)"), initials, hasSignature,
+ * printedName, dateStr}. A co-signer with no marks is an error (place them or remove the signer).
+ * opts.requireWho: false skips the "pick who" check (the engine has no member list).
+ * @param {PlacedItem[]} items
+ * @param {Array<{ label: string, initials?: string, hasSignature: boolean, printedName?: string, dateStr?: string }>} cosigners
+ * @param {{ requireWho?: boolean }} [opts]
+ * @returns {{ errors: string[], warnings: string[] }}
+ */
+export function checkCosigners(items, cosigners, opts = {}) {
+  /** @type {string[]} */
+  const errors = [];
+  /** @type {string[]} */
+  const warnings = [];
+  const list = Array.isArray(items) ? items : [];
+  (cosigners || []).forEach((c, k) => {
+    const n = k + 1;
+    const label = c.label || `Signer ${n + 1}`;
+    const mine = list.filter(i => (Number(i.signer) || 0) === n);
+    const has = (/** @type {ItemKind} */ kind) => mine.some(i => i.kind === kind);
+    if (opts.requireWho !== false && !String(c.initials || '').trim()) errors.push(`Pick who ${label} is.`);
+    if (!has('signature')) errors.push(`Place ${label}'s signature (or remove ${label}).`);
+    else if (!c.hasSignature) errors.push(`Create ${label}'s signature: type it or sign with pen.`);
+    if (has('name') && !String(c.printedName || '').trim()) errors.push(`Enter ${label}'s printed name (or remove that box).`);
+    if (has('date') && !String(c.dateStr || '').trim()) errors.push(`Enter ${label}'s date (or remove that box).`);
+    if (has('signature') && !has('name')) warnings.push(`No printed name placed for ${label}.`);
+    if (has('signature') && !has('date')) warnings.push(`No date placed for ${label}.`);
+  });
   return { errors, warnings };
 }
 

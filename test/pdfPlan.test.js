@@ -672,3 +672,19 @@ describe('pdfPlan: Task 9.2, signature images', () => {
     expect(it.y + it.height).toBeLessThanOrEqual(box.y + box.height + 0.1);
   });
 });
+
+describe('pdfPlan: checkCosigners (in-person co-signers, 2026-11-18)', async () => {
+  const { checkCosigners } = await import('../web/js/pdfPlan.js');
+  const sig = (signer, kind = 'signature') => ({ id: kind + signer, kind, pageIndex: 0, x: 0, y: 0, width: 10, height: 10, signer });
+  it('needs who, a placed signature and its picture; names the signer', () => {
+    expect(checkCosigners([sig(0)], [{ label: 'Signer 2', initials: '', hasSignature: false }]).errors)
+      .toEqual(['Pick who Signer 2 is.', "Place Signer 2's signature (or remove Signer 2)."]);
+    expect(checkCosigners([sig(1)], [{ label: 'Signer 2 (OF)', initials: 'OF', hasSignature: false }]).errors)
+      .toEqual(["Create Signer 2 (OF)'s signature: type it or sign with pen."]);
+    const ok = checkCosigners([sig(1), sig(1, 'name'), sig(1, 'date')], [{ label: 'Signer 2', initials: 'OF', hasSignature: true, printedName: 'Owen F', dateStr: '11/18/2026' }]);
+    expect(ok).toEqual({ errors: [], warnings: [] });
+    expect(checkCosigners([sig(1), sig(1, 'name')], [{ label: 'Signer 2', initials: 'OF', hasSignature: true, printedName: '' }]).errors)
+      .toEqual(["Enter Signer 2's printed name (or remove that box)."]);
+    expect(checkCosigners([sig(1)], [{ label: 'Signer 2', initials: 'OF', hasSignature: true }]).warnings).toHaveLength(2);
+  });
+});

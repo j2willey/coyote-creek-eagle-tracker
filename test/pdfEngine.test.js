@@ -971,3 +971,37 @@ describe('Field tree cycles (2026-11-11: second signer on a Workshop-signed copy
     expect(repairFieldKidsCycles(PDFLib, fixed)).toBe(0);              // nothing left to repair
   });
 });
+
+describe('pdfEngine: in-person co-signers (2026-11-18)', () => {
+  const pageSize = { width: 612, height: 792 };
+  it('draws a second member\'s signature, name and date below the first signer\'s, in one signing', async () => {
+    const raw = await buildPlacedItemsPdf();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const items = [
+      ...defaultItems(analysis.edition, 0, 1, pageSize),
+      ...defaultItems(analysis.edition, 1, 1, pageSize).map((it, k) => ({ ...it, id: 'co' + k, signer: 1 }))
+    ];
+    const res = await applyPlacedItemsAndFlatten(PDFLib, {
+      pdfBytes: raw, analysis, items, signerIndex: 0,
+      signaturePngBytes: TINY_PNG, printedName: 'Pat Q. Reviewer', dateStr: '11/18/2026',
+      cosigners: [{ signaturePngBytes: TINY_PNG, printedName: 'Owen P. Member', dateStr: '11/18/2026', ink: 'blue' }]
+    });
+    expect(res.flattenedPages).toEqual([1]);
+    const { pdfjsDoc } = await inspectPdfWithPdfJs(pdfjsLib, res.pdfBytes);
+    const p2 = (await (await pdfjsDoc.getPage(2)).getTextContent()).items.map(i => i.str).join(' ');
+    expect(p2).toContain('Pat Q. Reviewer');
+    expect(p2).toContain('Owen P. Member');
+    expect(p2.match(/11\/18\/2026/g)).toHaveLength(2);
+  });
+
+  it('refuses a co-signer with no signature picture, or a mark for a signer who is not listed', async () => {
+    const raw = await buildPlacedItemsPdf();
+    const { analysis } = await inspectPdfWithPdfJs(pdfjsLib, raw);
+    const co = defaultItems(analysis.edition, 1, 1, pageSize).map((it, k) => ({ ...it, id: 'co' + k, signer: 1 }));
+    const base = { pdfBytes: raw, analysis, signerIndex: 0, signaturePngBytes: TINY_PNG, printedName: 'Pat Q', dateStr: '11/18/2026' };
+    await expect(applyPlacedItemsAndFlatten(PDFLib, { ...base, items: [...defaultItems(analysis.edition, 0, 1, pageSize), ...co],
+      cosigners: [{ signaturePngBytes: new Uint8Array(0), printedName: 'Owen', dateStr: '11/18/2026' }] })).rejects.toThrow(/Signer 2's signature/);
+    await expect(applyPlacedItemsAndFlatten(PDFLib, { ...base, items: [...defaultItems(analysis.edition, 0, 1, pageSize), ...co] }))
+      .rejects.toThrow(/not in the list/);
+  });
+});

@@ -37,6 +37,7 @@ import {
   resizeBoxInPage,
   resizeImageBoxInPage,
   setImageItemWidth,
+  checkCosigners,
   SIGNATURE_BASE_WIDTH_PT,
   hasTransparentPixel,
   STAMP_OPAQUE_WARNING,
@@ -96,6 +97,8 @@ import {
  * @property {string[]} [existingSignedBy]
  * @property {number} [maxBytes]
  * @property {StampApi} [stampApi]  stamps from the Drive folder (Task 9c); absent or `enabled: false` = no Stamp button
+ * @property {Array<{ name: string, initials: string }>} [members]  committee members who can co-sign in person (none = no section 3)
+ * @property {string[]} [suggestSigners]  initials to offer first (the members on the Proposal Review slot)
  *
  * @typedef {Object} StampApi
  * @property {() => Promise<{ enabled: boolean, stamps: Array<{ id: string, name: string, bytes: number }>, skipped?: Array<{ name: string, bytes: number }> }>} list
@@ -109,6 +112,21 @@ import {
  *
  * @typedef {Object} WorkshopResult
  * @property {File} file
+ * @property {string} printedName
+ * @property {string} dateStr
+ * @property {Array<{ initials: string, name: string }>} cosigners  members who signed with you, in order
+ *
+ * @typedef {Object} CoSigner  an in-person co-signer (2026-11-18); nothing about them is saved
+ * @property {string} initials
+ * @property {string} name
+ * @property {'type' | 'pen'} mode
+ * @property {string} typedText
+ * @property {ScriptFontKey} fontKey
+ * @property {string} ink
+ * @property {number} scale
+ * @property {import('./pdfStrokes.js').Ink | null} strokes
+ * @property {string} png
+ * @property {number} aspect
  * @property {string} printedName
  * @property {string} dateStr
  */
@@ -469,8 +487,14 @@ export async function openSignWorkshop(opts) {
   let items = [];
   let nextItemId = 1;
   const newItemId = () => `m${nextItemId++}`;
-  /** @type {{ kind: ItemKind, stampId?: string } | null} */
+  /** @type {{ kind: ItemKind, stampId?: string, signer?: number } | null} */
   let armed = null;
+  /** In-person co-signers: cosigners[n - 1] signs the marks with `signer: n`. */
+  /** @type {CoSigner[]} */
+  const cosigners = [];
+  const members = (opts.members || []).filter(m => String(m.initials || '').trim());
+  const myIni = String(opts.signerInitials || '').trim().toUpperCase();
+  const signedBefore = new Set((opts.existingSignedBy || []).map(x => String(x).toUpperCase()));
   let flattenEarlier = false;
   /** @type {Set<number>} */
   const confirmedPages = new Set();
@@ -523,7 +547,7 @@ export async function openSignWorkshop(opts) {
         <div class="ws-preview-col">
           <div class="ws-banner warnbox" id="wsBanner" hidden></div>
           <div class="ws-toolbar" id="wsToolbar" role="toolbar" aria-label="Place marks on the page">
-            <span class="hint">Place:</span>
+            <span class="hint" id="wsPlaceLbl">Place:</span>
             <button type="button" class="ws-place-btn" data-kind="signature">✍ Signature</button>
             <button type="button" class="ws-place-btn" data-kind="name">Printed name</button>
             <button type="button" class="ws-place-btn" data-kind="date">Date</button>
@@ -636,6 +660,13 @@ export async function openSignWorkshop(opts) {
                 <button type="button" class="ws-linkbtn" id="wsTextAutoBtn">Auto</button>
               </div>
             </div>
+          </div>
+
+          <div class="ws-section" id="wsCoSection" hidden>
+            <strong>3. Others signing with you</strong>
+            <p class="hint">At an in-person review, the members present sign here too, on this device. Their signatures are not saved.</p>
+            <div id="wsCoList"></div>
+            <button type="button" id="wsAddSigner">+ Add a signer</button>
           </div>
 
           <p id="wsStatusMsg" class="hint" role="status"></p>
@@ -813,13 +844,18 @@ export async function openSignWorkshop(opts) {
 
     const placeBtns = /** @type {NodeListOf<HTMLButtonElement>} */ (toolbar.querySelectorAll('.ws-place-btn'));
     function refreshToolbar() {
-      placeBtns.forEach(b => b.classList.toggle('active', !!armed && b.dataset.kind === armed.kind));
+      placeBtns.forEach(b => b.classList.toggle('active', !!armed && !armed.signer && b.dataset.kind === armed.kind));
+      modal.querySelectorAll('.ws-co-place').forEach(el => {
+        const b = /** @type {HTMLElement} */ (el);
+        b.classList.toggle('active', !!armed && armed.signer === Number(b.dataset.signer) && b.dataset.kind === armed.kind);
+      });
       docEl.classList.toggle('armed', !!armed);
     }
-    function arm(/** @type {ItemKind} */ kind) {
-      armed = { kind };
+    function arm(/** @type {ItemKind} */ kind, signer = 0) {
+      armed = signer ? { kind, signer } : { kind };
       refreshToolbar();
-      const what = kind === 'signature' ? 'your signature' : kind === 'name' ? 'your printed name' : 'the date';
+      const whose = signer ? `${coLabel(signer)}'s` : 'your';
+      const what = kind === 'signature' ? `${whose} signature` : kind === 'name' ? `${whose} printed name` : signer ? `${whose} date` : 'the date';
       setStatus(`Click on the page where ${what} goes (Esc cancels).`, 'hint');
     }
     function disarm() {
@@ -835,17 +871,22 @@ export async function openSignWorkshop(opts) {
      * A Place button: on a detected approval page the mark starts at the workbook's own box (unless that kind is
      * already there); anywhere else it waits for a click on the page.
      */
-    function onPlaceButton(/** @type {ItemKind} */ kind) {
-      if (armed && armed.kind === kind) {
+    function onPlaceButton(/** @type {ItemKind} */ kind, signer = 0) {
+      if (armed && armed.kind === kind && (armed.signer || 0) === signer) {
         disarm();
         updateValidationState();
         return;
       }
       const cur = currentPageIndex;
       const detected = analysis.approvalPageIndices.includes(cur);
-      if (detected && canPlaceOnPage(analysis, cur).ok && !items.some(it => it.kind === kind && it.pageIndex === cur)) {
-        const it = defaultItem(kind, analysis.edition, signerIndex, cur, pageSizeOf(cur), newItemId(), { rotation: rotationOf(cur), aspect: sigAspect });
+      // The workbook has a box for the first signer and white space below it for the second (defaultSignPlacement);
+      // a third signer (or a second when two have signed already) places by click.
+      const slot = signerIndex + signer;
+      const mine = (/** @type {PlacedItem} */ it) => (Number(it.signer) || 0) === signer;
+      if (detected && slot <= 1 && canPlaceOnPage(analysis, cur).ok && !items.some(it => it.kind === kind && it.pageIndex === cur && mine(it))) {
+        const it = defaultItem(kind, analysis.edition, slot, cur, pageSizeOf(cur), newItemId(), { rotation: rotationOf(cur), aspect: signer ? cosigners[signer - 1].aspect : sigAspect });
         if (it) {
+          if (signer) it.signer = signer;
           disarm();
           items.push(it);
           selectItem(it.id);
@@ -853,7 +894,7 @@ export async function openSignWorkshop(opts) {
           return;
         }
       }
-      arm(kind);
+      arm(kind, signer);
     }
     placeBtns.forEach(b => {
       if (b.dataset.kind && b.dataset.kind !== 'stamp') b.onclick = () => onPlaceButton(/** @type {ItemKind} */ (b.dataset.kind));
@@ -958,7 +999,7 @@ export async function openSignWorkshop(opts) {
       selectedId = id;
       modal.querySelectorAll('.ws-place-box').forEach(el => el.classList.toggle('selected', /** @type {HTMLElement} */ (el).dataset.id === id));
       const it = selectedItem();
-      if (it && it.kind === 'signature') syncScaleFromItem(it);
+      if (it && it.kind === 'signature' && !it.signer) syncScaleFromItem(it);
     }
 
     // The signature image changed (typed, drawn, uploaded, cleared): re-measure its aspect ratio and re-fit the placed
@@ -970,7 +1011,7 @@ export async function openSignWorkshop(opts) {
       sigAspect = aspect;
       if (aspect > 0) {
         for (const it of items) {
-          if (it.kind !== 'signature') continue;
+          if (it.kind !== 'signature' || it.signer) continue;
           const h = Math.round((it.width / aspect) * 10) / 10;
           const cy = it.y + it.height / 2;
           Object.assign(it, clampItemToPage({ ...it, y: cy - h / 2, height: h }, pageSizeOf(it.pageIndex)));
@@ -1025,7 +1066,7 @@ export async function openSignWorkshop(opts) {
       savedSig.signatureScale = signatureScale;
       syncSizeControls();
       const sel = selectedItem();
-      if (sel && sel.kind === 'signature') {
+      if (sel && sel.kind === 'signature' && !sel.signer) {
         Object.assign(sel, setImageItemWidth(sel, SIGNATURE_BASE_WIDTH_PT * signatureScale, pageSizeOf(sel.pageIndex)));
         renderPageItems(sel.pageIndex);
       }
@@ -1062,7 +1103,7 @@ export async function openSignWorkshop(opts) {
     // size it is placed at (3x the box in points: sharp on screen and in the PDF), never tinted or stretched.
     let sigPngWidth = 0;
     function sigPngPx() {
-      const widest = items.reduce((m, it) => (it.kind === 'signature' ? Math.max(m, it.width) : m), SIGNATURE_BASE_WIDTH_PT * signatureScale);
+      const widest = items.reduce((m, it) => (it.kind === 'signature' && !it.signer ? Math.max(m, it.width) : m), SIGNATURE_BASE_WIDTH_PT * signatureScale);
       return pixelWidthForBox(widest);
     }
     function renderSigPng() {
@@ -1230,8 +1271,10 @@ export async function openSignWorkshop(opts) {
         y: ps.height - ((ev.clientY - r.top) / Math.max(1, r.height)) * ps.height
       };
       const stampData = armed.stampId ? stampDataCache.get(armed.stampId) : undefined;
-      const aspect = armed.kind === 'stamp' ? (stampData ? stampData.aspect : 0) : sigAspect;
-      const placed = newItemAtPoint(armed.kind, i, point, ps, { id: newItemId(), stampId: armed.stampId, aspect, scale: signatureScale });
+      const co = armed.signer ? cosigners[armed.signer - 1] : null;
+      const aspect = armed.kind === 'stamp' ? (stampData ? stampData.aspect : 0) : co ? co.aspect : sigAspect;
+      const placed = newItemAtPoint(armed.kind, i, point, ps, { id: newItemId(), stampId: armed.stampId, aspect, scale: co ? co.scale : signatureScale });
+      if (co && armed.signer) placed.signer = armed.signer;
       items.push(placed);
       selectItem(placed.id);
       disarm();
@@ -1255,10 +1298,10 @@ export async function openSignWorkshop(opts) {
       for (const box of items.filter(it => it.pageIndex === pageIndex)) {
         const label = labels[box.kind];
         const elBox = document.createElement('div');
-        elBox.className = `ws-place-box ws-place-${box.kind}`;
+        elBox.className = `ws-place-box ws-place-${box.kind}` + (box.signer ? ' ws-co-mark' : '');
         elBox.dataset.id = box.id;
         if (box.id === selectedId) elBox.classList.add('selected');
-        elBox.title = `Drag to move the ${label.toLowerCase()}, or drag the bottom-right corner to resize`;
+        elBox.title = (box.signer ? `${coLabel(box.signer)}: ` : '') + `Drag to move the ${label.toLowerCase()}, or drag the bottom-right corner to resize`;
 
         const applyBoxGeometry = () => {
           elBox.style.left = `${(box.x / ps.width) * 100}%`;
@@ -1271,11 +1314,13 @@ export async function openSignWorkshop(opts) {
         const contentSpan = document.createElement('span');
         contentSpan.className = 'ws-place-content';
         const applyContentStyle = () => {
+          const co = box.signer ? cosigners[box.signer - 1] : null;
           if (box.kind === 'signature') {
             contentSpan.replaceChildren();
-            if (savedSig.pngDataUrl) {
+            const src = co ? co.png : savedSig.pngDataUrl;
+            if (src) {
               const img = document.createElement('img');
-              img.src = savedSig.pngDataUrl;
+              img.src = src;
               img.alt = 'Signature';
               contentSpan.appendChild(img);
             } else {
@@ -1294,10 +1339,10 @@ export async function openSignWorkshop(opts) {
             }
           } else if (box.kind === 'name' || box.kind === 'date') {
             const txt = box.kind === 'date'
-              ? (dateStrInput.value || 'Date')
-              : (printedNameInput.value || 'Printed Name');
+              ? ((co ? co.dateStr : dateStrInput.value) || 'Date')
+              : ((co ? co.printedName : printedNameInput.value) || 'Printed Name');
             contentSpan.textContent = txt;
-            contentSpan.style.color = inkHex(savedSig.ink);
+            contentSpan.style.color = inkHex(co ? co.ink : savedSig.ink);
             const ptSize = fitTextFontSize(txt, box.width, box.height, textFontSize);
             contentSpan.style.fontSize = `${Math.max(9, Math.round(ptSize * cssScale * 10) / 10)}px`;
           }
@@ -1348,10 +1393,11 @@ export async function openSignWorkshop(opts) {
             box.height = resized.height;
             applyBoxGeometry();
             applyContentStyle();
-            if (box.kind === 'signature') syncScaleFromItem(box);
+            if (box.kind === 'signature' && !box.signer) syncScaleFromItem(box);
           };
           const onResizeUp = () => {
-            if (box.kind === 'signature') void rerenderSigPng(false);
+            if (box.kind === 'signature' && box.signer) coSizeFromItem(box);
+            else if (box.kind === 'signature') void rerenderSigPng(false);
             handle.removeEventListener('pointermove', onResizeMove);
             handle.removeEventListener('pointerup', onResizeUp);
             handle.removeEventListener('pointercancel', onResizeUp);
@@ -1453,13 +1499,243 @@ export async function openSignWorkshop(opts) {
       [currentPageIndex - 1, currentPageIndex, currentPageIndex + 1].filter(i => i >= 0 && i < totalPages).forEach(requestRender);
     }
 
+    // 4b. In-person co-signers (Jim W., 2026-11-18): the members at the Proposal Review sign on this one device.
+    // Each gets a panel: who (committee dropdown, the slot's members first), a typed or pen signature, ink, size,
+    // printed name, date, and their own Place buttons. Nothing about them is saved (Jim W.: forget after each signing).
+    const coSection = q('#wsCoSection');
+    const coList = q('#wsCoList');
+    const addSignerBtn = /** @type {HTMLButtonElement} */ (q('#wsAddSigner'));
+    const placeLbl = q('#wsPlaceLbl');
+    const coLabel = (/** @type {number} */ n) => {
+      const c = cosigners[n - 1];
+      return `Signer ${signerIndex + n + 1}` + (c && c.initials ? ` (${c.initials})` : '');
+    };
+    /** Members still free to pick for signer n: not you, not already on the copy, not another co-signer. */
+    function freeMembers(/** @type {number} */ n) {
+      const taken = new Set(cosigners.filter((_, k) => k !== n - 1).map(c => c.initials));
+      return members.filter(m => {
+        const ini = m.initials.toUpperCase();
+        return ini !== myIni && !signedBefore.has(ini) && !taken.has(ini);
+      });
+    }
+    function coPngPx(/** @type {number} */ n) {
+      const c = cosigners[n - 1];
+      const widest = items.reduce((m, it) => (it.kind === 'signature' && it.signer === n ? Math.max(m, it.width) : m), SIGNATURE_BASE_WIDTH_PT * c.scale);
+      return pixelWidthForBox(widest);
+    }
+    /** Re-draw signer n's signature picture and re-fit their placed signature boxes to it. */
+    async function coRender(/** @type {number} */ n) {
+      const c = cosigners[n - 1];
+      if (!c) return;
+      const png = c.mode === 'pen'
+        ? (c.strokes ? inkToPngDataUrl(c.strokes, c.ink, coPngPx(n)) : '')
+        : await renderTypedSignaturePngAsync(c.typedText, c.fontKey, c.ink);
+      if (cosigners[n - 1] !== c) return;
+      c.png = png;
+      c.aspect = await pngAspect(png);
+      if (c.aspect > 0) {
+        for (const it of items) {
+          if (it.kind !== 'signature' || it.signer !== n) continue;
+          const h = Math.round((it.width / c.aspect) * 10) / 10;
+          const cy = it.y + it.height / 2;
+          Object.assign(it, clampItemToPage({ ...it, y: cy - h / 2, height: h }, pageSizeOf(it.pageIndex)));
+        }
+      }
+      const prev = /** @type {HTMLImageElement | null} */ (coList.querySelector(`[data-co="${n}"] .ws-co-preview`));
+      if (prev) { prev.src = png || ''; prev.hidden = !png; }
+      renderOverlayBoxes();
+      updateValidationState();
+    }
+    /** Signer n's size control: sets the size of their next signature and resizes the ones placed (aspect kept). */
+    function coSetScale(/** @type {number} */ n, /** @type {number} */ next) {
+      const c = cosigners[n - 1];
+      c.scale = Math.max(SIG_SCALE_MIN, Math.min(SIG_SCALE_MAX, Math.round(next * 20) / 20));
+      for (const it of items) {
+        if (it.kind === 'signature' && it.signer === n) Object.assign(it, setImageItemWidth(it, SIGNATURE_BASE_WIDTH_PT * c.scale, pageSizeOf(it.pageIndex)));
+      }
+      const val = coList.querySelector(`[data-co="${n}"] .ws-size-val`);
+      if (val) val.textContent = `${Math.round(c.scale * 100)}%`;
+      void coRender(n);
+    }
+    function coSizeFromItem(/** @type {PlacedItem} */ box) {
+      const n = Number(box.signer) || 0;
+      const c = cosigners[n - 1];
+      if (!c) return;
+      c.scale = Math.max(SIG_SCALE_MIN, Math.min(SIG_SCALE_MAX, Math.round((box.width / SIGNATURE_BASE_WIDTH_PT) * 20) / 20));
+      const val = coList.querySelector(`[data-co="${n}"] .ws-size-val`);
+      if (val) val.textContent = `${Math.round(c.scale * 100)}%`;
+      if (c.mode === 'pen') void coRender(n);
+    }
+    const mkEl = (/** @type {string} */ tag, /** @type {string} */ cls, /** @type {string} */ text) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text) e.textContent = text;
+      return e;
+    };
+    /** Build every co-signer panel again (after one is added or removed: the numbers shift). */
+    function renderCoPanels() {
+      coList.replaceChildren(...cosigners.map((c, k) => coPanel(k + 1)));
+      placeLbl.textContent = cosigners.length ? 'Place (you):' : 'Place:';
+      addSignerBtn.disabled = !freeMembers(cosigners.length + 1).length;
+      addSignerBtn.title = addSignerBtn.disabled ? 'Every committee member is already signing.' : '';
+    }
+    function coPanel(/** @type {number} */ n) {
+      const c = cosigners[n - 1];
+      const box = mkEl('div', 'ws-co-panel', '');
+      box.dataset.co = String(n);
+      const head = mkEl('div', 'ws-sec-head', '');
+      head.append(mkEl('strong', '', coLabel(n)));
+      const rm = /** @type {HTMLButtonElement} */ (mkEl('button', 'ws-linkbtn', 'Remove'));
+      rm.type = 'button';
+      rm.onclick = () => removeCoSigner(n);
+      head.append(rm);
+      box.append(head);
+
+      // Who
+      const whoSel = /** @type {HTMLSelectElement} */ (mkEl('select', '', ''));
+      whoSel.setAttribute('aria-label', `Who is ${coLabel(n)}?`);
+      whoSel.append(new Option('— Who is signing? —', ''));
+      for (const m of freeMembers(n)) whoSel.append(new Option(`${m.name} (${m.initials})`, m.initials.toUpperCase()));
+      whoSel.value = c.initials;
+      whoSel.onchange = () => {
+        const m = members.find(x => x.initials.toUpperCase() === whoSel.value);
+        const oldName = c.name;
+        c.initials = whoSel.value;
+        c.name = m ? m.name : '';
+        if (!c.printedName || c.printedName === oldName) c.printedName = c.name;
+        if (!c.typedText || c.typedText === oldName) c.typedText = c.name;
+        renderCoPanels();
+        void coRender(n);
+      };
+      box.append(whoSel);
+
+      // Signature: typed (script font) or pen
+      const tabs = mkEl('div', 'ws-tabs', '');
+      const tType = /** @type {HTMLButtonElement} */ (mkEl('button', 'ws-tab' + (c.mode === 'type' ? ' active' : ''), 'Type (Script)'));
+      const tPen = /** @type {HTMLButtonElement} */ (mkEl('button', 'ws-tab' + (c.mode === 'pen' ? ' active' : ''), '✍ Sign with pen…'));
+      tType.type = tPen.type = 'button';
+      tabs.append(tType, tPen);
+      box.append(tabs);
+      const typeRow = mkEl('div', 'ws-row', '');
+      const typed = /** @type {HTMLInputElement} */ (mkEl('input', '', ''));
+      typed.type = 'text'; typed.autocomplete = 'off'; typed.placeholder = 'Signature'; typed.value = c.typedText;
+      typed.setAttribute('aria-label', `${coLabel(n)}: typed signature`);
+      const font = /** @type {HTMLSelectElement} */ (mkEl('select', 'ws-font-select', ''));
+      font.innerHTML = fontOptionsHtml;
+      font.value = c.fontKey;
+      font.style.fontFamily = `"${getFontSpec(c.fontKey).family}", cursive`;
+      font.setAttribute('aria-label', `${coLabel(n)}: script font`);
+      typeRow.append(typed, font);
+      typeRow.hidden = c.mode !== 'type';
+      box.append(typeRow);
+      typed.oninput = () => { c.typedText = typed.value; void coRender(n); };
+      font.onchange = () => { c.fontKey = normalizeFontKey(font.value); font.style.fontFamily = `"${getFontSpec(c.fontKey).family}", cursive`; void coRender(n); };
+      tType.onclick = () => { c.mode = 'type'; renderCoPanels(); void coRender(n); };
+      tPen.onclick = async () => {
+        const res = await openSigningOverlay({ title: `Sign with pen: ${coLabel(n)}`, who: c.printedName, inkKey: c.ink });
+        if (!res) return;
+        c.strokes = res.ink;
+        c.ink = res.inkKey;
+        c.mode = 'pen';
+        renderCoPanels();
+        await coRender(n);
+      };
+      const prevBox = mkEl('div', 'ws-sig-preview-box', '');
+      const prev = /** @type {HTMLImageElement} */ (mkEl('img', 'ws-co-preview', ''));
+      prev.alt = `${coLabel(n)}: signature preview`;
+      if (c.png) prev.src = c.png; else prev.hidden = true;
+      prevBox.append(prev);
+      box.append(prevBox);
+
+      // Ink + size
+      const inkRow = mkEl('div', 'ws-ink-row', '');
+      inkRow.setAttribute('role', 'radiogroup');
+      inkRow.append(mkEl('span', 'hint', 'Ink:'));
+      for (const ic of INK_COLORS) {
+        const b = /** @type {HTMLButtonElement} */ (mkEl('button', 'ws-ink' + (ic.key === c.ink ? ' on' : ''), ''));
+        b.type = 'button'; b.title = ic.label; b.setAttribute('aria-label', ic.label); b.setAttribute('role', 'radio');
+        b.setAttribute('aria-checked', String(ic.key === c.ink));
+        b.style.background = ic.hex;
+        b.onclick = () => { c.ink = normalizeInk(ic.key); renderCoPanels(); void coRender(n); };
+        inkRow.append(b);
+      }
+      box.append(inkRow);
+      const sizeRow = mkEl('div', 'ws-size-controls', '');
+      const smaller = /** @type {HTMLButtonElement} */ (mkEl('button', 'ws-step-btn', '−'));
+      const larger = /** @type {HTMLButtonElement} */ (mkEl('button', 'ws-step-btn', '+'));
+      smaller.type = larger.type = 'button';
+      smaller.title = 'Smaller signature'; larger.title = 'Larger signature';
+      smaller.onclick = () => coSetScale(n, c.scale - 0.1);
+      larger.onclick = () => coSetScale(n, c.scale + 0.1);
+      sizeRow.append(mkEl('span', 'hint', 'Signature size'), smaller, mkEl('span', 'ws-size-val', `${Math.round(c.scale * 100)}%`), larger);
+      box.append(sizeRow);
+
+      // Printed name + date
+      const row = mkEl('div', 'ws-row', '');
+      const nm = /** @type {HTMLInputElement} */ (mkEl('input', '', ''));
+      nm.type = 'text'; nm.autocomplete = 'off'; nm.placeholder = 'Printed name'; nm.value = c.printedName;
+      nm.setAttribute('aria-label', `${coLabel(n)}: printed name`);
+      nm.oninput = () => { c.printedName = nm.value; renderOverlayBoxes(); updateValidationState(); };
+      const dt = /** @type {HTMLInputElement} */ (mkEl('input', '', ''));
+      dt.type = 'text'; dt.autocomplete = 'off'; dt.placeholder = 'MM/DD/YYYY'; dt.value = c.dateStr;
+      dt.setAttribute('aria-label', `${coLabel(n)}: date`);
+      dt.oninput = () => { c.dateStr = dt.value; renderOverlayBoxes(); updateValidationState(); };
+      row.append(nm, dt);
+      box.append(row);
+
+      // Place buttons for this signer
+      const place = mkEl('div', 'ws-co-placebar', '');
+      place.append(mkEl('span', 'hint', 'Place:'));
+      for (const [kind, text] of [['signature', '✍ Signature'], ['name', 'Printed name'], ['date', 'Date']]) {
+        const b = /** @type {HTMLButtonElement} */ (mkEl('button', 'ws-place-btn ws-co-place', text));
+        b.type = 'button';
+        b.dataset.kind = kind;
+        b.dataset.signer = String(n);
+        b.onclick = () => onPlaceButton(/** @type {ItemKind} */ (kind), n);
+        place.append(b);
+      }
+      box.append(place);
+      return box;
+    }
+    function addCoSigner() {
+      const n = cosigners.length + 1;
+      const free = freeMembers(n);
+      const suggested = (opts.suggestSigners || []).map(x => String(x).toUpperCase());
+      const pick = free.find(m => suggested.includes(m.initials.toUpperCase())) || null;
+      // A different script font from yours, so two typed signatures don't look alike.
+      const mineAt = SCRIPT_FONTS.findIndex(f => f.key === normalizeFontKey(fontSelect.value));
+      const fontKey = SCRIPT_FONTS[(Math.max(0, mineAt) + n) % SCRIPT_FONTS.length].key;
+      cosigners.push({
+        initials: pick ? pick.initials.toUpperCase() : '', name: pick ? pick.name : '', mode: 'type',
+        typedText: pick ? pick.name : '', fontKey, ink: savedSig.ink, scale: 1, strokes: null, png: '', aspect: 0,
+        printedName: pick ? pick.name : '', dateStr: dateStrInput.value
+      });
+      renderCoPanels();
+      void coRender(n);
+    }
+    function removeCoSigner(/** @type {number} */ n) {
+      const pagesTouched = [...new Set(items.map(it => it.pageIndex))];
+      items = items.filter(it => (Number(it.signer) || 0) !== n);
+      for (const it of items) if ((Number(it.signer) || 0) > n) it.signer = /** @type {number} */ (it.signer) - 1;
+      cosigners.splice(n - 1, 1);
+      if (armed && armed.signer) disarm();
+      renderCoPanels();
+      itemsChanged(pagesTouched);
+    }
+    addSignerBtn.onclick = () => addCoSigner();
+    if (members.length) { coSection.hidden = false; renderCoPanels(); }
+
     // 5. Validation state
     function updateValidationState() {
-      const check = checkPlacement(analysis, items, {
+      const main = checkPlacement(analysis, items.filter(it => !it.signer || it.kind === 'stamp'), {
         signaturePresent: !!savedSig.pngDataUrl,
         printedName: printedNameInput.value,
         dateStr: dateStrInput.value
       });
+      const co = checkCosigners(items, cosigners.map((c, k) => ({
+        label: coLabel(k + 1), initials: c.initials, hasSignature: !!c.png, printedName: c.printedName, dateStr: c.dateStr
+      })));
+      const check = { errors: main.errors.concat(co.errors), warnings: main.warnings.concat(co.warnings) };
       if (check.errors.length) {
         applyBtn.disabled = true;
         if (!armed) setStatus(check.errors[0], 'hint');
@@ -1512,6 +1788,13 @@ export async function openSignWorkshop(opts) {
         for (const it of items) {
           if (it.kind === 'stamp' && it.stampId && !stampPngs[it.stampId]) stampPngs[it.stampId] = (await loadStamp(it.stampId)).bytes;
         }
+        /** @type {Array<{ signaturePngBytes: Uint8Array, printedName: string, dateStr: string, ink: string, label: string }>} */
+        const coOut = [];
+        for (let k = 0; k < cosigners.length; k++) {
+          const c = cosigners[k];
+          if (c.mode === 'pen' && c.strokes) c.png = inkToPngDataUrl(c.strokes, c.ink, coPngPx(k + 1));   // sharp at the placed size
+          coOut.push({ signaturePngBytes: dataUrlToBytes(c.png), printedName: c.printedName.trim(), dateStr: c.dateStr.trim(), ink: c.ink, label: coLabel(k + 1) });
+        }
         const res = await applyPlacedItemsAndFlatten(PDFLib, {
           pdfBytes: opts.pdfBytes,
           analysis,
@@ -1523,7 +1806,8 @@ export async function openSignWorkshop(opts) {
           textFontSize,
           ink: savedSig.ink,
           stampPngs,
-          flattenEarlier
+          flattenEarlier,
+          cosigners: coOut
         });
 
         if (res.pdfBytes.byteLength > maxBytes) {
@@ -1537,7 +1821,8 @@ export async function openSignWorkshop(opts) {
         cleanupAndResolve({
           file: outFile,
           printedName: printedNameInput.value.trim(),
-          dateStr: dateStrInput.value.trim()
+          dateStr: dateStrInput.value.trim(),
+          cosigners: cosigners.map(c => ({ initials: c.initials, name: c.printedName.trim() || c.name }))
         });
       } catch (e) {
         setStatus(e instanceof Error ? e.message : String(e), 'hint err');
