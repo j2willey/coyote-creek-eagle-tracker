@@ -2,7 +2,8 @@
  * Committee member adds files for a Scout (Jim W., 2026-11-09): a Scout emailed their Proposal instead of
  * uploading it, and on staging to test without signing in as the Scout. Dashboard → Scout detail → "Add files…".
  * Same path as a Scout Update (attachFiles_): standard name, next version, older versions to Archive, "New files"
- * raised. Logged as "[JW] Files added for the Scout: …". No receipt email to the family.
+ * raised. Logged as "[JW] Files added for the Scout: …". No receipt email to the family. On a Proposal Not Approved
+ * row the row moves back to Proposal Received (restartAfterDenial_, scoutUpdate.js).
  *
  * Router actions (committee members only):
  *   committeeUploadStart  {session, recordId, note}          -> {uploadToken, tags}
@@ -48,7 +49,10 @@ function actionCommitteeUploadFinish_(req) {
   var res = attachFiles_(rec, uploads);
   addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [' + (c.me.initials || c.email) + '] Files added for the Scout: ' +
     res.names.join(', ') + (ctx.note ? '. Note: ' + ctx.note : ''));
+  var restarted = restartAfterDenial_(rec, [], res.names);      // Proposal Not Approved → Proposal Received (2026-11-19)
   CacheService.getScriptCache().remove('cu:' + req.uploadToken);
-  return { message: 'Filed in ' + rec.fields.scout_name + '\'s folder: ' + res.names.join(', ') + '. The row shows New files until someone acts on it.',
+  return { message: 'Filed in ' + rec.fields.scout_name + '\'s folder: ' + res.names.join(', ') + '. ' +
+      (restarted ? 'It was Proposal Not Approved, so the row moved to ' + SettingsModel.sectionLabel(getSettings_(), restarted) + ' (review starts over).'
+                 : 'The row shows New files until someone acts on it.'),
     files: res.names };
 }

@@ -142,6 +142,20 @@ function addRecordNote_(recordId, line) {
   }
 }
 
+/**
+ * After new files or details were filed on rec (read before the update): a Proposal Not Approved row goes back to
+ * Proposal Received with a log line (lib/scoutFiles.js restartsReview). Every path that adds to a record calls this:
+ * Scout Update, a first-time form matched to the record, a member's "Add files…". -> section key moved to, or ''.
+ */
+function restartAfterDenial_(rec, changes, files) {
+  if (!rec || !ScoutFiles.restartsReview(rec.section, changes, files)) return '';
+  var to = 'proposal_received';
+  try { Records.move(rec.recordId, to); }
+  catch (e) { to = 'proposal_incomplete'; Records.move(rec.recordId, to); }   // tab without a Proposal Received row yet
+  addRecordNote_(rec.recordId, ScoutFiles.restartLine(Intake.shortDate(new Date()), SettingsModel.sectionLabel(getSettings_(), to)));
+  return to;
+}
+
 // ---------- session + ownership ----------
 
 function sessionEmail_(session) {
@@ -276,14 +290,7 @@ function actionFinishUpdate_(req) {
   addRecordNote_(ctx.recordId, ScoutFiles.noteLine(Intake.shortDate(new Date()), 'Scout Update', res.names, ctx.changes));
   var dLine = ScoutFiles.descriptionLine(Intake.shortDate(new Date()), ctx.description);
   if (dLine) addRecordNote_(ctx.recordId, dLine);                  // the Scout's own words, on top of the log
-  var restarted = ScoutFiles.restartsReview(rec.section, ctx.changes);
-  if (restarted) {
-    var to = 'proposal_received';
-    try { Records.move(ctx.recordId, to); }
-    catch (e) { to = 'proposal_incomplete'; Records.move(ctx.recordId, to); }   // tab without New Submissions yet
-    addRecordNote_(ctx.recordId, Intake.shortDate(new Date()) + ' [tool] New project title on an Unapproved Proposal: moved to ' +
-      SettingsModel.sectionLabel(getSettings_(), to) + ' (review starts over)');
-  }
+  var restarted = restartAfterDenial_(rec, ctx.changes, res.names);
   CacheService.getScriptCache().remove('uu:' + req.uploadToken);
 
   var s = getSettings_();
@@ -293,6 +300,6 @@ function actionFinishUpdate_(req) {
     changes: ScoutFiles.describeChanges(ctx.changes), description: ctx.description || '', pageLink: String(s.webOrigin).replace(/\/+$/, '') + '/signin' }, { to: familyMsg_(rec.fields, s.committeeGroupEmail).to, cc: familyMsg_(rec.fields, s.committeeGroupEmail).cc, keepCc: familyMsg_(rec.fields).keepCc,
     subject: m.subject, body: m.body });
   return { message: 'Thank you. Your update is in, and we emailed a receipt.' +
-      (restarted ? ' Because the project title changed, the committee will review it as a new Proposal.' : ''), files: res.names,
+      (restarted ? ' The committee will review it as a new Proposal.' : ''), files: res.names,
     changes: ScoutFiles.describeChanges(ctx.changes) };
 }

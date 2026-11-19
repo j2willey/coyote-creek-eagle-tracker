@@ -107,7 +107,7 @@ flowchart TD
   BA -. "Close record" .-> CL
   CL -. "Reopen (back where it came from)" .-> NA
   RB -. "Review outcome: not approved" .-> NA
-  NA -. "new project title on an update" .-> PRC
+  NA -. "any new submission<br/>(update, form, Add files…)" .-> PRC
   PRC -. "Action" .-> BA
 ```
 

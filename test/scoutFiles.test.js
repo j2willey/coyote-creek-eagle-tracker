@@ -76,15 +76,24 @@ describe('Notes (M6)', () => {
   });
 });
 
-describe('ScoutFiles.restartsReview (new title on an Unapproved Proposal)', () => {
+describe('ScoutFiles.restartsReview (anything new on a Proposal Not Approved row)', () => {
   const ScoutFiles = require('../apps-script/src/lib/scoutFiles.js');
   const title = [{ key: 'proj_title', from: 'Old bench', to: 'Library garden' }];
-  it('only in Unapproved, only for a new title', () => {
+  const esspp = ['Scout_1-T999_ESSPP-V2.pdf'];
+  it('a new file or any changed detail restarts review, only in Proposal Not Approved', () => {
     expect(ScoutFiles.restartsReview('proposal_not_approved', title)).toBe(true);
-    expect(ScoutFiles.restartsReview('proposal_incomplete', title)).toBe(false);
-    expect(ScoutFiles.restartsReview('proposal_not_approved', [{ key: 'beneficiary', from: 'A', to: 'B' }])).toBe(false);
-    expect(ScoutFiles.restartsReview('proposal_not_approved', [{ key: 'proj_title', from: 'Old', to: '' }])).toBe(false);
-    expect(ScoutFiles.restartsReview('proposal_not_approved', [])).toBe(false);
+    expect(ScoutFiles.restartsReview('proposal_not_approved', [], esspp)).toBe(true);           // same title, new ESSPP
+    expect(ScoutFiles.restartsReview('proposal_not_approved', [], ['Scout_1-T999_Photo-V1.jpg'])).toBe(true);
+    expect(ScoutFiles.restartsReview('proposal_not_approved', [{ key: 'beneficiary', from: 'A', to: 'B' }])).toBe(true);
+    expect(ScoutFiles.restartsReview('proposal_not_approved', [], [])).toBe(false);
+    expect(ScoutFiles.restartsReview('proposal_not_approved')).toBe(false);
+    expect(ScoutFiles.restartsReview('proposal_incomplete', title, esspp)).toBe(false);
+    expect(ScoutFiles.restartsReview('proposal_revisions', title, esspp)).toBe(false);
+    expect(ScoutFiles.restartsReview('closed', title, esspp)).toBe(false);
+  });
+  it('log line', () => {
+    expect(ScoutFiles.restartLine('11/19', 'Proposal Received'))
+      .toBe('11/19 [tool] New submission after Proposal Not Approved: moved to Proposal Received (review starts over)');
   });
 });
 

@@ -209,8 +209,9 @@ function actionAdminIntake_(req) {
       var rec = Records.get(String(req.recordId || ''));
       if (!rec) throw userError_('Pick the Scout to attach the files to.');
       var accept = Array.isArray(req.accept) ? req.accept : null;       // compared field by field first (2026-11-04)
-      attachQueueToRecord_(q, queueToClean_(q), rec.recordId, { reviewed: !!accept });
-      msg = 'Files added to ' + rec.fields.scout_name + '\'s record; the family was emailed.';
+      var att = attachQueueToRecord_(q, queueToClean_(q), rec.recordId, { reviewed: !!accept });
+      msg = 'Files added to ' + rec.fields.scout_name + '\'s record; the family was emailed.' +
+        (att && att.restarted ? ' It was Proposal Not Approved, so the row moved to ' + SettingsModel.sectionLabel(getSettings_(), att.restarted) + '.' : '');
       if (accept) msg += ' ' + applyIntakeFields_(req, c, findQueue_(q['Queue ID']), rec.recordId, accept);
     } else if (act === 'resend') {
       sendIntakeConfirmation_(q, { 'Note': 'Confirmation re-sent by ' + who + ' ' + Intake.shortDate(new Date()) });

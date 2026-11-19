@@ -70,11 +70,17 @@ var ScoutFiles = (function () {
   }
 
   /**
-   * A new project title on an Unapproved Proposal = a new project: the row goes
-   * back to New Submissions and the process starts over (Jim W., 2026-10-18).
+   * Anything new on a Proposal Not Approved row (a file or a changed detail, from the Scout, the first-time form or a
+   * member's "Add files…") is a new submission: the row goes back to Proposal Received and review starts over. The
+   * committee reviews what came in; a reworked project may keep its title (Jim W., 2026-11-19; was title-only, 10/18).
    */
-  function restartsReview(sectionKey, changes) {
-    return sectionKey === 'proposal_not_approved' && (changes || []).some(function (c) { return c.key === 'proj_title' && str(c.to); });
+  function restartsReview(sectionKey, changes, files) {
+    return sectionKey === 'proposal_not_approved' && ((changes || []).length > 0 || (files || []).length > 0);
+  }
+
+  /** "11/19 [tool] New submission after Proposal Not Approved: moved to Proposal Received (review starts over)" */
+  function restartLine(shortDate, toLabel) {
+    return shortDate + ' [tool] New submission after Proposal Not Approved: moved to ' + str(toLabel) + ' (review starts over)';
   }
 
   function describeChanges(changes) {
@@ -188,7 +194,7 @@ var ScoutFiles = (function () {
   return {
     requestCell: requestCell, requestFor: requestFor,
     DESCRIPTION_MAX: DESCRIPTION_MAX, cleanDescription: cleanDescription, descriptionLine: descriptionLine,
-    restartsReview: restartsReview,
+    restartsReview: restartsReview, restartLine: restartLine,
     ARCHIVE: ARCHIVE, EDITABLE: EDITABLE, READONLY: READONLY,
     parseStandardName: parseStandardName, existingVersions: existingVersions, toArchive: toArchive,
     diff: diff, show: show, renamePlan: renamePlan, describeChanges: describeChanges, noteLine: noteLine, prependNote: prependNote,

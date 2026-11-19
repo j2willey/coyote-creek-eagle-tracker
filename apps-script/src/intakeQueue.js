@@ -349,6 +349,7 @@ function attachQueueToRecord_(q, cand, recordId, opts) {
   var line = ScoutFiles.noteLine(Intake.shortDate(new Date()), 'Duplicate intake ' + q['Queue ID'], res.names, []) +
     (diffs.length ? '. Form differed: ' + diffs.join('; ') : '');
   addRecordNote_(recordId, line);
+  var restarted = restartAfterDenial_(rec, diffs, res.names);   // after a Not Approved outcome: review starts over
   withLock_(function () {
     Tabs.update(QUEUE_TAB, q._row, { 'Status': Intake.STATUS.ATTACHED, 'Record ID': recordId,
       'Note': 'Files attached to ' + recordId + (diffs.length ? '. Differs: ' + diffs.join('; ') : '') });
@@ -366,7 +367,8 @@ function attachQueueToRecord_(q, cand, recordId, opts) {
       '\n\nTo take any of the form\'s values: Admin page → "Compare with the sheet…".\n\nFolder: ' + res.folder.getUrl());
   }
   return { status: 'attached', message: 'Thank you. We matched this to the record we already have for ' + rec.fields.scout_name +
-    ' and added your files. Next time, sign in and use "Send an update".' };
+    ' and added your files.' + (restarted ? ' The committee will review it as a new Proposal.' : '') +
+    ' Next time, sign in and use "Send an update".', restarted: restarted };
 }
 
 /** "R-… (Scout Nine, T 109; section: Something missing)" for record and queue IDs. */
