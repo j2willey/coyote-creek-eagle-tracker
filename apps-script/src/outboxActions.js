@@ -18,6 +18,8 @@
  *   outboxCopy      {session, id}                          -> {message, id}  a sent (or discarded) email as a new draft
  *   outboxAttach    {session, id, name, data (base64)}     -> {attachments, message}  add a file to a waiting email
  *   outboxDetach    {session, id, index}                   -> {attachments, message}  take one off (the Drive file stays)
+ *   outboxSave      {session, id, base, to, cc, subject, html, replyTo} -> {message, edited, editedBy}  keep edits; still waiting
+ * Save / Send / Send later carry `base` (the Edited time the page loaded): refused if another member saved since.
  * Emails with attachments (signed Proposal, EBoR scans, photos) are sent with the files; Reply-To = the sending member.
  */
 var OUTBOX_TAB = 'Outbox';
@@ -81,7 +83,8 @@ function outboxItem_(r, withBody) {
     attachments: Outbox.parseAttachments(r['Attachments']).map(function (a) { return a.name; }),
     eventAt: r['Event at'] instanceof Date ? r['Event at'].getTime() : Number(r['Event at']) || 0,
     sendAt: r['Send at'] instanceof Date ? r['Send at'].getTime() : 0, scheduledBy: r['Scheduled by'] ? memberTag_(r['Scheduled by']) : '',
-    note: String(r['Note'] || ''), replyTo: String(r['Reply to'] || '') };
+    note: String(r['Note'] || ''), replyTo: String(r['Reply to'] || ''),
+    edited: r['Edited'] instanceof Date ? r['Edited'].getTime() : 0, editedBy: r['Edited by'] ? memberTag_(r['Edited by']) : '' };
   o.choices = o.status === Outbox.STATUS.PENDING ? Outbox.scheduleChoices(o.eventAt, Date.now()) : [];
   if (withBody) { o.html = String(r['Html'] || ''); o.attachSizes = attachSizes_(r); }
   return o;
@@ -184,7 +187,8 @@ function actionOutboxSend_(req) {
   outboxBlobs_(pre);                                          // refuse missing / too large files before claiming the row
   var mode = Outbox.replyMode(req.replyTo, Outbox.parseAttachments(pre && pre['Attachments']).length > 0);
   ensureOutboxColumn_('Reply to');
-  var row = outboxFinish_(req.id, function () {
+  var row = outboxFinish_(req.id, function (r) {
+    staleCheck_(r, req.base);
     return { 'Status': Outbox.STATUS.SENT, 'Done': new Date(), 'Done by': who, 'To': a.to.join(', '), 'Cc': a.cc.join(', '),
       'Subject': subject, 'Html': html, 'Text': Outbox.htmlToText(html), 'Reply to': mode };
   });
@@ -203,17 +207,49 @@ function actionOutboxSchedule_(req) {
   if (!subject) throw userError_('The subject is empty.');
   var at = Number(req.at);
   ensureOutboxColumn_('Send at'); ensureOutboxColumn_('Scheduled by'); ensureOutboxColumn_('Event at'); ensureOutboxColumn_('Reply to');
+  ensureOutboxColumn_('Edited'); ensureOutboxColumn_('Edited by');
   outboxFinish_(req.id, function (r) {
+    staleCheck_(r, req.base);
     var ev = r['Event at'] instanceof Date ? r['Event at'].getTime() : Number(r['Event at']) || 0;
     var prob = Outbox.scheduleProblem(at, Date.now(), ev);
     if (prob) throw userError_(prob);
     return { 'Status': Outbox.STATUS.SCHEDULED, 'Send at': new Date(at), 'Scheduled by': c.email, 'To': a.to.join(', '),
       'Cc': a.cc.join(', '), 'Subject': subject, 'Html': html, 'Text': Outbox.htmlToText(html), 'Note': '',
+      'Edited': new Date(), 'Edited by': c.email,                // a page loaded before this is stale after Unschedule
       'Reply to': Outbox.replyMode(req.replyTo, Outbox.parseAttachments(r['Attachments']).length > 0) };
   });
   var row = outboxRows_().filter(function (r) { return String(r['Id']) === String(req.id); })[0];
   if (row) outboxLog_(row, who, 'scheduled for ' + whenText_(at));
   return { message: 'Scheduled for ' + whenText_(at) + ' (sent within the hour after that).' };
+}
+
+/** Refuse when another member saved this email after the caller's page loaded it (Outbox.editConflict). */
+function staleCheck_(row, base) {
+  var prob = Outbox.editConflict(row['Edited'], base, row['Edited by'] ? memberTag_(row['Edited by']) : '');
+  if (prob) throw userError_(prob);
+}
+
+/**
+ * Outbox → Save: keep the edits for another member to review before it goes (Jim W., 2026-11-19). The email stays
+ * Pending. To may be empty while drafting, but every address present must be valid (Send checks To again).
+ */
+function actionOutboxSave_(req) {
+  var c = committeeMe_(req.session);
+  var who = c.me.initials || c.email;
+  var t = Outbox.addresses(req.to), cc = Outbox.addresses(req.cc);
+  var bad = t.bad.concat(cc.bad);
+  if (bad.length) throw userError_('Not an email address: ' + bad.join(', '));
+  var html = Outbox.clean(req.html);
+  var now = new Date();
+  ['Reply to', 'Edited', 'Edited by'].forEach(ensureOutboxColumn_);
+  var row = outboxFinish_(req.id, function (r) {
+    staleCheck_(r, req.base);
+    return { 'To': t.list.join(', '), 'Cc': cc.list.join(', '), 'Subject': String(req.subject || '').trim(), 'Html': html,
+      'Text': Outbox.htmlToText(html), 'Edited': now, 'Edited by': c.email,
+      'Reply to': Outbox.replyMode(req.replyTo, Outbox.parseAttachments(r['Attachments']).length > 0) };
+  });
+  outboxLog_(row, who, 'edited and saved (still in the Outbox)');
+  return { message: 'Saved. It stays in the Outbox for the next member to review or send.', edited: now.getTime(), editedBy: who };
 }
 
 /** Back to the Outbox (to edit, send now or discard). */

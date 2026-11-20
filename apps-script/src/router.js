@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.90.0';
+var API_VERSION = '0.91.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -65,6 +65,7 @@ var ACTIONS_ = {
   outboxDetach: function (req) { return actionOutboxDetach_(req); },
   outboxSchedule: function (req) { return actionOutboxSchedule_(req); },
   outboxUnschedule: function (req) { return actionOutboxUnschedule_(req); },
+  outboxSave: function (req) { return actionOutboxSave_(req); },
   // Committee dashboard + Review outcome (reviewActions.js)
   committeeHome: function (req) { return actionCommitteeHome_(req); },
   reviewChoices: function (req) { return actionReviewChoices_(req); },

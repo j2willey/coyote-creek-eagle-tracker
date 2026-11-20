@@ -151,7 +151,21 @@ var Outbox = (function () {
     return /@/.test(e) ? e : '';
   }
 
-  return { replyMode: replyMode, replyTo: replyTo, scheduleChoices: scheduleChoices, scheduleProblem: scheduleProblem, due: due, textToHtml: textToHtml, parseAttachments: parseAttachments, withAttachment: withAttachment, withoutAttachment: withoutAttachment, groupSize: groupSize, GROUP_LIMIT: GROUP_LIMIT, MAX_ATTACH_BYTES: MAX_ATTACH_BYTES, STATUS: STATUS, HEADERS: HEADERS, makeId: makeId, addresses: addresses, htmlToText: htmlToText, clean: clean, logLine: logLine };
+  /**
+   * Save edits to a waiting email so another member can review them before it goes (Jim W., 2026-11-19). Each Save stamps
+   * 'Edited'; a member whose page shows an older version (base) is refused, so one member's fixes are never silently
+   * overwritten by another's Save, Send or Send later. editedCell: the row's 'Edited' cell; base: the Edited time (ms) the
+   * page loaded, 0 if never saved; null/undefined = an old page that sends no base (allowed). -> '' or the problem.
+   */
+  function editConflict(editedCell, base, editedBy) {
+    if (base == null || base === '') return '';
+    var cur = editedCell instanceof Date ? editedCell.getTime() : (Date.parse(str(editedCell)) || Number(editedCell) || 0);
+    if (cur === (Number(base) || 0)) return '';
+    return (editedBy ? editedBy + ' saved changes' : 'Someone saved changes') + ' to this email after you opened it. ' +
+      'Reload the Outbox to see their version (copy your edits first if you want to keep them).';
+  }
+
+  return { editConflict: editConflict, replyMode: replyMode, replyTo: replyTo, scheduleChoices: scheduleChoices, scheduleProblem: scheduleProblem, due: due, textToHtml: textToHtml, parseAttachments: parseAttachments, withAttachment: withAttachment, withoutAttachment: withoutAttachment, groupSize: groupSize, GROUP_LIMIT: GROUP_LIMIT, MAX_ATTACH_BYTES: MAX_ATTACH_BYTES, STATUS: STATUS, HEADERS: HEADERS, makeId: makeId, addresses: addresses, htmlToText: htmlToText, clean: clean, logLine: logLine };
 })();
 
 if (typeof module !== 'undefined') module.exports = Outbox;

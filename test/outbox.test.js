@@ -80,3 +80,26 @@ describe('Google Groups 8 MB (2026-11-04)', () => {
     }
   });
 });
+
+describe('Outbox Save: edits by another member (2026-11-19)', () => {
+  const O = require('../apps-script/src/lib/outbox.js');
+  const t = Date.UTC(2026, 10, 19, 2, 40);
+  it('never saved, page loaded that version: ok', () => {
+    expect(O.editConflict('', 0)).toBe('');
+  });
+  it('same Edited time as the page: ok', () => {
+    expect(O.editConflict(new Date(t), t)).toBe('');
+  });
+  it('someone saved after the page loaded: refused, names them', () => {
+    const p = O.editConflict(new Date(t), 0, 'PQ');
+    expect(p).toMatch(/^PQ saved changes/);
+    expect(p).toMatch(/Reload/);
+  });
+  it('a newer save than the one the page saw: refused', () => {
+    expect(O.editConflict(new Date(t + 60000), t, '')).toMatch(/^Someone saved changes/);
+  });
+  it('an old page that sends no base: allowed', () => {
+    expect(O.editConflict(new Date(t), undefined)).toBe('');
+    expect(O.editConflict(new Date(t), null)).toBe('');
+  });
+});

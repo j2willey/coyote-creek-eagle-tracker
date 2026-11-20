@@ -26,18 +26,21 @@ export function groupSize(fileBytes, to, cc, groups) {
 
 export function mountOutbox(root, { session, onCount = () => {} }) {
   let items = [], sel = null, tab = 'waiting';
+  // Unsaved edits in the open email: asked before switching to another email or tab (Save, 2026-11-19).
+  let dirty = false;
+  const leaveOk = () => !dirty || confirm('You have unsaved changes to this email. Leave without saving?');
   const tabs = el('div', { className: 'obtabs', role: 'tablist' });
   const list = el('div', { className: 'oblist' });
   const pane = el('div', {}, el('p', { className: 'muted', textContent: 'Pick an email on the left.' }));
   root.replaceChildren(
     el('p', { className: 'hint', textContent: 'Emails committee members caused (a review outcome, moving a row, a status email, booking or ' +
       'cancelling for a Scout) wait here. Check them, then send, send from your own email, or discard. Every choice goes into the ' +
-      'Scout\'s Life to Eagle Log. Send later schedules it (sent within the hour after the time you pick). Reply to "Me only": the Scout\'s reply comes to you instead of the committee group.' }),
+      'Scout\'s Life to Eagle Log. Save keeps your edits for another member to check before it goes. Send later schedules it (sent within the hour after the time you pick). Reply to "Me only": the Scout\'s reply comes to you instead of the committee group.' }),
     tabs, el('div', { className: 'ob' }, list, pane));
   Object.keys(OB_TABS).forEach(k => {
     const b = el('button', { type: 'button', role: 'tab', className: 'obtab', textContent: TAB_LABEL[k] });
     b.dataset.tab = k;
-    b.onclick = () => { tab = k; sel = null; showTab(); };
+    b.onclick = () => { if (!leaveOk()) return; dirty = false; tab = k; sel = null; showTab(); };
     tabs.append(b);
   });
   const inTab = (x) => OB_TABS[tab].includes(x.status);
@@ -78,10 +81,11 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
           : [el('div', { className: 'st ' + x.status, textContent: x.status + (x.doneBy ? ' · ' + x.doneBy : '') })]),
         el('div', {}, el('b', { textContent: x.scout || '(no Scout)' })),
         el('div', { textContent: x.template + (x.attachments && x.attachments.length ? ' 📎' : '') }),
+        ...(tab === 'waiting' && x.edited ? [el('div', { className: 'edited', textContent: '✎ saved by ' + (x.editedBy || '?') + ' · ' + nice(x.edited) })] : []),
         ...(x.eventAt ? [el('div', { textContent: 'Session ' + nice(x.eventAt) })] : []),
         el('div', { className: 'muted', textContent: 'drafted ' + new Date(x.created).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) +
           (x.createdBy ? ' · ' + x.createdBy : '') }));
-      b.onclick = () => select(x.id);
+      b.onclick = () => { if (x.id === sel) return; if (!leaveOk()) return; select(x.id); };
       return b;
     }) : [el('p', { className: 'muted', textContent: tab === 'waiting' ? 'Nothing waiting.' : 'None yet.' })]));
   }
@@ -102,7 +106,7 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
   }
 
   function select(id) {
-    sel = id; renderList();
+    sel = id; dirty = false; renderList();
     const x = items.find(i => i.id === id);
     if (!x) return;
     const att = x.attachments || [];
@@ -156,12 +160,29 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
     const replyRow = el('div', { className: 'replyrow' }, el('b', { textContent: 'Reply to: ' }),
       el('label', { className: 'choice', htmlFor: 'obReply', title: 'Off: replies go to the committee group. On: replies go only to you' + (me ? ' (' + me + ')' : '') + '.' },
         reply, 'Me only'));
-    const done = async (r) => { say(r.message, 'ok'); await open(); };
+    const done = async (r) => { dirty = false; say(r.message, 'ok'); await open(); };
+    let base = x.edited || 0;                                   // the version this page shows (server refuses stale writes)
+    const markDirty = () => { dirty = true; save.disabled = false; };
+
+    const save = el('button', { type: 'button', textContent: 'Save', disabled: true,
+      title: 'Keep your edits; the email stays in the Outbox for another member to review or send.' });
+    save.onclick = async () => {
+      save.disabled = true; say('Saving…', 'muted');
+      try {
+        const r = await api('outboxSave', { session, id: x.id, base, ...vals() });
+        const v = vals();
+        Object.assign(x, { to: v.to, cc: v.cc, subject: v.subject, html: v.html, replyTo: v.replyTo, edited: r.edited, editedBy: r.editedBy });
+        base = r.edited; dirty = false;
+        savedLine.textContent = '✎ Saved by ' + r.editedBy + ' · ' + nice(r.edited);
+        renderList(); say(r.message, 'ok');
+      } catch (e) { say(e.message, 'err'); save.disabled = false; }
+    };
+    const savedLine = el('p', { className: 'muted edited', textContent: x.edited ? '✎ Saved by ' + (x.editedBy || '?') + ' · ' + nice(x.edited) : '' });
 
     const send = el('button', { type: 'button', className: 'primary', textContent: 'Send' });
     send.onclick = async () => {
       send.disabled = true; say('Sending…', 'muted');
-      try { await done(await api('outboxSend', { session, id: x.id, ...vals() })); } catch (e) { say(e.message, 'err'); }
+      try { await done(await api('outboxSend', { session, id: x.id, base, ...vals() })); } catch (e) { say(e.message, 'err'); }
       send.disabled = false;
     };
     const gmail = el('button', { type: 'button', textContent: 'Open in Gmail' });
@@ -198,7 +219,7 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
     const when = el('input', { type: 'datetime-local', value: x.choices && x.choices.length ? localInput(x.choices[x.choices.length - 1].at) : '' });
     const sched = async (at) => {
       say('Scheduling…', 'muted');
-      try { await done(await api('outboxSchedule', { session, id: x.id, at, ...vals() })); } catch (e) { say(e.message, 'err'); }
+      try { await done(await api('outboxSchedule', { session, id: x.id, at, base, ...vals() })); } catch (e) { say(e.message, 'err'); }
     };
     const later = el('div', { className: 'sendlater' }, el('span', { className: 'muted', textContent: 'Send later:' }),
       ...(x.choices || []).map(c => Object.assign(el('button', { type: 'button', textContent: c.label + ' (' + nice(c.at) + ')' }), { onclick: () => sched(c.at) })),
@@ -263,11 +284,14 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
     pane.replaceChildren(
       el('p', { className: 'muted', textContent: x.template + ' · ' + (x.scout || '') + (x.createdBy ? ' · queued by ' + x.createdBy : '') +
         (x.eventAt ? ' · session ' + nice(x.eventAt) : '') }),
-      ...(x.note ? [el('p', { className: 'err', textContent: x.note })] : []),
+      ...(x.note ? [el('p', { className: 'err', textContent: x.note })] : []), savedLine,
       ...field('To', 'obTo', x.to), ...field('Cc', 'obCc', x.cc), ...field('Subject', 'obSubj', x.subject), replyRow,
       attRow, sizeWarn, bar, body, msg,
-      el('div', { className: 'actions' }, send, gmail, copy, mine, el('span', { className: 'spacer' }), discard), later);
+      el('div', { className: 'actions' }, send, save, gmail, copy, mine, el('span', { className: 'spacer' }), discard), later);
     ['#obTo', '#obCc'].forEach(sel => pane.querySelector(sel).addEventListener('input', checkSize));
+    ['#obTo', '#obCc', '#obSubj'].forEach(sel => pane.querySelector(sel).addEventListener('input', markDirty));
+    body.addEventListener('input', markDirty);
+    reply.addEventListener('change', markDirty);
     checkSize();
   }
 

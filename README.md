@@ -940,6 +940,10 @@ Design note (kept outside the repo); list of every email: **Admin → Templates:
   **Open in Gmail** / **Copy formatted** then **I sent it**, or **Discard**. Each outcome goes into the Scout's log. A
   Scout's own actions are never held. **Reply to: ☐ Me only** sends the Scout's reply to the member (e.g. to settle a
   Pre-Review Call time) instead of the committee group (Outbox column `Reply to`; Send later keeps it).
+  **Save** keeps the edits (To, Cc, Subject, body, Reply to) with the email still waiting, so another member can check it
+  before it goes; the list shows "✎ saved by JW · time" (columns `Edited`, `Edited by`; logged). Save, Send and Send
+  later are refused if another member saved after your page loaded it (reload to see their version); switching emails
+  with unsaved edits asks first.
 - **✉ Email… (draft again)** on every dashboard row and in the Scout detail window (`lib/emailMenu.js`,
   `emailActions.js`): the emails that fit the Scout's stage (status + page link, Book: …, Booked: … confirmations,
   please book, Proposal incomplete / Revisions / EBoR paused with a note (prefilled from the committee's last request),
