@@ -199,7 +199,17 @@ var Signatures = (function () {
     return Object.keys(by).map(function (k) { return by[k]; });
   }
 
-  return { TAB: TAB, HEADERS: HEADERS, STATUS: STATUS, DOCS: DOCS, DOC_LABEL: DOC_LABEL, slotKeys: slotKeys, slotLabel: slotLabel,
+  /**
+   * The missing-signature warning, count first (2026-11-20: an application with no signatures reached Council after
+   * Finish's generic "Not signed yet" confirm). st: state(). -> '' when every box is signed
+   */
+  function missingText(st) {
+    var miss = (st && st.missing) || [], total = slotKeys().length;
+    if (!miss.length) return '';
+    return 'MISSING ' + miss.length + ' of ' + total + ' signature' + (total > 1 ? 's' : '') + ': ' + miss.map(slotLabel).join('; ') + '.';
+  }
+
+  return { missingText: missingText, TAB: TAB, HEADERS: HEADERS, STATUS: STATUS, DOCS: DOCS, DOC_LABEL: DOC_LABEL, slotKeys: slotKeys, slotLabel: slotLabel,
     parseSlots: parseSlots, slotsText: slotsText, list: list, isOpen: isOpen, openFor: openFor, series: series, state: state,
     roomSigners: roomSigners, checkRequest: checkRequest, newRows: newRows, baseChanged: baseChanged, partialNames: partialNames,
     slotsOf: slotsOf, summary: summary, waiting: waiting };

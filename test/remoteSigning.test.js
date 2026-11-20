@@ -168,7 +168,7 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     savePartial(); ask();
     const early = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' });
     expect(early.needsConfirm).toBe(true);
-    expect(early.warnings.join(' ')).toMatch(/Not signed yet/);
+    expect(early.warnings.join(' ')).toMatch(/MISSING 1 of 2 signatures/);
     sign('sam');
     const r = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' });
     expect(r.error).toBeUndefined();
@@ -188,5 +188,22 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     expect(r.error).toBeUndefined();
     expect(sig().slice(1).map(x => x.Status)).toEqual(['Cancelled', 'Cancelled']);
     expect(run("whoIs_('lee@example.org').onFile")).toBe(false);
+  });
+});
+
+describe('Missing signatures, count first (2026-11-20)', () => {
+  const S = require('../apps-script/src/lib/signatures.js');
+  it('none signed: 2 of 2, both named', () => {
+    const t = S.missingText(S.state([], 0));
+    expect(t).toMatch(/^MISSING 2 of 2 signatures: /);
+    expect(t).toMatch(/Board of review chair; .*representative\.$/);
+  });
+  it('one signed: 1 of 2', () => {
+    const rows = [{ requestId: 'R1', status: S.STATUS.signed, slots: ['application:chair'], name: 'Pat Q', rep: false }];
+    expect(S.missingText(S.state(rows, 0))).toMatch(/^MISSING 1 of 2 signatures: .*representative\.$/);
+  });
+  it('all signed: no warning', () => {
+    const rows = [{ requestId: 'R1', status: S.STATUS.signed, slots: ['application:chair', 'application:rep'], name: 'Pat Q', rep: true }];
+    expect(S.missingText(S.state(rows, 0))).toBe('');
   });
 });

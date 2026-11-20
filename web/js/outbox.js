@@ -180,7 +180,10 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
     const savedLine = el('p', { className: 'muted edited', textContent: x.edited ? '✎ Saved by ' + (x.editedBy || '?') + ' · ' + nice(x.edited) : '' });
 
     const send = el('button', { type: 'button', className: 'primary', textContent: 'Send' });
+    // A ⚠ note (e.g. the attached application is missing signatures, 2026-11-20): ask before it goes.
+    const warnOk = () => !/^⚠/.test(x.note || '') || confirm(x.note + '\n\nSend it anyway?');
     send.onclick = async () => {
+      if (!warnOk()) return;
       send.disabled = true; say('Sending…', 'muted');
       try { await done(await api('outboxSend', { session, id: x.id, base, ...vals() })); } catch (e) { say(e.message, 'err'); }
       send.disabled = false;
@@ -218,6 +221,7 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
     // Send later: quick choices relative to the session (EBoR reminders), or any date and time.
     const when = el('input', { type: 'datetime-local', value: x.choices && x.choices.length ? localInput(x.choices[x.choices.length - 1].at) : '' });
     const sched = async (at) => {
+      if (!warnOk()) return;
       say('Scheduling…', 'muted');
       try { await done(await api('outboxSchedule', { session, id: x.id, at, base, ...vals() })); } catch (e) { say(e.message, 'err'); }
     };

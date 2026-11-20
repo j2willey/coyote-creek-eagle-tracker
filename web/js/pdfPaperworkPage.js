@@ -660,10 +660,25 @@ export function initPaperwork(deps) {
     }
     return new File([res.pdfBytes.slice()], `${d.kind}-signed.pdf`, { type: 'application/pdf' });
   }
+  /**
+   * Signatures still missing on the application (2026-11-20: an unsigned application reached Council). The in-room
+   * Save never sends one: a pop-up that can't be missed on a phone, with the count. -> '' or the message
+   */
+  function missingSignatures() {
+    const d = docs.application;
+    if (!d || !d.slots.length) return '';
+    const miss = d.slots.filter(s => !s.dataUrl || !slotPlaced(d, s));
+    if (!miss.length) return '';
+    const n = d.slots.length;
+    return `The application has ${n - miss.length} of ${n} signatures. Missing: ${miss.map(s => s.label).join('; ')}.\n\n` +
+      'Sign now (each signer: Sign, then tap the page to place it). If a signer is not here, use "Save partial…" to ask them by email.';
+  }
   $('saveBtn').addEventListener('click', async () => {
     if (signer) { await saveSigner(); return; }
+    const ms = sc && !sc.demo ? missingSignatures() : '';
+    if (ms) { say(ms.split('\n')[0], 'err'); alert(ms); return; }
     const p = problemBeforeSave();
-    if (p) { say(p, 'err'); return; }
+    if (p) { say(p, 'err'); alert(p); return; }
     if (!docs.application.marks.some(m => m.kind === 'text') && !confirm('The date is not on Requirement 7 (the date boxes were removed). Save anyway?')) return;
     if (sc.alreadySigned.application && !confirm('Signed paperwork is already in the Scout\'s folder. Replace it? (The earlier files go to Archive.)')) return;
     const btn = $('saveBtn');
@@ -716,7 +731,9 @@ export function initPaperwork(deps) {
     if (p) { say(p, 'err'); return; }
     if (sigStatus && sigStatus.requestId && !confirm('Partly signed paperwork is already in progress for this Scout. Start over with these copies? (Its pending requests are cancelled.)')) return;
     if (!sigStatus || !sigStatus.requestId) {
-      if (!confirm('Save the application as it is now (partly signed), then ask the other signer to sign by email?')) return;
+      const d = docs.application, signedN = d.slots.filter(s => s.dataUrl && slotPlaced(d, s)).length;
+      if (!confirm(signedN ? `Save the application with ${signedN} of ${d.slots.length} signatures, then ask the other signer${d.slots.length - signedN > 1 ? 's' : ''} to sign by email?`
+        : `Nobody has signed yet. Save the application UNSIGNED, then ask the signers to sign by email?`)) return;
     }
     partialBtn.disabled = true;
     try {
@@ -762,7 +779,7 @@ export function initPaperwork(deps) {
   /** @param {boolean} [confirmed] @returns {Promise<any>} */
   async function finishPartial(confirmed) {
     const r = await api('eborPaperworkFinishPartial', { session, recordId: sc.recordId, confirm: !!confirmed });
-    if (r.needsConfirm) return confirm(r.warnings.join('\n') + '\n\nFinish anyway?') ? finishPartial(true) : null;
+    if (r.needsConfirm) return confirm(r.warnings.join('\n') + '\n\nFinish and draft the Council email anyway?') ? finishPartial(true) : null;
     dirty = false;
     try { localStorage.removeItem('ccacHome'); } catch { /* ignore */ }
     if (r.outboxId) {

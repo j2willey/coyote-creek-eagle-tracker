@@ -221,7 +221,7 @@ function actionEborPaperworkFinishPartial_(req) {
   var folder = folderForRecord_(rec, true), files = partialFiles_(folder);
   if (!files.application) throw userError_('The Partial copy is not in the Scout\'s folder any more (moved by hand?).');
   var warnings = [];
-  if (st.missing.length) warnings.push('Not signed yet: ' + st.missing.map(Signatures.slotLabel).join('; ') + '.');
+  if (st.missing.length) warnings.push('Council will get the application ' + Signatures.missingText(st));
   Signatures.DOCS.forEach(function (d) { if (!st.repOk[d]) warnings.push(Signatures.DOC_LABEL[d] + ': no District Advancement Committee / Council representative has signed.'); });
   if (st.pending.length) warnings.push('Still waiting on: ' + st.pending.map(function (r) { return r.name; }).join(', ') + ' (their requests will be closed).');
   if (warnings.length && !req.confirm) return { needsConfirm: true, warnings: warnings };
@@ -244,7 +244,8 @@ function actionEborPaperworkFinishPartial_(req) {
     return { files: out, archived: toArchive.length };
   });
   var unit = Units.find(units_(), rec.fields.unit), res = null, note = '';
-  try { res = draftCouncilPaperwork_(c, rec, boardYmd, [filed.files.application], unit ? unit.contacts : [], stageColumns_()); }
+  var warnNote = st.missing.length ? '⚠ The attached application is ' + Signatures.missingText(st) + ' Finished anyway by ' + by + '.' : '';
+  try { res = draftCouncilPaperwork_(c, rec, boardYmd, [filed.files.application], unit ? unit.contacts : [], stageColumns_(), warnNote); }
   catch (e) { console.error('finish partial email: ' + (e && e.stack || e)); note = ' The Council email could not be drafted (' + e.message + '): use "Send signed paperwork to Council…" on the dashboard.'; }
   var queued = !!(res && res.queued);
   addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [' + by + '] EBoR paperwork filed after signing outside the room. ' + Signatures.summary(st) +
