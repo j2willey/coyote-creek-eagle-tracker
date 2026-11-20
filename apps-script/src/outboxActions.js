@@ -60,6 +60,10 @@ function applyOnSent_(row) {
     var sc = stageColumns_();
     plan = Outbox.onSentPlan(row['On sent'], row['Template'],
       sc.signedSent ? { column: sc.signedSent, label: StageActions.COLUMNS.signedSent.label } : null);
+    if (!plan && String(row['Template']) === Outbox.COUNCIL_PAPERWORK) {
+      plan = { label: StageActions.COLUMNS.signedSent.label };   // named in the error below
+      throw new Error('no "Signed paperwork sent" column found on the tracking tab (Settings → signedSentColumn)');
+    }
     if (!plan) return '';
     if (Records.columns().indexOf(plan.column) < 0) throw new Error('the tracking tab has no column "' + plan.column + '"');
     var rec = Records.get(id);
