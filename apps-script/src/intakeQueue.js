@@ -60,7 +60,9 @@ function actionSubmitIntake_(req) {
   var proven = formEmail_(req.formToken).email;
   req = Object.assign({}, req, { scout_email: proven });    // the Scout email IS the proven address
   var v = Intake.validate(req, new Date());
-  if (!v.ok) throw userError_(v.errors.map(function (e) { return e.message; }).join(' '));
+  var sig = Intake.signatures(req.signatures);                // Proposal Page H, confirmed by the Scout (2026-11-19)
+  if (!sig.ok) v.errors.push({ field: 'signatures', message: 'Your Proposal needs all four signatures before you submit it. Missing: ' + sig.missing.join(', ') + '.' });
+  if (v.errors.length) throw userError_(v.errors.map(function (e) { return e.message; }).join(' '));
 
   var cache = CacheService.getScriptCache();
   var hourKey = 'intake:n:' + Math.floor(Date.now() / 3600000);
@@ -72,10 +74,12 @@ function actionSubmitIntake_(req) {
   cache.put(hourKey, String(n + 1), 3600);
 
   if (v.clean.preferred_name) ensureTabColumn_(QUEUE_TAB, 'Preferred Name');   // tabs set up before 2026-11-04
+  ensureTabColumn_(QUEUE_TAB, 'Life BOR Date');                                  // 2026-11-19
+  ensureTabColumn_(QUEUE_TAB, 'Signatures');
   var queueId = withLock_(function () {
     var existing = Tabs.read(QUEUE_TAB).map(function (r) { return r['Queue ID']; });
     var id = Intake.makeQueueId(null, existing, new Date());
-    var row = { 'Submitted': new Date(), 'Queue ID': id, 'Status': Intake.STATUS.UPLOADING, 'Path': 'verified' };
+    var row = { 'Submitted': new Date(), 'Queue ID': id, 'Status': Intake.STATUS.UPLOADING, 'Path': 'verified', 'Signatures': sig.list.join(', ') };
     Intake.FIELDS.forEach(function (f) {
       if (f.key === 'preferred_name' && !v.clean[f.key]) return;      // optional column: only written when filled
       row[f.header] = f.key === 'bsa_id' && v.clean[f.key] ? "'" + v.clean[f.key] : v.clean[f.key];
@@ -295,7 +299,7 @@ function promoteQueueRow_(q, closeIds) {
   Intake.FIELDS.forEach(function (f) {
     if (cols.indexOf(f.key) < 0 || !cand[f.key]) return;
     var val = cand[f.key];
-    if (f.key === 'birth_date') { var p = val.split('-').map(Number); val = new Date(p[0], p[1] - 1, p[2]); }
+    if (f.type === 'date') { var p = val.split('-').map(Number); val = new Date(p[0], p[1] - 1, p[2]); }
     fields[f.key] = val;
   });
   var skipped = Intake.FIELDS.filter(function (f) { return cand[f.key] && cols.indexOf(f.key) < 0; })
@@ -310,6 +314,10 @@ function promoteQueueRow_(q, closeIds) {
   var res = attachFiles_(Records.get(recordId), uploadsFor_(q['Queue ID']));
   var names = res.names;
   var note = Intake.shortDate(new Date()) + ' [Proposal submitted] web intake ' + q['Queue ID'] + ', ' + names.length + ' file(s)';
+  if (cand.life_bor_date) note += '; Life BOR ' + cand.life_bor_date.replace(/^(\d{4})-(\d\d)-(\d\d)$/, function (m, y, mo, d) {
+    return Number(mo) + '/' + Number(d) + '/' + y;                                // in the log even when the tab has no column
+  });
+  if (String(q['Signatures'] || '').trim()) note += '; Scout confirmed Proposal signatures: ' + String(q['Signatures']).trim();
   if (closeIds && closeIds.length) note += ' POSSIBLE DUPLICATE of ' + closeIds.join(', ') + ' (same name, unit, birth date).';
   addRecordNote_(recordId, note);                       // Notes doc (M6) + latest line in the cell
 

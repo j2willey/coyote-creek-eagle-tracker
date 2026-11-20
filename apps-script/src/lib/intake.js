@@ -34,8 +34,10 @@ var Intake = (function () {
     { key: 'unit', header: 'Unit', label: 'Unit', required: true, type: 'unit' },
     { key: 'birth_date', header: 'Birth Date', label: 'Birth date', required: true, type: 'date' },
     { key: 'scout_email', header: 'Scout Email', label: 'Scout email', required: true, type: 'email' },
-    { key: 'scout_phone', header: 'Scout Phone', label: 'Scout phone', max: 30 },
-    { key: 'bsa_id', header: 'BSA ID', label: 'BSA ID', type: 'bsaId' },
+    // newRequired (Jim W., 2026-11-19): required on a new submission (the form), not on a Scout Update of an older record
+    { key: 'scout_phone', header: 'Scout Phone', label: 'Scout phone', max: 30, newRequired: true },
+    { key: 'bsa_id', header: 'BSA ID', label: 'BSA ID', type: 'bsaId', newRequired: true },
+    { key: 'life_bor_date', header: 'Life BOR Date', label: 'Life Board of Review date', type: 'date', newRequired: true },
     { key: 'parent_email', header: 'Parent/Guardian Email', label: 'Parent/guardian email', required: true, type: 'email' },
     { key: 'proj_title', header: 'Eagle Proj', label: 'Project title', required: true, max: 200 },
     { key: 'beneficiary', header: 'Beneficiary', label: 'Beneficiary', required: true, max: 200 },
@@ -95,7 +97,7 @@ var Intake = (function () {
       var v = str(input && input[f.key]);
       if (f.type === 'email') v = v.toLowerCase();
       if (!v) {
-        if (f.required) errors.push({ field: f.key, message: f.label + ' is required.' });
+        if (f.required || (f.newRequired && !keys)) errors.push({ field: f.key, message: f.label + ' is required.' });
         clean[f.key] = '';
         return;
       }
@@ -106,13 +108,16 @@ var Intake = (function () {
         if (!u || !u.type) errors.push({ field: f.key, message: 'Unit: pick Troop, Crew or Ship and enter the number.' });
         else v = u.type + u.number;
       }
-      if (f.type === 'bsaId' && !/^\d{6,12}$/.test(v)) errors.push({ field: f.key, message: 'BSA ID should be 6 to 12 digits (leave it blank if you don\'t know it).' });
+      if (f.type === 'bsaId' && !/^\d{6,12}$/.test(v)) errors.push({ field: f.key, message: 'BSA ID should be 6 to 12 digits (your member number in Scoutbook).' });
       if (f.type === 'date') {
         var k = dateKey(v);
         if (!k) errors.push({ field: f.key, message: f.label + ' is not a valid date.' });
-        else {
+        else if (f.key === 'birth_date') {
           var age = ageOn(k, today);
           if (age < 10 || age > 25) errors.push({ field: f.key, message: 'Please check the birth date.' });
+          v = k;
+        } else {
+          if (k > dateKey(today) || k < '2000-01-01') errors.push({ field: f.key, message: 'Please check the ' + f.label + '.' });
           v = k;
         }
       }
@@ -123,6 +128,16 @@ var Intake = (function () {
       errors.push({ field: 'parent_email', message: 'Parent/guardian email must be a parent\'s or guardian\'s address, not the Scout\'s own.' });
     }
     return { ok: errors.length === 0, errors: errors, clean: clean };
+  }
+
+  // The four signatures on Proposal Page H (Jim W., 2026-11-19): the Scout confirms each one on the form.
+  var SIGNATURES = ['Eagle Scout candidate', 'Beneficiary', 'Unit leader', 'Unit committee'];
+  /** Ticked signatures (labels) -> {ok, list (in form order), missing} */
+  function signatures(ticked) {
+    var have = (Array.isArray(ticked) ? ticked : []).map(str);
+    var list = SIGNATURES.filter(function (x) { return have.indexOf(x) >= 0; });
+    return { ok: list.length === SIGNATURES.length, list: list,
+      missing: SIGNATURES.filter(function (x) { return have.indexOf(x) < 0; }) };
   }
 
   /** The row has no parent/guardian email of its own (blank, or only the Scout's address): the Scout must add one. */
@@ -357,7 +372,7 @@ var Intake = (function () {
   }
 
   return {
-    STATUS: STATUS, FIELDS: FIELDS, needsParent: needsParent, TAGS: TAGS, MAX_FILES: MAX_FILES,
+    STATUS: STATUS, FIELDS: FIELDS, SIGNATURES: SIGNATURES, signatures: signatures, needsParent: needsParent, TAGS: TAGS, MAX_FILES: MAX_FILES,
     validate: validate, dateKey: dateKey, checkFile: checkFile, extOf: extOf, mimeFor: mimeFor,
     namePart: namePart, unitPart: unitPart, standardName: standardName, queueFileName: queueFileName, folderName: folderName, assignVersions: assignVersions,
     parseUnit: parseUnit, normUnit: normUnit, duplicateCheck: duplicateCheck, makeQueueId: makeQueueId,

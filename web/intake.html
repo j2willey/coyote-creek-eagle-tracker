@@ -72,10 +72,13 @@
       <input id="parent_email" type="email" required>
       <p class="hint">Copied on every email we send you. Only the Scout's own address signs in.</p>
       <div class="row2">
-        <div><label for="scout_phone">Scout phone <span class="opt">(optional)</span></label><input id="scout_phone" type="tel" autocomplete="tel"></div>
-        <div><label for="bsa_id">BSA ID <span class="opt">(optional)</span></label><input id="bsa_id" inputmode="numeric"></div>
+        <div><label for="scout_phone">Scout phone</label><input id="scout_phone" type="tel" autocomplete="tel" required></div>
+        <div><label for="bsa_id">BSA ID</label><input id="bsa_id" inputmode="numeric" required></div>
       </div>
-      <p class="hint">BSA ID: your member number in Scoutbook. Please look it up once if you can.</p>
+      <p class="hint">BSA ID: your member number in Scoutbook (also on your membership card).</p>
+      <label for="life_bor_date">Life Board of Review date</label>
+      <input id="life_bor_date" type="date" required style="max-width:14rem">
+      <p class="hint">The date you passed your Life Scout board of review.</p>
 
       <h2>Project</h2>
       <label for="proj_title">Project title</label>
@@ -97,6 +100,14 @@
         <p>Attach the <b>Proposal</b> section of your <b>Eagle Scout Service Project Workbook</b> (the file with this cover),
           with the signatures it needs. <a href="/proposal-guide" target="_blank" rel="noopener">How to prepare the file</a>.</p>
       </div>
+      <fieldset id="sigs" style="border:1px solid var(--line);border-radius:8px;padding:.6rem .9rem;margin:.8rem 0">
+        <legend style="font-weight:600;padding:0 .3rem">Signatures on your Proposal (Proposal Page H)</legend>
+        <p class="hint" style="margin-top:0">Your Proposal must be signed by all four before you submit it. Tick each one that is on your file.</p>
+        <label style="font-weight:400;display:flex;gap:.5rem"><input type="checkbox" name="sig" value="Eagle Scout candidate" style="width:auto">Eagle Scout candidate (you: the Candidate's Promise)</label>
+        <label style="font-weight:400;display:flex;gap:.5rem"><input type="checkbox" name="sig" value="Beneficiary" style="width:auto">Beneficiary</label>
+        <label style="font-weight:400;display:flex;gap:.5rem"><input type="checkbox" name="sig" value="Unit leader" style="width:auto">Unit leader</label>
+        <label style="font-weight:400;display:flex;gap:.5rem"><input type="checkbox" name="sig" value="Unit committee" style="width:auto">Unit committee</label>
+      </fieldset>
       <p class="hint">The <b>signed Proposal (ESSPP)</b> is required. Slides, photos or a separate signature page are optional.
         PDF, PPTX, DOCX, JPG, PNG or HEIC, up to 20 MB each. We rename files to the district standard.</p>
       <div id="files"></div>
@@ -122,7 +133,7 @@
     import { addFileRow as fileRow, chosenFiles, readBase64, uploadText } from './js/files.js';
     const $ = (id) => document.getElementById(id);
     const TAGS = ['ESSPP', 'Signatures', 'Slides', 'Photo', 'Other'];
-    const FIELDS = ['scout_name', 'preferred_name', 'unit_type', 'unit_number', 'birth_date', 'scout_email', 'parent_email', 'scout_phone', 'bsa_id',
+    const FIELDS = ['scout_name', 'preferred_name', 'unit_type', 'unit_number', 'birth_date', 'scout_email', 'parent_email', 'scout_phone', 'bsa_id', 'life_bor_date',
       'proj_title', 'beneficiary', 'proj_address', 'proj_coach', 'est_fundraising', 'website'];
 
     const addFileRow = (tag) => fileRow($('files'), TAGS, tag);
@@ -177,6 +188,11 @@
       const { ok, files } = chosenFiles($('files'));
       if (!ok) { say('One of the files can\'t be sent: see the note under it.', 'err'); return; }
       if (!files.some(x => x.tag === 'ESSPP')) { say('Please attach the signed Proposal and mark it ESSPP.', 'err'); return; }
+      data.signatures = [...document.querySelectorAll('#sigs input[name=sig]:checked')].map(i => i.value);
+      if (data.signatures.length < 4) {
+        say('Your Proposal needs all four signatures (Proposal Page H) before you submit it. Please get the missing ones first.', 'err');
+        document.querySelector('#sigs input[name=sig]:not(:checked)').focus(); return;
+      }
 
       $('go').disabled = true;
       // While files go up, warn before the page is left (a closed tab or laptop stops the upload) (Jim W., 2026-11-12).

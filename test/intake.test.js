@@ -7,7 +7,8 @@ const NOW = new Date(2026, 9, 12, 9, 30);
 const good = {
   scout_name: 'Scout Nine', unit_type: 'T', unit_number: '109', birth_date: '2009-03-04',
   scout_email: ' Pat.Tester+Scout_9@Example.com ', parent_email: 'pat.tester+Parent_9@example.com',
-  proj_title: 'Benches for the creek trail', beneficiary: 'Fake Park District'
+  proj_title: 'Benches for the creek trail', beneficiary: 'Fake Park District',
+  scout_phone: '555-0100', bsa_id: '123456789', life_bor_date: '2026-05-03'
 };
 
 describe('Intake.validate', () => {
@@ -16,7 +17,8 @@ describe('Intake.validate', () => {
     expect(v.ok).toBe(true);
     expect(v.clean.scout_email).toBe('pat.tester+scout_9@example.com');
     expect(v.clean.birth_date).toBe('2009-03-04');
-    expect(v.clean.bsa_id).toBe('');
+    expect(v.clean.bsa_id).toBe('123456789');
+    expect(v.clean.life_bor_date).toBe('2026-05-03');
     expect(v.clean.unit).toBe('T109');
   });
 
@@ -42,7 +44,24 @@ describe('Intake.validate', () => {
     const v = Intake.validate({}, NOW);
     expect(v.ok).toBe(false);
     expect(v.errors.map(e => e.field)).toEqual(
-      ['scout_name', 'unit', 'birth_date', 'scout_email', 'parent_email', 'proj_title', 'beneficiary']);
+      ['scout_name', 'unit', 'birth_date', 'scout_email', 'scout_phone', 'bsa_id', 'life_bor_date', 'parent_email', 'proj_title', 'beneficiary']);
+  });
+
+  it('phone, BSA ID and Life BOR date: required on the form, not on a Scout Update (2026-11-19)', () => {
+    expect(Intake.validate({ ...good, life_bor_date: '' }, NOW).errors.map(e => e.field)).toEqual(['life_bor_date']);
+    expect(Intake.validate({ proj_title: 'New title', bsa_id: '' }, NOW, ['proj_title', 'bsa_id']).ok).toBe(true);
+    expect(Intake.validate({ ...good, life_bor_date: '2026-10-13' }, NOW).ok).toBe(false);      // after NOW: future
+    expect(Intake.validate({ ...good, life_bor_date: '1999-12-31' }, NOW).ok).toBe(false);
+    expect(Intake.validate({ ...good, life_bor_date: '2026-02-30' }, NOW).ok).toBe(false);
+  });
+
+  it('the four Proposal signatures (Page H)', () => {
+    const all = ['Eagle Scout candidate', 'Beneficiary', 'Unit leader', 'Unit committee'];
+    expect(Intake.signatures(all)).toEqual({ ok: true, list: all, missing: [] });
+    expect(Intake.signatures(['Unit committee', 'Eagle Scout candidate', 'Beneficiary', 'Unit leader']).list).toEqual(all);
+    expect(Intake.signatures(['Beneficiary', 'Bogus'])).toMatchObject({ ok: false, list: ['Beneficiary'],
+      missing: ['Eagle Scout candidate', 'Unit leader', 'Unit committee'] });
+    expect(Intake.signatures(undefined).ok).toBe(false);
   });
 
   it('rejects bad email, BSA ID, impossible or implausible birth dates', () => {
@@ -164,7 +183,8 @@ describe('parent/guardian email (2026-11-08)', () => {
   const I = require('../apps-script/src/lib/intake.js');
   const now = new Date(2026, 10, 8);
   const ok = { scout_name: 'Theodore Sample', unit_type: 'T', unit_number: '999', birth_date: '2010-01-15', scout_email: 'teddy@example.org',
-    parent_email: 'pat.parent@example.org', proj_title: 'Benches', beneficiary: 'Riverbend Park' };
+    parent_email: 'pat.parent@example.org', proj_title: 'Benches', beneficiary: 'Riverbend Park',
+    scout_phone: '555-0100', bsa_id: '123456789', life_bor_date: '2026-05-03' };
   it('first-time form: required, and not the Scout\'s own address', () => {
     expect(I.validate(ok, now).ok).toBe(true);
     expect(I.validate({ ...ok, parent_email: '' }, now).errors.map(e => e.field)).toEqual(['parent_email']);
