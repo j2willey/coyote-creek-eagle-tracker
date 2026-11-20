@@ -160,7 +160,6 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
 
     const send = el('button', { type: 'button', className: 'primary', textContent: 'Send' });
     send.onclick = async () => {
-      if (sizeLevel === 'over' && !confirm('This email is too big for the Google Group: the group\'s copy will bounce, everyone else still gets it. Send anyway?')) return;
       send.disabled = true; say('Sending…', 'muted');
       try { await done(await api('outboxSend', { session, id: x.id, ...vals() })); } catch (e) { say(e.message, 'err'); }
       send.disabled = false;

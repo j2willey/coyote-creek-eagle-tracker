@@ -90,7 +90,7 @@ var TemplateCatalog = (function () {
     var online = code === 'Intake';
     LIST.push(t('Booked: ' + label, 'A', ['scout', 'type', 'when', 'where', 'with', 'meetLink', 'pageLink'],
       '{type} booked: {scout}, {when}', [
-        'Your {type} is booked.', '', '- When: {when}', online ? '- With: {with}' : '- Where: {where}', online ? '- Join: {meetLink}' : '', '',
+        'Your {type} is booked.', '', '- When: {when}', online ? '' : '- Where: {where}', '- With: {with}', online ? '- Join: {meetLink}' : '', '',
         'A calendar invitation is on its way.', '', online ? ADULT : (code === 'EBoR' ? 'Wear your Field uniform and bring your Scout handbook.' : ADULT_IN_PERSON), '',
         'To cancel or change (up to 24 hours before): {pageLink}'].filter(function (l, i, a) { return !(l === '' && a[i - 1] === ''); })));
     LIST.push(t('Moved: ' + label, 'B', ['scout', 'type', 'when', 'where', 'pageLink'], '{type} changed: {scout}, now {when}', [
@@ -118,11 +118,11 @@ var TemplateCatalog = (function () {
   // committee got both. {boardLink} is empty when the unit is under review (the committee fills the board) or has no
   // contacts, so that paragraph drops out. Moved: {change} / {changeText} say what changed (Booking.changeWords);
   // {was} (old time) and {wasWhere} (old place) are filled only for the part that changed.
-  var EBOR_VARS = ['scout', 'unit', 'type', 'when', 'was', 'where', 'wasWhere', 'change', 'changeText', 'pageLink', 'boardLink', 'committeeEmail'];
+  var EBOR_VARS = ['scout', 'unit', 'type', 'when', 'was', 'where', 'wasWhere', 'change', 'changeText', 'pageLink', 'boardLink', 'committeeEmail', 'with'];
   var EBOR_HELLO = 'Hello {scout} and {unit} leaders,';
   var EBOR_ASK = 'Questions? Email the committee at {committeeEmail}.';
   LIST.push(t('Booked: Eagle Board of Review', 'A', EBOR_VARS, 'Eagle Board of Review booked: {scout} ({unit}), {when}', [
-    EBOR_HELLO, '', '{scout}\'s Eagle Board of Review is booked.', '', '- When: {when}', '- Where: {where}', '',
+    EBOR_HELLO, '', '{scout}\'s Eagle Board of Review is booked.', '', '- When: {when}', '- Where: {where}', '- With: {with}', '',
     '{scout}: wear your field uniform and bring your Scout Handbook. A calendar invitation is on its way. ' +
     'To cancel or change (up to 24 hours before): {pageLink}', '',
     'Unit leaders: please arrange your Unit Board Members (usually 2 to 4 adults from your unit committee) and enter their names, ' +

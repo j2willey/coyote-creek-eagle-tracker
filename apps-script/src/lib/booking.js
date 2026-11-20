@@ -33,17 +33,19 @@ var Booking = (function () {
   /**
    * How each bookable type behaves (element 3 + 5):
    *  virtual   Meet link (Pre-Review) vs in person with location (Proposal Review)
-   *  showWho   Scout sees the members' names? (Proposal Review panel stays unnamed)
+   *  showWho   Scout sees the members' names once booked: Scout page + booking email (all types since Jim W., 2026-11-19;
+   *            the Proposal Review panel and the EBoR used to stay unnamed)
+   *  pickWho   ...and while picking a time (false: names only after booking, so nobody picks a time by who is on it)
    *  adult     Scout must confirm a parent / adult 21+ will be present
    *  movesTo   section the row moves to when booked; cancelBackTo on cancel
    *  lead / dateCol / whoCol: Settings keys
    */
   var RULES = {
-    Intake: { virtual: true, showWho: true, adult: true, movesTo: 'intake_booked', cancelBackTo: 'intake_to_book',
+    Intake: { virtual: true, showWho: true, pickWho: true, adult: true, movesTo: 'intake_booked', cancelBackTo: 'intake_to_book',
       lead: 'bookingLeadHours', dateCol: 'preReviewDateColumn', whoCol: 'preReviewWhoColumn' },
-    ESSPPR: { virtual: false, showWho: false, adult: true, movesTo: 'review_booked', cancelBackTo: 'review_to_book',
+    ESSPPR: { virtual: false, showWho: true, pickWho: false, adult: true, movesTo: 'review_booked', cancelBackTo: 'review_to_book',
       lead: 'reviewLeadHours', dateCol: 'proposalReviewDateColumn', whoCol: 'proposalReviewWhoColumn' },
-    EBoR: { virtual: false, showWho: false, adult: false, movesTo: 'ebor_booked', cancelBackTo: 'app_verified',
+    EBoR: { virtual: false, showWho: true, pickWho: false, adult: false, movesTo: 'ebor_booked', cancelBackTo: 'app_verified',
       lead: 'eborLeadHours', dateCol: 'eborDateColumn', whoCol: 'eborWhoColumn', notifyUnit: true, boardOnInvite: true }
   };
   // Follow-Up / Consult: committee-made only (never in BOOKABLE: no open times, no online booking, no please-book).

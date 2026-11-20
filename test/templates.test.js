@@ -72,7 +72,7 @@ describe('EBoR: one email to the Scout and the unit (2026-10-29)', () => {
   const MailPlan = require('../apps-script/src/lib/mailPlan.js');
   const E = require('../apps-script/src/lib/emailMenu.js');
   const base = { scout: 'Scout Nine', unit: 'T910', type: 'Eagle Board of Review', when: 'Wed 11/4 7:30 PM', was: '',
-    where: 'YMCA', pageLink: 'https://x/signin', boardLink: 'https://x/signin', committeeEmail: 'ccac@x.org' };
+    where: 'YMCA', pageLink: 'https://x/signin', boardLink: 'https://x/signin', committeeEmail: 'ccac@x.org', with: 'Pat Q, Sam R' };
   const render = (key, v) => T.render(tab(C.seedLines(C.get(key))), Object.assign({}, base, v));
 
   it('booked: greets the Scout and the unit; the board request only when the unit fills its own board', () => {
@@ -80,6 +80,8 @@ describe('EBoR: one email to the Scout and the unit (2026-10-29)', () => {
     expect(yes.subject).toBe('Eagle Board of Review booked: Scout Nine (T910), Wed 11/4 7:30 PM');
     expect(yes.text).toMatch(/^Hello Scout Nine and T910 leaders,/);
     expect(yes.text).toContain('Unit leaders: please arrange your Unit Board Members');
+    expect(yes.text).toContain('- With: Pat Q, Sam R');                       // committee members by name (2026-11-19)
+    expect(render('Booked: Eagle Board of Review', { with: '' }).text).not.toContain('With:');
     const underReview = render('Booked: Eagle Board of Review', { boardLink: '' });
     expect(underReview.errors).toEqual([]);
     expect(underReview.text).not.toContain('Unit Board Members');

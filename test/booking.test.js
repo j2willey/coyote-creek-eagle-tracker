@@ -97,7 +97,8 @@ describe('Proposal Review (S1)', () => {
   it('opens from Pending Review Date, with its own rules', () => {
     expect(Booking.bookableType('review_to_book')).toBe('ESSPPR');
     const r = Booking.rules('ESSPPR');
-    expect(r).toMatchObject({ virtual: false, showWho: false, adult: true, movesTo: 'review_booked', cancelBackTo: 'review_to_book' });
+    expect(r).toMatchObject({ virtual: false, showWho: true, pickWho: false, adult: true, movesTo: 'review_booked', cancelBackTo: 'review_to_book' });
+    expect(Booking.rules('EBoR')).toMatchObject({ showWho: true, pickWho: false });
     expect(Booking.rules('EBoR').adult).toBe(false);
     expect(Booking.rules('Intake')).toMatchObject({ virtual: true, showWho: true, adult: true, movesTo: 'intake_booked', cancelBackTo: 'intake_to_book' });
   });

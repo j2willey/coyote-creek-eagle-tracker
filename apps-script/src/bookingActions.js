@@ -303,6 +303,14 @@ function menuSyncInvites() {
  * (schedule sync). committee: a committee member caused it (a Review-mode tab then waits in the Outbox).
  * extra: more msg fields (e.g. eventAt). -> mailFromTemplate_'s result.
  */
+/** Committee members on the Scout's booked EBoR, by name ("With:" line, Jim W., 2026-11-19); '' when none or unknown. */
+function eborWith_(recordId) {
+  try {
+    var b = Booking.currentBooking(readSchedule_().rows, recordId, Booking.EBOR, Date.now());
+    return b ? Booking.resolveWho(b.who, committee_()).names.join(', ') : '';
+  } catch (e) { console.warn('eborWith_: ' + e); return ''; }
+}
+
 function eborMail_(rec, kind, whenText, where, was, by, committee, extra) {
   var s = getSettings_();
   var lbl = Booking.label(Booking.EBOR);
@@ -320,7 +328,7 @@ function eborMail_(rec, kind, whenText, where, was, by, committee, extra) {
     change: mv ? mv.subject : '', changeText: mv ? mv.text : '',
     // Only a unit that fills its own board gets the ask (under review: the committee fills it).
     boardLink: kind === 'booked' && u && !u.underReview && contacts.length ? pageUrl_() : '',
-    committeeEmail: String(s.committeeGroupEmail || '') };
+    committeeEmail: String(s.committeeGroupEmail || ''), 'with': kind === 'cancelled' ? '' : eborWith_(rec.recordId) };
   var built = reviewBuiltIn_(TemplateCatalog.get(key), vars);
   var fam = familyMsg_(rec.fields, s.committeeGroupEmail, contacts);
   var res = mailFromTemplate_(key, vars, Object.assign({ committee: !!committee, by: by || '', recordId: rec.recordId, scout: scout,
@@ -577,10 +585,10 @@ function actionSlots_(req) {
   var c = committee_();
   var slots = Booking.openSlots(readSchedule_().rows, type, Date.now(), s[r.lead]).slice(0, 40).map(function (x) {
     return { key: x.key, when: whenText_(x.start), start: x.start, end: x.start + x.minutes * 60000,
-      member: r.showWho ? Booking.resolveWho(x.who, c).names.join(', ') : '',
+      member: r.showWho && r.pickWho ? Booking.resolveWho(x.who, c).names.join(', ') : '',
       where: Booking.isVirtual(type, x) ? Booking.ONLINE_PLACE : Booking.place(x) };
   });
-  return { type: Booking.label(type), showWho: r.showWho, adult: r.adult, slots: slots,
+  return { type: Booking.label(type), showWho: !!(r.showWho && r.pickWho), adult: r.adult, slots: slots,
     adultNotice: !r.adult ? '' : r.virtual ? Booking.ADULT : Booking.ADULT_IN_PERSON };
 }
 
