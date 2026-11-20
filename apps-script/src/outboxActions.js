@@ -111,6 +111,7 @@ function outboxItem_(r, withBody) {
     note: String(r['Note'] || ''), replyTo: String(r['Reply to'] || ''),
     edited: r['Edited'] instanceof Date ? r['Edited'].getTime() : 0, editedBy: r['Edited by'] ? memberTag_(r['Edited by']) : '' };
   o.choices = o.status === Outbox.STATUS.PENDING ? Outbox.scheduleChoices(o.eventAt, Date.now()) : [];
+  o.hold = o.status === Outbox.STATUS.PENDING ? congratsHold_(r) : '';
   if (withBody) { o.html = String(r['Html'] || ''); o.attachSizes = attachSizes_(r); }
   return o;
 }
@@ -209,6 +210,7 @@ function actionOutboxSend_(req) {
   var subject = String(req.subject || '').trim();
   if (!subject) throw userError_('The subject is empty.');
   var pre = outboxRows_().filter(function (r) { return String(r['Id']) === String(req.id || ''); })[0];
+  refuseHeld_(pre);
   outboxBlobs_(pre);                                          // refuse missing / too large files before claiming the row
   var mode = Outbox.replyMode(req.replyTo, Outbox.parseAttachments(pre && pre['Attachments']).length > 0);
   ensureOutboxColumn_('Reply to');
@@ -235,6 +237,7 @@ function actionOutboxSchedule_(req) {
   ensureOutboxColumn_('Edited'); ensureOutboxColumn_('Edited by');
   outboxFinish_(req.id, function (r) {
     staleCheck_(r, req.base);
+    refuseHeld_(r);
     var ev = r['Event at'] instanceof Date ? r['Event at'].getTime() : Number(r['Event at']) || 0;
     var prob = Outbox.scheduleProblem(at, Date.now(), ev);
     if (prob) throw userError_(prob);
@@ -246,6 +249,21 @@ function actionOutboxSchedule_(req) {
   var row = outboxRows_().filter(function (r) { return String(r['Id']) === String(req.id); })[0];
   if (row) outboxLog_(row, who, 'scheduled for ' + whenText_(at));
   return { message: 'Scheduled for ' + whenText_(at) + ' (sent within the hour after that).' };
+}
+
+/** Why this row may not be sent yet ('' = it may): the congratulations wait for the Council paperwork (Outbox.congratsHold). */
+function congratsHold_(row) {
+  if (String(row['Template'] || '') !== Outbox.CONGRATS || !row['Record ID']) return '';
+  try {
+    var col = stageColumns_().signedSent;
+    var rec = Records.get(String(row['Record ID']));
+    if (!col || !rec) return '';                               // no column / row gone: nothing to wait for
+    return Outbox.congratsHold(row['Template'], rec.fields[col]);
+  } catch (e) { console.warn('congratsHold_: ' + e); return ''; }
+}
+function refuseHeld_(row) {
+  var h = row ? congratsHold_(row) : '';
+  if (h) throw userError_(h);
 }
 
 /** Refuse when another member saved this email after the caller's page loaded it (Outbox.editConflict). */
@@ -321,7 +339,8 @@ function outboxSendDue_() {
 function actionOutboxSentByMe_(req) {
   var c = committeeMe_(req.session);
   var who = c.me.initials || c.email;
-  var row = outboxFinish_(req.id, function () {
+  var row = outboxFinish_(req.id, function (r) {
+    refuseHeld_(r);
     var upd = { 'Status': Outbox.STATUS.SENT_BY_MEMBER, 'Done': new Date(), 'Done by': who };
     if (req.subject) upd['Subject'] = String(req.subject);
     if (req.to) upd['To'] = String(req.to);

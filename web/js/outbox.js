@@ -281,10 +281,12 @@ export function mountOutbox(root, { session, onCount = () => {} }) {
       }
     };
     drawAtt();
+    if (x.hold) [send, mine].forEach(b => { b.disabled = true; b.title = x.hold; });   // held: the server refuses too
     pane.replaceChildren(
       el('p', { className: 'muted', textContent: x.template + ' · ' + (x.scout || '') + (x.createdBy ? ' · queued by ' + x.createdBy : '') +
         (x.eventAt ? ' · session ' + nice(x.eventAt) : '') }),
       ...(x.note ? [el('p', { className: 'err', textContent: x.note })] : []), savedLine,
+      ...(x.hold ? [el('p', { className: 'err', textContent: '⏸ ' + x.hold })] : []),
       ...field('To', 'obTo', x.to), ...field('Cc', 'obCc', x.cc), ...field('Subject', 'obSubj', x.subject), replyRow,
       attRow, sizeWarn, bar, body, msg,
       el('div', { className: 'actions' }, send, save, gmail, copy, mine, el('span', { className: 'spacer' }), discard), later);

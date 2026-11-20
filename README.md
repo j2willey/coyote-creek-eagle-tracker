@@ -724,10 +724,15 @@ paperwork page.
    anyone saved those copies since the page loaded (file id + modified time, under the lock), so signers can sign in
    any order. Their copy replaces the Partial (old one to Archive); their rows → Signed; Notes line. Once every box is
    signed (or nobody is left to ask), the member who asked gets **4.4.b Signatures complete**.
-4. **Finish** (paperwork page): the Partials become the standard `-Signed.pdf` names, the Verified Application and
-   earlier signed copies go to Archive, every row of the series gets **Filed** (pending ones Cancelled), and the Council
-   email is drafted as for an in-room Finish. Missing boxes or no DAC/Council rep: listed, Finish needs a confirm. An
-   in-room Finish also closes an open series.
+4. **Finish**: the Partials become the standard `-Signed.pdf` names, the Verified Application and earlier signed copies
+   go to Archive, every row of the series gets **Filed** (pending ones Cancelled), the Council email is drafted as for an
+   in-room Finish and the row moves to Eagle Earned. **Every box must be signed: no override** (2026-11-20). When the
+   last signer signs, Finish runs by itself for the member who asked (`autoFinish_`), and 4.4.b says the Council email
+   is waiting in the Outbox; it does not when no DAC/Council rep signed (the asker Finishes on the page, with a confirm).
+   A signer never sends to Council: a committee member sends the Outbox draft. An in-room Finish also closes an open series.
+5. **Congratulations wait for Council:** the "New Eagle Scout" email can't be sent, scheduled or marked "I sent it"
+   while Signed paperwork sent is empty (`Outbox.congratsHold`; the Outbox shows ⏸ and greys Send). A date typed by
+   hand counts.
 
 Pages: the paperwork page has **Save partial…** beside Save, and a **Signatures outside the room** panel (who
 signed, who is asked, fix email / Resend / Cancel, Ask for signatures with name → email suggestions from the board and

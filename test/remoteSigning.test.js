@@ -145,8 +145,11 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     expect(lee.r.complete).toBe(true);
     expect(sig().map(r => r.Status)).toEqual(['Signed', 'Signed', 'Signed']);
     expect(log.sent.at(-1)).toMatchObject({ to: 'ab@example.org', kind: 'private' });
-    expect(log.sent.at(-1).subject).toMatch(/all signatures are in/);
-    expect(archived().length).toBe(2);                                    // Sam's save replaced the Partial, then Lee's
+    // The last signature finishes it for the member who asked (2026-11-20): filed, Council email drafted, asker told.
+    expect(log.sent.at(-1).subject).toMatch(/signed; send it to Council/);
+    expect(log.sent.at(-1).body).toMatch(/committee\/outbox\?id=OB-9/);
+    expect(log.council).toHaveLength(1);
+    expect(lee.r.message).toMatch(/waiting for the committee to send/);
     expect(call({ action: 'signerDocs', session: 'sam', recordId: 'R-1' }).error).toMatch(/Nothing is waiting/);
     expect(run("whoIs_('sam@example.org').onFile")).toBe(false);          // access ends once signed
   });
@@ -168,16 +171,16 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     savePartial(); ask();
     const early = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' });
     expect(early.error).toMatch(/Not finished: the application is MISSING 1 of 2 signatures/);
-    sign('sam');
-    const r = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' });
+    const r = sign('sam').r;                                              // the last box: Finish runs by itself (2026-11-20)
     expect(r.error).toBeUndefined();
-    expect(r.outboxId).toBe('OB-9');
+    expect(r.message).toMatch(/email to Council is waiting/);
     expect(top()).toEqual(['Theodore_Sample-T999_EagleApplication-Signed.pdf']);
     expect(archived()).toContain('Verified Eagle Application.pdf');
     expect(log.council).toEqual([['Theodore_Sample-T999_EagleApplication-Signed.pdf']]);
     expect(sig().every(r => r.Filed)).toBe(true);
     expect(log.moved).toEqual([['R-1', '2026-11-10']]);                 // Finish = Eagle earned (2026-11-17)
-    expect(r.message).toMatch(/Moved to Eagle Earned/);
+    expect(log.notes.join('\n')).toMatch(/Council email drafted in the Outbox/);
+    expect(call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' }).error).toMatch(/Nothing is in progress/);
     expect(call({ action: 'eborSignatureStatus', session: 's', recordId: 'R-1' }).requestId).toBe('');
   });
 
@@ -187,6 +190,22 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     expect(r.error).toMatch(/MISSING 2 of 2 signatures/);
     expect(sig().slice(1).map(x => x.Status)).not.toContain('Cancelled');
     expect(log.council || []).toEqual([]);
+  });
+
+  it('no representative among the signers: not finished automatically; the asker is told to Finish (2026-11-20)', () => {
+    savePartial(false);
+    const q = call({ action: 'eborSignatureRequest', session: 's', recordId: 'R-1', signers: [
+      { name: 'Sam Signer', email: 'Sam@Example.org', slots: ['application:rep'], rep: false },
+      { name: 'Lee Member', email: 'lee@example.org', slots: ['application:chair'] }] });
+    expect(q.error).toBeUndefined();
+    sign('sam');
+    const lee = sign('lee');
+    expect(lee.r.complete).toBe(true);
+    expect(log.council).toEqual([]);
+    expect(log.moved).toEqual([]);
+    expect(log.notes.join('\n')).toMatch(/not finished automatically: .*representative/);
+    expect(log.sent.at(-1).subject).toMatch(/all signatures are in/);
+    expect(log.sent.at(-1).body).toMatch(/click Finish/);
   });
 });
 

@@ -182,7 +182,21 @@ var Outbox = (function () {
     return null;
   }
 
-  return { onSentPlan: onSentPlan, COUNCIL_PAPERWORK: COUNCIL_PAPERWORK, editConflict: editConflict, replyMode: replyMode, replyTo: replyTo, scheduleChoices: scheduleChoices, scheduleProblem: scheduleProblem, due: due, textToHtml: textToHtml, parseAttachments: parseAttachments, withAttachment: withAttachment, withoutAttachment: withoutAttachment, groupSize: groupSize, GROUP_LIMIT: GROUP_LIMIT, MAX_ATTACH_BYTES: MAX_ATTACH_BYTES, STATUS: STATUS, HEADERS: HEADERS, makeId: makeId, addresses: addresses, htmlToText: htmlToText, clean: clean, logLine: logLine };
+  /**
+   * The congratulations wait for the Council paperwork (Jim W., 2026-11-20: a Scout must not hear "all done" while his
+   * application never reached Council). template: the row's Template; signedSent: the tracking row's Signed paperwork
+   * sent cell (a date, or typed by hand). -> '' or why it is held
+   */
+  var CONGRATS = 'New Eagle Scout';
+  function congratsHold(template, signedSent) {
+    if (str(template) !== CONGRATS) return '';
+    var v = signedSent instanceof Date ? signedSent.getTime() : str(signedSent).trim();
+    if (v) return '';
+    return 'Held: the congratulations go after the signed application has gone to Council. Send the "' + COUNCIL_PAPERWORK +
+      '" email first (or, if it was sent by hand, enter the date in Signed paperwork sent).';
+  }
+
+  return { congratsHold: congratsHold, CONGRATS: CONGRATS, onSentPlan: onSentPlan, COUNCIL_PAPERWORK: COUNCIL_PAPERWORK, editConflict: editConflict, replyMode: replyMode, replyTo: replyTo, scheduleChoices: scheduleChoices, scheduleProblem: scheduleProblem, due: due, textToHtml: textToHtml, parseAttachments: parseAttachments, withAttachment: withAttachment, withoutAttachment: withoutAttachment, groupSize: groupSize, GROUP_LIMIT: GROUP_LIMIT, MAX_ATTACH_BYTES: MAX_ATTACH_BYTES, STATUS: STATUS, HEADERS: HEADERS, makeId: makeId, addresses: addresses, htmlToText: htmlToText, clean: clean, logLine: logLine };
 })();
 
 if (typeof module !== 'undefined') module.exports = Outbox;

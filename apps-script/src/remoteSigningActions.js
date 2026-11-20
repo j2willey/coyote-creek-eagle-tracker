@@ -215,7 +215,15 @@ function actionEborSignatureEdit_(req) {
 
 function actionEborPaperworkFinishPartial_(req) {
   var c = committeeMe_(req.session);
-  var rec = eborRecord_(req.recordId);
+  return finishSeries_(c, eborRecord_(req.recordId), !!req.confirm);
+}
+
+/**
+ * Finish a partly signed series: file the -Signed copy, archive, close the requests, draft the Council email, move the
+ * row to Eagle Earned. c: the committee member it is done for ({email, me}): the one at the page, or (automatic Finish
+ * when the last signer signs, 2026-11-20) the member who asked. -> {message, outboxId} | {needsConfirm, warnings}
+ */
+function finishSeries_(c, rec, confirmed) {
   var now = Date.now(), rows = Signatures.series(signatureRows_(), rec.recordId), st = Signatures.state(rows, now);
   if (!st.requestId) throw userError_('Nothing is in progress for this Scout: there is no partly signed paperwork.');
   var folder = folderForRecord_(rec, true), files = partialFiles_(folder);
@@ -227,7 +235,7 @@ function actionEborPaperworkFinishPartial_(req) {
   var warnings = [];
   Signatures.DOCS.forEach(function (d) { if (!st.repOk[d]) warnings.push(Signatures.DOC_LABEL[d] + ': no District Advancement Committee / Council representative has signed.'); });
   if (st.pending.length) warnings.push('Still waiting on: ' + st.pending.map(function (r) { return r.name; }).join(', ') + ' (their requests will be closed).');
-  if (warnings.length && !req.confirm) return { needsConfirm: true, warnings: warnings };
+  if (warnings.length && !confirmed) return { needsConfirm: true, warnings: warnings };
   var by = c.me.initials || c.email, scout = String(rec.fields.scout_name || '');
   var boardYmd = boardYmdFor_(rec);
   var names = EagleDone.fileNames(scout, rec.fields.unit, boardYmd, Intake.namePart, Intake.unitPart);
@@ -379,8 +387,33 @@ function actionSignerFinish_(req) {
   CacheService.getScriptCache().remove('sg:' + req.uploadToken);
   addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [' + ctx.name + '] signed the EBoR paperwork outside the room: ' +
     res.mine.map(function (r) { return r.slots.map(Signatures.slotLabel).join(', '); }).join(', ') + (res.st.complete ? '. Every box is signed.' : '. ' + Signatures.summary(res.st)) + '.');
-  if (res.st.complete || !res.st.pending.length) notifySignaturesDone_(rec, res.mine[0].askedBy, res.st.complete);
-  return { message: 'Thank you: your signature is saved.' + (res.st.complete ? ' Every signature is in; the committee will file the paperwork.' : ''), complete: res.st.complete };
+  // The last box signed (Jim W., 2026-11-20): Finish runs now for the member who asked, so nobody has to come back to
+  // the page; the Council email waits in the Outbox for a committee member to send (a signer may not be a member).
+  var auto = null;
+  if (res.st.complete) auto = autoFinish_(rec, res.mine[0].askedBy);
+  if (res.st.complete || !res.st.pending.length) notifySignaturesDone_(rec, res.mine[0].askedBy, res.st.complete, auto);
+  return { message: 'Thank you: your signature is saved.' + (res.st.complete ? (auto && auto.outboxId
+      ? ' Every signature is in: the paperwork is filed and the email to Council is waiting for the committee to send.'
+      : ' Every signature is in; the committee will file the paperwork.') : ''), complete: res.st.complete };
+}
+
+/**
+ * Finish for the member who asked for the signatures, when the last box is signed. Only when nothing needs a person's
+ * judgement (a representative signed, the asker is a committee member); otherwise the asker is told to Finish on the
+ * page. -> the Finish result, or null (with the reason logged on the Scout)
+ */
+function autoFinish_(rec, askedBy) {
+  try {
+    var m = committeeAll_().filter(function (x) { return String(x.initials) === String(askedBy) || String(x.email).toLowerCase() === String(askedBy).toLowerCase(); })[0];
+    if (!m) { addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [system] Every signature is in, but the member who asked (' + askedBy + ') is not on the committee list: Finish on the EBoR paperwork page.'); return null; }
+    var r = finishSeries_({ email: String(m.email), me: m }, Records.get(rec.recordId) || rec, false);
+    if (r.needsConfirm) { addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [system] Every signature is in, not finished automatically: ' + r.warnings.join(' ') + ' Finish on the EBoR paperwork page.'); return null; }
+    return r;
+  } catch (e) {
+    console.error('autoFinish_: ' + (e && e.stack || e));
+    try { addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [system] Every signature is in, but filing it automatically failed (' + (e.userMessage || e.message) + '): Finish on the EBoR paperwork page.'); } catch (e2) {}
+    return null;
+  }
 }
 
 /** Close the Scout's open series (in-room Finish after a partial save): every row Filed, pending ones Cancelled. */
@@ -398,7 +431,7 @@ function closeSignatureSeries_(recordId, by) {
 }
 
 /** The member who asked hears once every box is signed (or nobody is left to ask). */
-function notifySignaturesDone_(rec, askedBy, complete) {
+function notifySignaturesDone_(rec, askedBy, complete, auto) {
   try {
     var s = getSettings_();
     var m = committeeAll_().filter(function (x) { return String(x.initials) === String(askedBy) || String(x.email).toLowerCase() === String(askedBy).toLowerCase(); })[0];
@@ -406,9 +439,14 @@ function notifySignaturesDone_(rec, askedBy, complete) {
     if (!to) return;
     var link = String(s.webOrigin || '').replace(/\/+$/, '') + '/committee/ebor-paperwork';
     var scout = String(rec.fields.scout_name || '');
+    var origin = String(s.webOrigin || '').replace(/\/+$/, '');
+    var body = auto && auto.outboxId
+      ? 'Every signature on the Eagle Scout paperwork for ' + scout + ' is in. It is filed, the row is at Eagle Earned, and the email to Council ' +
+        'is waiting in the Outbox. Check it and Send (the congratulations can go once it has): ' + origin + '/committee/outbox?id=' + encodeURIComponent(auto.outboxId)
+      : (complete ? 'Every signature on the Eagle Scout paperwork for ' + scout + ' is in.' : 'No signer is left to ask for ' + scout + ', but some boxes are still empty.') +
+        '\n\nOpen the EBoR paperwork page, check the application and click Finish: ' + link;
     mailFromTemplate_('Signatures complete', { scout: scout, link: link }, { to: to, kind: 'private',
-      subject: 'Eagle Scout paperwork for ' + scout + ': ' + (complete ? 'all signatures are in' : 'nobody left to ask'),
-      body: (complete ? 'Every signature on the Eagle Scout paperwork for ' + scout + ' is in.' : 'No signer is left to ask for ' + scout + ', but some boxes are still empty.') +
-        '\n\nOpen the EBoR paperwork page, check both documents and click Finish: ' + link });
+      subject: 'Eagle Scout paperwork for ' + scout + ': ' + (auto && auto.outboxId ? 'signed; send it to Council' : complete ? 'all signatures are in' : 'nobody left to ask'),
+      body: body });
   } catch (e) { console.error('notifySignaturesDone_: ' + e); }
 }

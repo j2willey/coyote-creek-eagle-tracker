@@ -120,3 +120,18 @@ describe('Outbox: what a sent email fills on the tracking row (2026-11-19)', () 
     expect(O.onSentPlan('', O.COUNCIL_PAPERWORK, null)).toBeNull();
   });
 });
+
+describe('Congratulations wait for the Council paperwork (2026-11-20)', () => {
+  const O = require('../apps-script/src/lib/outbox.js');
+  it('held while Signed paperwork sent is empty', () => {
+    expect(O.congratsHold(O.CONGRATS, '')).toMatch(/^Held: .*Council: Eagle paperwork/);
+    expect(O.congratsHold(O.CONGRATS, null)).toMatch(/^Held/);
+  });
+  it('free once the date is there (a Date, or typed by hand)', () => {
+    expect(O.congratsHold(O.CONGRATS, new Date(2026, 10, 20))).toBe('');
+    expect(O.congratsHold(O.CONGRATS, '11/20/26')).toBe('');
+  });
+  it('other emails are never held', () => {
+    expect(O.congratsHold(O.COUNCIL_PAPERWORK, '')).toBe('');
+  });
+});
