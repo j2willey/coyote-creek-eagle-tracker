@@ -38,7 +38,6 @@ function queueOutbox_(key, out, msg) {
       'Subject': out.subject, 'Html': out.htmlBody, 'Text': out.body };
     if (att.length) fields['Attachments'] = JSON.stringify(att);
     if (msg.onSent && msg.onSent.column) fields['On sent'] = JSON.stringify(msg.onSent);
-    if (msg.note) fields['Note'] = String(msg.note);
     if (msg.eventAt) fields['Event at'] = new Date(msg.eventAt);   // the session it is about (Send later: 2 days / 1 day before)   // {column, label}: date filled when sent
     Tabs.append(OUTBOX_TAB, fields);
   });

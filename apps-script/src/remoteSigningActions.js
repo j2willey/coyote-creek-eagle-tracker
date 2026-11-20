@@ -220,8 +220,11 @@ function actionEborPaperworkFinishPartial_(req) {
   if (!st.requestId) throw userError_('Nothing is in progress for this Scout: there is no partly signed paperwork.');
   var folder = folderForRecord_(rec, true), files = partialFiles_(folder);
   if (!files.application) throw userError_('The Partial copy is not in the Scout\'s folder any more (moved by hand?).');
+  // Every box signed before Council gets it (Jim W., 2026-11-20: an unsigned application reached Council after "Finish
+  // anyway"). No override: a virtual board saves partial with nobody signed and each signer signs from their email link.
+  if (st.missing.length) throw userError_('Not finished: the application is ' + Signatures.missingText(st) +
+    ' Ask the missing signer(s) below (or send the request again); Finish files it and drafts the Council email once every box is signed.');
   var warnings = [];
-  if (st.missing.length) warnings.push('Council will get the application ' + Signatures.missingText(st));
   Signatures.DOCS.forEach(function (d) { if (!st.repOk[d]) warnings.push(Signatures.DOC_LABEL[d] + ': no District Advancement Committee / Council representative has signed.'); });
   if (st.pending.length) warnings.push('Still waiting on: ' + st.pending.map(function (r) { return r.name; }).join(', ') + ' (their requests will be closed).');
   if (warnings.length && !req.confirm) return { needsConfirm: true, warnings: warnings };
@@ -244,12 +247,11 @@ function actionEborPaperworkFinishPartial_(req) {
     return { files: out, archived: toArchive.length };
   });
   var unit = Units.find(units_(), rec.fields.unit), res = null, note = '';
-  var warnNote = st.missing.length ? '⚠ The attached application is ' + Signatures.missingText(st) + ' Finished anyway by ' + by + '.' : '';
-  try { res = draftCouncilPaperwork_(c, rec, boardYmd, [filed.files.application], unit ? unit.contacts : [], stageColumns_(), warnNote); }
+  try { res = draftCouncilPaperwork_(c, rec, boardYmd, [filed.files.application], unit ? unit.contacts : [], stageColumns_()); }
   catch (e) { console.error('finish partial email: ' + (e && e.stack || e)); note = ' The Council email could not be drafted (' + e.message + '): use "Send signed paperwork to Council…" on the dashboard.'; }
   var queued = !!(res && res.queued);
   addRecordNote_(rec.recordId, Intake.shortDate(new Date()) + ' [' + by + '] EBoR paperwork filed after signing outside the room. ' + Signatures.summary(st) +
-    '. Filed ' + names.application + (warnings.length ? ' (finished with missing signatures)' : '') +
+    '. Filed ' + names.application + (warnings.length ? ' (finished with: ' + warnings.join(' ') + ')' : '') +
     (queued ? '; Council email drafted in the Outbox' : '; no Council email drafted') + '.');
   var moved = '';
   try { moved = moveToEagleEarned_(rec, boardYmd, by); }

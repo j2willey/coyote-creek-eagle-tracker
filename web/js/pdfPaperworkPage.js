@@ -779,7 +779,7 @@ export function initPaperwork(deps) {
   /** @param {boolean} [confirmed] @returns {Promise<any>} */
   async function finishPartial(confirmed) {
     const r = await api('eborPaperworkFinishPartial', { session, recordId: sc.recordId, confirm: !!confirmed });
-    if (r.needsConfirm) return confirm(r.warnings.join('\n') + '\n\nFinish and draft the Council email anyway?') ? finishPartial(true) : null;
+    if (r.needsConfirm) return confirm(r.warnings.join('\n') + '\n\nFinish anyway?') ? finishPartial(true) : null;
     dirty = false;
     try { localStorage.removeItem('ccacHome'); } catch { /* ignore */ }
     if (r.outboxId) {
@@ -848,7 +848,7 @@ export function initPaperwork(deps) {
         el('p', { className: 'hint', textContent: 'Each signer gets an email, to them only, with a link to sign in their own browser (nothing to print). Pick the box(es) each one signs. Any address can be typed: a last-minute board member, or a corrected address.' }),
         linesBox, el('div', { className: 'ep-actions' }, more, ' ', send))
         : el('p', { className: 'hint', textContent: st.complete ? 'Every box is signed.' : 'Every empty box has been asked of someone.' }),
-      el('div', { className: 'ep-actions' }, sigBtn(st.complete ? 'Finish: file the signed paperwork…' : 'Finish with the signatures we have…', () => finishPartial(), st.complete),
+      el('div', { className: 'ep-actions' }, sigBtn(st.complete ? 'Finish: file the signed paperwork…' : 'Finish (once every box is signed)', () => finishPartial(), st.complete, !st.complete),
         ' ', el('span', { id: 'sigPanelMsg', role: 'status', className: 'muted' })));
   }
 

@@ -167,8 +167,7 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
   it('Finish files the -Signed copies, archives the Verified Application, closes the series and drafts the Council email', () => {
     savePartial(); ask();
     const early = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' });
-    expect(early.needsConfirm).toBe(true);
-    expect(early.warnings.join(' ')).toMatch(/MISSING 1 of 2 signatures/);
+    expect(early.error).toMatch(/Not finished: the application is MISSING 1 of 2 signatures/);
     sign('sam');
     const r = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1' });
     expect(r.error).toBeUndefined();
@@ -182,12 +181,12 @@ describe('Remote EBoR signing: Save partial, ask, sign elsewhere, Finish', () =>
     expect(call({ action: 'eborSignatureStatus', session: 's', recordId: 'R-1' }).requestId).toBe('');
   });
 
-  it('Finish with signatures missing (confirmed) closes the pending requests', () => {
+  it('Finish with signatures missing is refused even when confirmed (2026-11-20): requests stay open, nothing to Council', () => {
     savePartial(false); ask(true);
     const r = call({ action: 'eborPaperworkFinishPartial', session: 's', recordId: 'R-1', confirm: true });
-    expect(r.error).toBeUndefined();
-    expect(sig().slice(1).map(x => x.Status)).toEqual(['Cancelled', 'Cancelled']);
-    expect(run("whoIs_('lee@example.org').onFile")).toBe(false);
+    expect(r.error).toMatch(/MISSING 2 of 2 signatures/);
+    expect(sig().slice(1).map(x => x.Status)).not.toContain('Cancelled');
+    expect(log.council || []).toEqual([]);
   });
 });
 

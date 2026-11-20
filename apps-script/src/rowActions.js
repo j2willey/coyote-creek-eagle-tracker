@@ -196,7 +196,7 @@ function lastEborSlot_(recordId) {
  * Eagle earned / Send signed paperwork (rowExecute_) and by the EBoR paperwork page (eborPaperworkActions.js).
  * attachments: [{id, name}] (the signed application). -> mailFromTemplate_'s result
  */
-function draftCouncilPaperwork_(c, rec, boardYmd, attachments, unitContacts, cols, warnNote) {
+function draftCouncilPaperwork_(c, rec, boardYmd, attachments, unitContacts, cols) {
   var s = getSettings_();
   var scout = String(rec.fields.scout_name || '');
   var vars = { scout: scout, firstName: EagleDone.firstName(scout, rec.fields.preferred_name), unitName: EagleDone.unitName(rec.fields.unit),
@@ -206,8 +206,7 @@ function draftCouncilPaperwork_(c, rec, boardYmd, attachments, unitContacts, col
     committee: true, outbox: true, by: c.email, recordId: rec.recordId, scout: scout,
     to: [String(s.councilEaglesEmail || '')].filter(String), cc: [s.committeeGroupEmail].concat(unitContacts || []).filter(String).join(', '),
     subject: cp.subject, body: cp.body, attachments: attachments,
-    onSent: cols && cols.signedSent ? { column: cols.signedSent, label: StageActions.COLUMNS.signedSent.label } : null,
-    note: warnNote || '' });   // ⚠ note: shown in red on the Outbox, and Send asks first (unsigned application, 2026-11-20)
+    onSent: cols && cols.signedSent ? { column: cols.signedSent, label: StageActions.COLUMNS.signedSent.label } : null });
 }
 
 function rowExecute_(c, ck, req, uploads) {
