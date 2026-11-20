@@ -6,7 +6,7 @@ const SA = require('../apps-script/src/lib/stageActions.js');
 describe('StageActions', () => {
   const cols = SA.resolveColumns(['scout_name', 'application_submitted', 'council.application_verified', 'emailed_to_set_up_ebor', 'notes'], {});
   it('finds the tracking columns by name, Settings override first', () => {
-    expect(cols).toEqual({ submitted: 'application_submitted', verified: 'council.application_verified', emailedEbor: 'emailed_to_set_up_ebor', ebor: '', signedSent: '', svmbcReceived: '' });
+    expect(cols).toEqual({ submitted: 'application_submitted', verified: 'council.application_verified', emailedEbor: 'emailed_to_set_up_ebor', ebor: '', signedSent: '', svmbcReceived: '', eborWho: '' });
     expect(SA.resolveColumns(['x_verified', 'application_verified'], { appVerifiedColumn: 'x_verified' }).verified).toBe('x_verified');
     expect(SA.resolveColumns([], {}).verified).toBe('');
   });
@@ -134,5 +134,21 @@ describe('StageActions: schedule-page actions say which type to open (2026-11-11
       expect(a.emailHintSent).toMatch(/already gone to Council/);
       expect(a.emailHint).toMatch(/drafts two emails/);
     });
+  });
+});
+
+describe('EBoR CCAC Reps column (2026-11-19)', () => {
+  const prod = ['ebor_date', 'signed_eagle_application_and.date', 'signed_eagle_application_and.who', 'eagle_earned.svmbc_received'];
+  it('a setting naming a missing column falls back to the column found by name', () => {
+    expect(SA.resolveColumns(prod, { eborWhoColumn: 'ebor_ccac_reps' }).eborWho).toBe('signed_eagle_application_and.who');
+  });
+  it('after the rename, the setting (or the name) finds ebor_ccac_reps', () => {
+    const renamed = ['ebor_date', 'signed_eagle_application_and.date', 'ebor_ccac_reps'];
+    expect(SA.resolveColumns(renamed, { eborWhoColumn: 'ebor_ccac_reps' }).eborWho).toBe('ebor_ccac_reps');
+    expect(SA.resolveColumns(renamed, {}).eborWho).toBe('ebor_ccac_reps');
+  });
+  it('a setting that names a real column wins; no such column at all -> empty', () => {
+    expect(SA.resolveColumns([...prod, 'board_who'], { eborWhoColumn: 'board_who' }).eborWho).toBe('board_who');
+    expect(SA.resolveColumns(['ebor_date', 'proposal_review.who'], {}).eborWho).toBe('');
   });
 });

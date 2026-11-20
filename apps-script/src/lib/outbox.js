@@ -165,7 +165,24 @@ var Outbox = (function () {
       'Reload the Outbox to see their version (copy your edits first if you want to keep them).';
   }
 
-  return { editConflict: editConflict, replyMode: replyMode, replyTo: replyTo, scheduleChoices: scheduleChoices, scheduleProblem: scheduleProblem, due: due, textToHtml: textToHtml, parseAttachments: parseAttachments, withAttachment: withAttachment, withoutAttachment: withoutAttachment, groupSize: groupSize, GROUP_LIMIT: GROUP_LIMIT, MAX_ATTACH_BYTES: MAX_ATTACH_BYTES, STATUS: STATUS, HEADERS: HEADERS, makeId: makeId, addresses: addresses, htmlToText: htmlToText, clean: clean, logLine: logLine };
+  /**
+   * What "the email went out" fills on the tracking row (2026-11-19: two EBoRs' Council emails went out and the
+   * "Signed paperwork sent" date stayed empty). onSentCell: the row's 'On sent' JSON; template: the row's Template;
+   * signedSent: the resolved {column, label} for the Council paperwork date. A Council paperwork email with no
+   * 'On sent' (Draft again copies, older drafts) still fills the date, but only when the cell is empty.
+   * -> {column, label, ifEmpty} or null
+   */
+  var COUNCIL_PAPERWORK = 'Council: Eagle paperwork';
+  function onSentPlan(onSentCell, template, signedSent) {
+    var o = null;
+    try { o = JSON.parse(str(onSentCell) || 'null'); } catch (e) { o = null; }
+    if (o && o.column) return { column: str(o.column), label: str(o.label) || str(o.column), ifEmpty: false };
+    if (str(template) === COUNCIL_PAPERWORK && signedSent && signedSent.column)
+      return { column: str(signedSent.column), label: str(signedSent.label) || str(signedSent.column), ifEmpty: true };
+    return null;
+  }
+
+  return { onSentPlan: onSentPlan, COUNCIL_PAPERWORK: COUNCIL_PAPERWORK, editConflict: editConflict, replyMode: replyMode, replyTo: replyTo, scheduleChoices: scheduleChoices, scheduleProblem: scheduleProblem, due: due, textToHtml: textToHtml, parseAttachments: parseAttachments, withAttachment: withAttachment, withoutAttachment: withoutAttachment, groupSize: groupSize, GROUP_LIMIT: GROUP_LIMIT, MAX_ATTACH_BYTES: MAX_ATTACH_BYTES, STATUS: STATUS, HEADERS: HEADERS, makeId: makeId, addresses: addresses, htmlToText: htmlToText, clean: clean, logLine: logLine };
 })();
 
 if (typeof module !== 'undefined') module.exports = Outbox;

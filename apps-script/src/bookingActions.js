@@ -219,7 +219,7 @@ function syncBookedRow_(row, ctx, report) {
     if (type === 'ESSPPR' && ['proposal_approved', 'proposal_revisions', 'proposal_not_approved'].indexOf(rec.section) >= 0) return report;
     if (type === 'EBoR' && ['eagle_earned', 'ebor_paused', 'eagle_not_awarded'].indexOf(rec.section) >= 0) return report;   // board outcome recorded
     var w0 = Booking.splitWho(row.reps).join('/');
-    var dCol = s[r.dateCol], wCol = s[r.whoCol];
+    var dCol = s[r.dateCol], wCol = trackingWhoCol_(type, s, Records.columns());
     var curD = rec.fields[dCol] instanceof Date ? rec.fields[dCol].getTime() : NaN;
     if (curD !== start || String(rec.fields[wCol] || '') !== w0) setTrackingDateWho_(rec.recordId, type, new Date(start), w0);
     return report;
@@ -273,7 +273,7 @@ function syncBookedRow_(row, ctx, report) {
     }
   }
   var cols = Records.columns();
-  var whoCol = r.whoCol ? s[r.whoCol] : '';              // a Follow-Up / Consult has no tracking Who column
+  var whoCol = trackingWhoCol_(type, s, cols);           // a Follow-Up / Consult has no tracking Who column
   if (whoCol && cols.indexOf(whoCol) >= 0 && String(rec.fields[whoCol] || '') !== who.join('/')) {
     var upd = {}; upd[whoCol] = who.join('/');
     Records.update(rec.recordId, upd);
@@ -386,14 +386,27 @@ function handleScheduleNameEdit_(e) {
 
 // ---------- shared booking steps (Scout page and committee menu) ----------
 
+/**
+ * The tracking Who column for a session type: Settings → its whoCol when the tab has it; for EBoRs also the column found
+ * by name (StageActions eborWho, 2026-11-19: production's Reps column is still signed_eagle_application_and.who, so
+ * Settings' ebor_ccac_reps matched nothing and the initials were never written). '' = none.
+ */
+function trackingWhoCol_(type, s, cols) {
+  var r = Booking.rules(type);
+  if (!r.whoCol) return '';
+  if (type === 'EBoR') return StageActions.resolveColumns(cols, s).eborWho;
+  return cols.indexOf(s[r.whoCol]) >= 0 ? s[r.whoCol] : '';
+}
+
 function setTrackingDateWho_(recordId, type, date, whoText) {
   var s = getSettings_();
   var r = Booking.rules(type);
   if (!r.dateCol) return;                                  // Follow-Up / Consult: no tracking date or Who column
   var cols = Records.columns();
   var upd = {};
+  var wCol = trackingWhoCol_(type, s, cols);
   if (cols.indexOf(s[r.dateCol]) >= 0) upd[s[r.dateCol]] = date;
-  if (cols.indexOf(s[r.whoCol]) >= 0) upd[s[r.whoCol]] = whoText;
+  if (wCol) upd[wCol] = whoText;
   if (Object.keys(upd).length) Records.update(recordId, upd);
 }
 

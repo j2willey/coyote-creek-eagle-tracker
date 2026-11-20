@@ -43,7 +43,11 @@ var StageActions = (function () {
     emailedEbor: { setting: 'eborEmailedColumn', pattern: /(^|\.)emailed_to_set_up_ebor/, label: 'Emailed to set up EBoR' },
     ebor: { setting: 'eborDateColumn', pattern: /(^|\.)ebor_date$/, label: 'EBoR Date' },
     signedSent: { setting: 'signedSentColumn', pattern: /^signed[^.]*\.date$/, label: 'Signed paperwork sent to Council' },
-    svmbcReceived: { setting: 'svmbcReceivedColumn', pattern: /(^|\.)svmbc_received$/, label: 'SVMBC Received' }
+    svmbcReceived: { setting: 'svmbcReceivedColumn', pattern: /(^|\.)svmbc_received$/, label: 'SVMBC Received' },
+    // EBoR CCAC Reps (2026-11-19): Settings → eborWhoColumn, else the column by name. The production sheet still calls it
+    // signed_eagle_application_and.who (it sits under that header group), so a setting that names a missing column no
+    // longer means the initials are silently never written.
+    eborWho: { setting: 'eborWhoColumn', pattern: /(^|\.)ebor_ccac_reps$|^signed[^.]*\.who$/, label: 'EBoR CCAC Reps' }
   };
 
   var PRE_INTAKE = ['proposal_received', 'proposal_incomplete'];

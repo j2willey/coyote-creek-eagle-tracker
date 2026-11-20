@@ -142,6 +142,7 @@ function recordEagleNumbers_(rec, by) {
  */
 function moveToEagleEarned_(rec, boardYmd, by) {
   var s = getSettings_(), cols = stageColumns_(), upd = {};
+  var repsNote = fillEborReps_(rec.recordId, by);
   if (cols.ebor && /^\d{4}-\d{2}-\d{2}$/.test(String(boardYmd || ''))) upd[cols.ebor] = ymdToDate_(boardYmd);
   if (Object.keys(upd).length) Records.update(rec.recordId, upd);
   Records.move(rec.recordId, 'eagle_earned');
@@ -150,7 +151,33 @@ function moveToEagleEarned_(rec, boardYmd, by) {
   var en = recordEagleNumbers_(rec, by);
   var phrase = EagleCount.phrase(en.nums);
   return ' Moved to ' + SettingsModel.sectionLabel(s, 'eagle_earned') + (phrase ? ' (' + phrase + ')' : '') + '.' +
-    (en.note ? ' ' + en.note + '.' : '') + ' Send the congratulations from the dashboard (Send congratulations…) when you have the photos.';
+    (en.note ? ' ' + en.note + '.' : '') + repsNote + ' Send the congratulations from the dashboard (Send congratulations…) when you have the photos.';
+}
+
+/**
+ * At the board's outcome (Eagle earned, EBoR paperwork Finish, remote signing): the EBoR CCAC Reps cell from the
+ * schedule slot when it is empty (2026-11-19: two boards' rows were left without initials). A cell someone typed is
+ * kept. A failure is logged on the Scout and returned as a sentence, never swallowed. -> '' or that sentence
+ */
+function fillEborReps_(recordId, by) {
+  var col = '';
+  try {
+    col = stageColumns_().eborWho;
+    var slot = lastEborSlot_(recordId);
+    var who = slot ? Booking.splitWho(slot.reps).join('/') : '';
+    if (!who) return '';
+    if (!col) throw new Error('no EBoR CCAC Reps column found (Settings → eborWhoColumn)');
+    var rec = Records.get(recordId);
+    if (!rec || String(rec.fields[col] || '').trim()) return '';
+    var upd = {}; upd[col] = who;
+    Records.update(recordId, upd);
+    return '';
+  } catch (e) {
+    var why = (e && (e.userMessage || e.message)) || String(e);
+    console.error('fillEborReps_ ' + recordId + ': ' + why);
+    try { addRecordNote_(recordId, Intake.shortDate(new Date()) + ' [' + (by || 'system') + '] EBoR CCAC Reps not filled in: ' + why + '.'); } catch (e2) {}
+    return ' EBoR CCAC Reps not filled in (' + why + '): enter them on the sheet.';
+  }
 }
 
 /** The Scout's last EBoR slot on the schedule (past or future): reps and Unit Board Members. */
@@ -253,6 +280,7 @@ function rowExecute_(c, ck, req, uploads) {
   // Eagles to Date (2026-11-01): +1 on each of the Scout's units that keeps a count, before the emails use it.
   var eagleNums = [];
   if (a.key === 'eagle_earned') {
+    msg += fillEborReps_(rec.recordId, by);
     var en = recordEagleNumbers_(rec, by);
     eagleNums = en.nums; if (en.note) notes.push(en.note);
     if (eagleNums.length) msg += ' ' + EagleCount.phrase(eagleNums).replace(/^./, function (ch) { return ch.toUpperCase(); }) + '.';

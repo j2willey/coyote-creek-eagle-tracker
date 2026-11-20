@@ -47,16 +47,37 @@ function queueOutbox_(key, out, msg) {
   return id;
 }
 
-/** The email went out: fill the tracking column it stands for (e.g. Emailed to set up EBoR) with today's date. */
+/**
+ * The email went out: fill the tracking column it stands for (e.g. Emailed to set up EBoR, Signed paperwork sent) with
+ * today's date (Outbox.onSentPlan). It used to swallow every failure (2026-11-19: Council emails sent, dates never filled);
+ * now a failure goes into the Scout's log and to the admin, and comes back as a sentence for the sender. -> '' or that sentence
+ */
 function applyOnSent_(row) {
+  var id = String(row['Record ID'] || '');
+  if (!id) return '';
+  var plan = null;
   try {
-    var o = JSON.parse(String(row['On sent'] || '') || 'null');
-    var id = String(row['Record ID'] || '');
-    if (!o || !o.column || !id || Records.columns().indexOf(o.column) < 0) return;
+    var sc = stageColumns_();
+    plan = Outbox.onSentPlan(row['On sent'], row['Template'],
+      sc.signedSent ? { column: sc.signedSent, label: StageActions.COLUMNS.signedSent.label } : null);
+    if (!plan) return '';
+    if (Records.columns().indexOf(plan.column) < 0) throw new Error('the tracking tab has no column "' + plan.column + '"');
+    var rec = Records.get(id);
+    if (!rec) throw new Error('the Scout is no longer on the tracking tab');
+    if (plan.ifEmpty && String(rec.fields[plan.column] || '').trim()) return '';
     var set = {};
-    set[o.column] = new Date();
+    set[plan.column] = new Date();
     Records.update(id, set);
-  } catch (e) { console.warn('applyOnSent_: ' + e); }
+    return '';
+  } catch (e) {
+    var label = plan ? plan.label : 'the tracking date';
+    var why = (e && (e.userMessage || e.message)) || String(e);
+    console.error('applyOnSent_ ' + row['Id'] + ': ' + why);
+    try { addRecordNote_(id, Intake.shortDate(new Date()) + ' [system] "' + row['Template'] + '" email sent, but ' + label + ' was NOT filled in: ' + why + '.'); } catch (e2) {}
+    try { notifyAdmin_('Tracking date not filled after an Outbox email', '"' + row['Template'] + '" for ' + (row['Scout'] || id) + ' was sent, but ' + label +
+      ' was not filled in: ' + why + '. Enter it on the tracking tab.'); } catch (e3) {}
+    return ' But ' + label + ' was not filled in (' + why + '): enter it on the sheet.';
+  }
 }
 
 /** A column added after the Outbox tab was made (Setup / repair tabs does the same). */
@@ -172,7 +193,7 @@ function outboxDeliver_(row, mail, replyMember, backTo) {
     withLock_(function () { Tabs.update(OUTBOX_TAB, row._row, { 'Status': backTo, 'Done': '', 'Done by': '', 'Note': 'Send failed: ' + (e.userMessage || e.message) }); });
     throw userError_('Not sent: ' + (e.userMessage || e.message));
   }
-  applyOnSent_(row);
+  p.trackNote = applyOnSent_(row);
   return p;
 }
 
@@ -194,7 +215,7 @@ function actionOutboxSend_(req) {
   });
   var p = outboxDeliver_(row, { to: a.to, cc: a.cc, subject: subject, html: html, replyMode: mode }, c.email, Outbox.STATUS.PENDING);
   outboxLog_(row, who, 'sent');
-  return { message: 'Sent' + (p.intended ? ' (test mode: to ' + p.to.join(', ') + ' only)' : '') + '.' };
+  return { message: 'Sent' + (p.intended ? ' (test mode: to ' + p.to.join(', ') + ' only)' : '') + '.' + (p.trackNote || '') };
 }
 
 /** Outbox → Send later: saves the edits and the time; the hourly trigger sends it (outboxSendDue_). */
@@ -304,8 +325,8 @@ function actionOutboxSentByMe_(req) {
     return upd;
   });
   outboxLog_(row, who, 'sent from ' + who + '\'s own email');
-  applyOnSent_(row);
-  return { message: 'Marked as sent from your email.' };
+  var track = applyOnSent_(row);
+  return { message: 'Marked as sent from your email.' + track };
 }
 
 function actionOutboxDiscard_(req) {

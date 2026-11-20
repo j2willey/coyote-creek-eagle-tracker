@@ -944,6 +944,13 @@ Design note (kept outside the repo); list of every email: **Admin → Templates:
   before it goes; the list shows "✎ saved by JW · time" (columns `Edited`, `Edited by`; logged). Save, Send and Send
   later are refused if another member saved after your page loaded it (reload to see their version); switching emails
   with unsaved edits asks first.
+  **When an Outbox email goes out** it fills the tracking date it stands for (`On sent`); a "Council: Eagle paperwork"
+  email with no `On sent` (a Draft again copy, an older draft) still fills Signed paperwork sent when that cell is empty.
+  If the write fails, the sender is told, the Scout's log says so and the admin gets an email (it used to fail silently).
+- **EBoR CCAC Reps:** copied from the schedule at booking, and again at the board's outcome (Eagle earned, EBoR paperwork
+  Finish, remote signing) when the cell is empty. The column is Settings → `eborWhoColumn`, or found by name
+  (`ebor_ccac_reps`, or the older `signed_eagle_application_and.who`), so a setting that names a missing column no longer
+  means the initials are never written.
 - **✉ Email… (draft again)** on every dashboard row and in the Scout detail window (`lib/emailMenu.js`,
   `emailActions.js`): the emails that fit the Scout's stage (status + page link, Book: …, Booked: … confirmations,
   please book, Proposal incomplete / Revisions / EBoR paused with a note (prefilled from the committee's last request),

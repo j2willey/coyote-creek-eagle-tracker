@@ -68,7 +68,7 @@ function scheduleCheck_() {
     if (isNaN(start)) { line.result = 'CHECK'; line.detail = 'The schedule row has no readable date/time.'; count.other++; return; }
 
     var r = Booking.rules(type);
-    var dateCol = s[r.dateCol], whoCol = s[r.whoCol];
+    var dateCol = s[r.dateCol], whoCol = trackingWhoCol_(type, s, cols);
     if (!dateCol || cols.indexOf(dateCol) < 0) {
       line.result = 'CHECK'; line.detail = 'The tracking tab has no "' + (dateCol || r.dateCol) + '" column (Settings → ' + r.dateCol + ').';
       count.other++; return;

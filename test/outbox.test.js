@@ -103,3 +103,20 @@ describe('Outbox Save: edits by another member (2026-11-19)', () => {
     expect(O.editConflict(new Date(t), null)).toBe('');
   });
 });
+
+describe('Outbox: what a sent email fills on the tracking row (2026-11-19)', () => {
+  const O = require('../apps-script/src/lib/outbox.js');
+  const signed = { column: 'signed_eagle_application_and.date', label: 'Signed paperwork sent to Council' };
+  it('the draft\'s own On sent wins, and overwrites', () => {
+    expect(O.onSentPlan(JSON.stringify({ column: 'emailed_to_set_up_ebor', label: 'Emailed to set up EBoR' }), 'Book: EBoR', signed))
+      .toEqual({ column: 'emailed_to_set_up_ebor', label: 'Emailed to set up EBoR', ifEmpty: false });
+  });
+  it('a Council paperwork email with no On sent (a Draft again copy, an older draft) still fills the date, only if empty', () => {
+    expect(O.onSentPlan('', O.COUNCIL_PAPERWORK, signed)).toEqual({ ...signed, ifEmpty: true });
+    expect(O.onSentPlan('not json', O.COUNCIL_PAPERWORK, signed)).toEqual({ ...signed, ifEmpty: true });
+  });
+  it('other emails with no On sent fill nothing; no column found -> nothing', () => {
+    expect(O.onSentPlan('', 'New Eagle Scout', signed)).toBeNull();
+    expect(O.onSentPlan('', O.COUNCIL_PAPERWORK, null)).toBeNull();
+  });
+});
