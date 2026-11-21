@@ -201,6 +201,12 @@ var TemplateCatalog = (function () {
   LIST.push(openTimes('Proposal Review', 'new Proposal Review times (in person)', ['Come ready to present your project and answer questions.', '', ADULT_IN_PERSON]));
   LIST.push(openTimes('Eagle Board of Review', 'new Eagle Board of Review times', [
     'Your unit is notified when you book, so they can arrange the Unit Board Members.']));
+  // Ask for times (Jim W., 2026-11-20): BEFORE opening sessions, ask the Scouts ready to book which times suit them.
+  // One email To the chosen Scouts, Cc parents + committee; drafted into the Outbox with Reply to: Me only.
+  LIST.push(t('Ask for times', 'B', ['firstNames', 'type', 'when', 'pageLink'], '{type}: which times work for you {when}?', [
+    '{firstNames},', '',
+    'The committee is setting up {type} times {when}. Before we pick them, reply to this email with the days and times that work for you.', '',
+    'Once the times are open you will get an email, and you book on your page: {pageLink}'], 'group', 'review'));
   LIST.push(t('Session briefing', 'C', ['scout', 'unitName', 'session', 'when', 'where', 'members', 'folderLink', 'logLink', 'notes', 'eagleNumber'],
     'Tomorrow: {session} for {scout} ({unitName}), {when}', [
       'You are on the {session} for {scout} ({unitName}):', '',
@@ -323,6 +329,7 @@ var TemplateCatalog = (function () {
     'EBoR reminder': ['4.3.c', 'EBoR Booked', '(same)', 'Settings → eborReminderDays (3) before the board: drafted into the Outbox; send now or Send later', 'Scout + district reps on the slot + Unit Board Members; Cc parent/guardian + committee'],
     'Unit Board Members missing': ['4.1.h', 'EBoR Booked', '(same)', 'Hourly: EBoR within 7 days and no Unit Board Members (unit not under review): drafted into the Outbox', UC + '; Cc committee'],
     'Application submitted: acknowledgement': ['3.1.a', 'Proposal Approved', 'Application Submitted', 'Row action "Application submitted": drafted into the Outbox', SF],
+    'Ask for times': ['1.4.e', 'any To Book stage (online booking)', '(same)', 'Committee schedule page: ✉ Open times → "Ask what times work…", before opening sessions: drafted into the Outbox (Reply to: Me only)', 'the Scouts ticked; Cc their parents/guardians + committee'],
     'Open times: Pre-Review Call': ['1.4.d', 'Intake Review: To Book', '(same)', 'Committee page: new sessions opened, "Email the Scouts ready to book": drafted into the Outbox', 'all Scouts ready to book; Cc their parents/guardians + committee'],
     'Open times: Proposal Review': ['2.2.d', 'In-Person Review: To Book', '(same)', 'Same as 1.4.d', 'all Scouts ready to book; Cc their parents/guardians + committee'],
     'Open times: Eagle Board of Review': ['4.1.i', 'Application Verified', '(same)', 'Same as 1.4.d', 'all Scouts ready to book; Cc their parents/guardians + committee'],

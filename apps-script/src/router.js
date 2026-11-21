@@ -7,7 +7,7 @@
  *
  * Actions are added milestone by milestone (M2 identity, M3 intake, ...).
  */
-var API_VERSION = '0.95.0';
+var API_VERSION = '0.96.0';
 
 var ACTIONS_ = {
   ping: function (req) {
@@ -52,6 +52,7 @@ var ACTIONS_ = {
   saveSlots: function (req) { return actionSaveSlots_(req); },
   openTimesChoices: function (req) { return actionOpenTimesChoices_(req); },
   openTimesDraft: function (req) { return actionOpenTimesDraft_(req); },
+  openTimesAsk: function (req) { return actionOpenTimesAsk_(req); },
   deleteSlot: function (req) { return actionDeleteSlot_(req); },
   saveReps: function (req) { return actionSaveReps_(req); },
   cancelSlotBooking: function (req) { return actionCancelSlotBooking_(req); },

@@ -31,6 +31,7 @@ function queueOutbox_(key, out, msg) {
   if (att.length) ensureOutboxColumn_('Attachments');
   if (msg.onSent && msg.onSent.column) ensureOutboxColumn_('On sent');
   if (msg.eventAt) ensureOutboxColumn_('Event at');
+  if (msg.replyTo) ensureOutboxColumn_('Reply to');
   var list = function (v) { return (Array.isArray(v) ? v : String(v || '').split(/[,;]/)).map(function (x) { return String(x).trim(); }).filter(Boolean).join(', '); };
   withLock_(function () {
     var fields = { 'Id': id, 'Created': new Date(), 'Created by': msg.by || '', 'Record ID': msg.recordId || '',
@@ -38,7 +39,8 @@ function queueOutbox_(key, out, msg) {
       'Subject': out.subject, 'Html': out.htmlBody, 'Text': out.body };
     if (att.length) fields['Attachments'] = JSON.stringify(att);
     if (msg.onSent && msg.onSent.column) fields['On sent'] = JSON.stringify(msg.onSent);
-    if (msg.eventAt) fields['Event at'] = new Date(msg.eventAt);   // the session it is about (Send later: 2 days / 1 day before)   // {column, label}: date filled when sent
+    if (msg.eventAt) fields['Event at'] = new Date(msg.eventAt);
+    if (msg.replyTo) fields['Reply to'] = Outbox.replyMode(msg.replyTo, false);   // 'me': replies come to the member who sends it   // the session it is about (Send later: 2 days / 1 day before)   // {column, label}: date filled when sent
     Tabs.append(OUTBOX_TAB, fields);
   });
   if (msg.recordId) {

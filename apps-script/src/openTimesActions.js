@@ -6,6 +6,7 @@
  *   saveSlots         {session, slot, times:[{date, time}], confirm}  -> {message, keys, type} | {needsConfirm, warnings}
  *   openTimesChoices  {session, type, keys}                          -> {label, scouts, times, held, othersOpen, testMode}
  *   openTimesDraft    {session, type, keys, recordIds, includeOthers} -> {message, outboxId}
+ *   openTimesAsk      {session, type, recordIds, when}              -> {message, outboxId}   before opening sessions: "which times work?"
  */
 
 /** Inside the lock: add one new open session row in date order. -> its key. */
@@ -103,5 +104,33 @@ function actionOpenTimesDraft_(req) {
     chosen.length + ' Scout' + (chosen.length === 1 ? '' : 's'), c.email);
   if (res && res.queued) return { message: 'The email is waiting in the Outbox: check it, then Send.', outboxId: res.id };
   if (res && res.reason === 'template off') throw userError_('The "' + OpenTimes.TEMPLATE[type] + '" template is set to Off in the template Doc.');
+  return { message: res && res.send ? 'Sent.' : 'Not sent: ' + ((res && res.reason) || 'unknown'), outboxId: '' };
+}
+
+/**
+ * Ask for times (Jim W., 2026-11-20): before opening sessions, one email to the chosen Scouts ready to book the type
+ * (Cc parents + committee) asking which times suit them; Reply to: Me only, so the answers come to the member.
+ * No open times needed. Drafted into the Outbox to check first.
+ */
+function actionOpenTimesAsk_(req) {
+  var c = committeeMe_(req.session);
+  var type = String(req.type || '');
+  var x = openTimesContext_(type, [], false);
+  var want = (req.recordIds || []).map(String);
+  var chosen = x.scouts.filter(function (r) { return want.indexOf(r.recordId) >= 0 && !r.noEmail; });
+  if (!chosen.length) throw userError_('Tick at least one Scout with an email address.');
+  var when = String(req.when || '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'this weekend';
+  var group = String(x.s.committeeGroupEmail || '');
+  var fam = OpenTimes.addresses(chosen, '');
+  var label = Booking.label(type);
+  var firstNames = OpenTimes.namesText(chosen.map(function (r) { return EagleDone.firstName(r.name, r.preferred); }));
+  var vars = { firstNames: firstNames, type: label, when: when, pageLink: pageUrl_() };
+  var plain = reviewBuiltIn_(TemplateCatalog.get('Ask for times'), vars);
+  var res = mailFromTemplate_('Ask for times', vars, {
+    committee: true, outbox: true, by: c.email, recordId: '', scout: OpenTimes.namesText(chosen.map(function (r) { return r.name; })),
+    to: fam.to, cc: MailPlan.merge(fam.cc, group), keepCc: fam.cc, subject: plain.subject, body: plain.body, replyTo: 'me' });
+  scheduleActivity_(c.me.initials + ' drafted "which times work?" (' + label + ', ' + when + ') to ' + chosen.length + ' Scout' + (chosen.length === 1 ? '' : 's'), c.email);
+  if (res && res.queued) return { message: 'The email is waiting in the Outbox (replies come to you): check it, then Send.', outboxId: res.id };
+  if (res && res.reason === 'template off') throw userError_('The "Ask for times" template is set to Off in the template Doc.');
   return { message: res && res.send ? 'Sent.' : 'Not sent: ' + ((res && res.reason) || 'unknown'), outboxId: '' };
 }

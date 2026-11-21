@@ -124,3 +124,16 @@ describe('Open times email (OpenTimes)', () => {
     });
   });
 });
+
+describe('Ask for times (2026-11-20)', () => {
+  it('is in the template catalog next to Open times, Review mode, with when/type/firstNames', async () => {
+    const { createRequire } = await import('node:module');
+    const C = createRequire(import.meta.url)('../apps-script/src/lib/templateCatalog.js');
+    const x = C.get('Ask for times');
+    expect(C.tabTitle(x)).toBe('1.4.e Ask for times');
+    expect(x.mode).toBe('review');
+    expect(x.subject).toBe('{type}: which times work for you {when}?');
+    for (const v of ['firstNames', 'type', 'when', 'pageLink']) expect(x.vars).toContain(v);
+    expect(x.body.join('\n')).toMatch(/reply to this email with the days and times that work for you/);
+  });
+});

@@ -94,6 +94,11 @@
       <p class="hint" id="otHeld" hidden></p>
     </fieldset>
     <fieldset><legend>To: the Scouts (Cc their parents/guardians and the committee)</legend><div class="reps" id="otScouts"></div></fieldset>
+    <fieldset><legend>No times yet? Ask first</legend>
+      <p class="hint">Ask the Scouts ticked above which times suit them, then open sessions to fit. Replies come to you.</p>
+      <label for="otWhen">When</label> <input id="otWhen" value="this weekend" maxlength="80">
+      <button type="button" id="otAsk">Ask what times work…</button>
+    </fieldset>
     <p id="otMsg" role="status"></p>
     <div class="actions">
       <button type="button" class="primary" id="otDraft">Draft the email</button>
@@ -618,7 +623,7 @@
       await otLoad();
     }
     async function otLoad() {
-      $('otMsg').textContent = 'Loading…'; $('otMsg').className = 'muted'; $('otDraft').disabled = true;
+      $('otMsg').textContent = 'Loading…'; $('otMsg').className = 'muted'; $('otDraft').disabled = true; $('otAsk').disabled = true;
       $('otTimes').replaceChildren(); $('otScouts').replaceChildren(); $('otHeld').hidden = true;
       try {
         const r = await api('openTimesChoices', { session, type: ot.type, keys: ot.keys, includeOthers: ot.toolbar || $('otOthers').checked });
@@ -634,6 +639,7 @@
           x.name + (x.unit ? ' (' + x.unit + ')' : '') + (x.noEmail ? ' · no email on file' : !x.scoutEmail ? ' · parent only (no Scout email)' : !x.parent ? ' · no parent email' : '')))
           : [el('p', { className: 'hint', textContent: 'No Scouts are waiting to book a ' + r.label + '.' })]));
         $('otDraft').disabled = !r.times.length || !r.scouts.some(x => !x.noEmail);
+        $('otAsk').disabled = !r.scouts.some(x => !x.noEmail);
         $('otMsg').textContent = r.testMode ? 'Test mode: when sent, it goes only to the test inbox.' : '';
         $('otMsg').className = 'muted';
       } catch (e) { $('otMsg').textContent = e.message; $('otMsg').className = 'err'; }
@@ -650,6 +656,16 @@
         $('otDlg').close();
         if (r.outboxId) openOutbox(r.outboxId); else alert(r.message);
       } catch (e) { $('otMsg').textContent = e.message; $('otMsg').className = 'err'; $('otDraft').disabled = false; }
+    };
+    $('otAsk').onclick = async () => {
+      const recordIds = [...$('otScouts').querySelectorAll('input:checked')].map(c => c.value);
+      if (!recordIds.length) { $('otMsg').textContent = 'Tick at least one Scout.'; $('otMsg').className = 'err'; return; }
+      $('otAsk').disabled = true; $('otMsg').textContent = 'Drafting…'; $('otMsg').className = 'muted';
+      try {
+        const r = await api('openTimesAsk', { session, type: ot.type, recordIds, when: $('otWhen').value });
+        $('otDlg').close();
+        if (r.outboxId) openOutbox(r.outboxId); else alert(r.message);
+      } catch (e) { $('otMsg').textContent = e.message; $('otMsg').className = 'err'; $('otAsk').disabled = false; }
     };
     otBtn.onclick = () => openTimesDlg((data.types.find(t => t.code === 'Intake') || data.types[0]).code, null, '');
 
