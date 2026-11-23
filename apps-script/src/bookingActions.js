@@ -562,10 +562,18 @@ function bookingInfo_(rec) {
         member: r.showWho ? Booking.resolveWho(cur.b.who, committee_()).names.join(', ') : '',
         where: Booking.isVirtual(cur.type, cur.b) ? '' : Booking.place(cur.b),
         meetUrl: Booking.isVirtual(cur.type, cur.b) ? meetUrlFor_(cur.b.eventId) : '',
-        // Scouts cancel only types booked online (an old-way booking given an invitation stays the committee's to change)
-        canCancel: !Booking.isShadow(cur.b.eventId) && Booking.parseOnline(s.onlineBooking).codes.indexOf(cur.type) >= 0 &&
-          Booking.canCancel(cur.b.start, Date.now(), s.cancelCutoffHours) };
-      out.booking.canChange = out.booking.canCancel && Booking.parseOnline(s.onlineBooking).codes.indexOf(cur.type) >= 0;
+        canCancel: false };
+      // Scouts cancel only types booked online (an old-way booking given an invitation stays the committee's to change)
+      var f = { shadow: Booking.isShadow(cur.b.eventId), online: Booking.parseOnline(s.onlineBooking).codes.indexOf(cur.type) >= 0,
+        inTime: Booking.canCancel(cur.b.start, Date.now(), s.cancelCutoffHours), cutoffHours: s.cancelCutoffHours };
+      out.booking.canCancel = !f.shadow && f.online && f.inTime;
+      out.booking.canChange = out.booking.canCancel;
+      out.booking.hint = Booking.changeHint(f);
+      // Other open times of the same type (2026-11-23): the page says "2 earlier times are open" so the Scout knows to look.
+      if (out.booking.canChange) {
+        try { out.booking.others = Booking.otherTimes(Booking.openSlots(readSchedule_().rows, cur.type, Date.now(), s[r.lead]), cur.b); }
+        catch (e) { console.warn('otherTimes: ' + e); }
+      }
     } else {
       var type = onlineType_(rec.section);
       if (type) out.canBook = Booking.label(type);

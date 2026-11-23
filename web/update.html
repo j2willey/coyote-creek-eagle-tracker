@@ -37,6 +37,7 @@
         <p id="bookedText"></p>
         <p id="whereLine" hidden></p>
         <p id="meetLine" hidden>Join: <a id="meetLink" target="_blank" rel="noopener"></a></p>
+        <p class="ok" id="otherTimes" hidden></p>
         <p><button type="button" id="changeBtn" hidden>Change time</button> <button type="button" id="cancelBtn">Cancel this call</button></p>
         <p class="hint" id="cancelHint"></p>
       </div>
@@ -197,8 +198,14 @@
         $('cancelBtn').hidden = !r.booking.canCancel;
         $('cancelBtn').textContent = 'Cancel this ' + (/call/i.test(r.booking.type) ? 'call' : 'booking');
         $('changeBtn').hidden = !r.booking.canChange;
-        changing = false;
-        $('cancelHint').textContent = r.booking.canCancel ? 'You can change or cancel up to 24 hours before.' : 'Less than 24 hours away: email the committee to change it.';
+        changing = false; curWhen = r.booking.when;
+        // Other open times (2026-11-23): say so, so the Scout knows an earlier time can be had.
+        const o = r.booking.canChange && r.booking.others || { earlier: 0, later: 0 };
+        const n = (k, w) => k + ' ' + w + ' time' + (k === 1 ? ' is' : 's are') + ' open';
+        $('otherTimes').hidden = !(o.earlier || o.later);
+        $('otherTimes').textContent = o.earlier ? n(o.earlier, 'earlier') + (o.later ? ' (and ' + o.later + ' later)' : '') + '. Click Change time to see them.'
+          : o.later ? n(o.later, 'other') + ' (all later). Click Change time to see them.' : '';
+        $('cancelHint').textContent = r.booking.hint || (r.booking.canCancel ? 'You can change or cancel up to 24 hours before.' : 'Email the committee to change it.');
         $('booked').hidden = false; $('bookCard').hidden = false;
         return;
       }
@@ -238,7 +245,7 @@
     }
 
     // List / Calendar: the radios stay the source of truth; the calendar just picks one.
-    let slotsNow = [], calView = false, cal = null;
+    let slotsNow = [], calView = false, cal = null, curWhen = '';
     try { calView = localStorage.getItem('ccacSlotView') === 'cal'; } catch {}
     const pickedText = () => {
       const pick = document.querySelector('input[name=slot]:checked');
@@ -270,7 +277,12 @@
       if (!pick) { bsay('Pick a time.', 'err'); return; }
       if (calView && !$('picked').textContent.startsWith('Selected')) { bsay('Click a time on the calendar first.', 'err'); return; }
       if (needAdult && !$('adult').checked) { bsay('Please confirm the adult 21+ will be with you.', 'err'); return; }
-      $('bookBtn').disabled = true; bsay('Booking…');
+      // The handshake (2026-11-23): name both times; the old one is released only once the new one is booked.
+      if (changing) {
+        const x = slotsNow.find(s => s.key === pick.value);
+        if (!confirm('Give up ' + curWhen + ' and take ' + (x ? x.when : 'the new time') + ' instead?\n\nYour current time is kept until the new one is booked.')) return;
+      }
+      $('bookBtn').disabled = true; bsay(changing ? 'Moving…' : 'Booking…');
       try {
         const r = await api(changing ? 'changeBooking' : 'book', { session, recordId, slotKey: pick.value, adultConfirmed: needAdult ? true : undefined });
         await load();

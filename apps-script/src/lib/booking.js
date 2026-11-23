@@ -284,6 +284,31 @@ var Booking = (function () {
     return startMs - nowMs >= (Number(cutoffHours) || 24) * 3600 * 1000;
   }
 
+  /**
+   * A booked Scout's page (Jim W., 2026-11-23: members open earlier times; Scouts didn't know they could move).
+   * open: openSlots() for the booking's type; cur: {key, start}. -> {earlier, later} counts of other open times.
+   */
+  function otherTimes(open, cur) {
+    var out = { earlier: 0, later: 0 };
+    (open || []).forEach(function (x) {
+      if (!cur || x.key === cur.key || !(x.start > 0)) return;
+      if (x.start < cur.start) out.earlier++; else out.later++;
+    });
+    return out;
+  }
+
+  /**
+   * The line under a booking: why it can or can't be changed here. It used to say "less than 24 hours away" for every
+   * case, also for a booking the committee made (shadow) or a type not booked online. f: {shadow, online, inTime, cutoffHours}
+   */
+  function changeHint(f) {
+    var h = Number(f && f.cutoffHours) || 24;
+    if (f && f.shadow) return 'The committee made this booking: email the committee to change it.';
+    if (f && !f.online) return 'To change this booking, email the committee.';
+    if (f && !f.inTime) return 'Less than ' + h + ' hours away: email the committee to change it.';
+    return 'You can change or cancel up to ' + h + ' hours before.';
+  }
+
   function bookableType(sectionKey) { return BOOKABLE_BY_SECTION[sectionKey] || null; }
 
   /**
@@ -600,6 +625,7 @@ var Booking = (function () {
   }
 
   return {
+    otherTimes: otherTimes, changeHint: changeHint,
     TYPES: TYPES, PRE_REVIEW: PRE_REVIEW, PROPOSAL_REVIEW: PROPOSAL_REVIEW, BLOCKING: BLOCKING, ADULT: ADULT, ADULT_IN_PERSON: ADULT_IN_PERSON,
     ONLINE_PLACE: ONLINE_PLACE, isOnlinePlace: isOnlinePlace, isVirtual: isVirtual,
     EBOR: EBOR, FOLLOWUP: FOLLOWUP, BOOKABLE: BOOKABLE, BOOKED_TYPES: BOOKED_TYPES, isCommitteeOnly: isCommitteeOnly,

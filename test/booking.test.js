@@ -301,3 +301,20 @@ describe('changeWords: what a move changed (2026-10-29)', () => {
   });
 });
 
+
+describe('A booked Scout: other open times and the change hint (2026-11-23)', () => {
+  const B = require('../apps-script/src/lib/booking.js');
+  const cur = { key: 'k3', start: 3000 };
+  it('counts open times earlier and later than the booking, not the booking itself', () => {
+    expect(B.otherTimes([{ key: 'k1', start: 1000 }, { key: 'k2', start: 2000 }, { key: 'k3', start: 3000 }, { key: 'k4', start: 4000 }], cur))
+      .toEqual({ earlier: 2, later: 1 });
+    expect(B.otherTimes([], cur)).toEqual({ earlier: 0, later: 0 });
+    expect(B.otherTimes([{ key: 'k9', start: 0 }], cur)).toEqual({ earlier: 0, later: 0 });   // no readable time: not counted
+  });
+  it('says why a booking can or cannot be changed here', () => {
+    expect(B.changeHint({ shadow: false, online: true, inTime: true, cutoffHours: 24 })).toBe('You can change or cancel up to 24 hours before.');
+    expect(B.changeHint({ shadow: false, online: true, inTime: false, cutoffHours: 48 })).toMatch(/^Less than 48 hours away/);
+    expect(B.changeHint({ shadow: true, online: true, inTime: true })).toMatch(/^The committee made this booking/);
+    expect(B.changeHint({ shadow: false, online: false, inTime: true })).toBe('To change this booking, email the committee.');
+  });
+});
