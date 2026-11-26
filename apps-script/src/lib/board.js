@@ -11,7 +11,7 @@ var Board = (function () {
     { key: 'proposals', label: 'Proposals', cols: ['session'], sections: ['proposal_received', 'proposal_incomplete', 'intake_to_book',
       'intake_booked', 'intake_revisions', 'review_to_book', 'review_booked', 'proposal_revisions'] },
     { key: 'underway', label: 'Underway', cols: ['approved'], sections: ['proposal_approved'] },
-    { key: 'ebors', label: 'EBoRs', cols: ['ebor'], sections: ['app_submitted', 'app_verified', 'ebor_booked'] },
+    { key: 'ebors', label: 'EBoRs', cols: ['ebor', 'meeting'], sections: ['app_submitted', 'app_verified', 'ebor_booked'] },
     { key: 'eagles', label: 'Eagles', cols: ['ebor'], sections: ['eagle_earned'], ageAt: 'ebor' },
     // Closed (2026-11-10, lib/closing.js) is the last group; the page hides it behind "Show closed (n)" and the tab's count leaves it out.
     { key: 'exceptions', label: 'Exceptions', cols: ['approved', 'ebor'], stage: true, closedGroup: 'closed',
@@ -108,6 +108,27 @@ var Board = (function () {
   }
 
   /** First line of the Notes cell (the newest log line). */
+  /** '2026-12-03' -> 'Th' (M T W Th F Sa Su; Jim W., 2026-11-25: the EBoR date column shows the day). '' when no date. */
+  var DOW = ['Su', 'M', 'T', 'W', 'Th', 'F', 'Sa'];
+  function dayAbbr(ymd) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str(ymd));
+    return m ? DOW[new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay()] : '';
+  }
+
+  /**
+   * The unit's meeting logistics for the EBoRs tab's "Unit meeting info" column (Jim W., 2026-11-25): which night,
+   * what time, where, so a board can be offered at a time and place that suits the troop or crew.
+   * m: {code, day, time, location, frequency, address, notes} (Unit Info tab, as displayed) -> same, trimmed,
+   * plus known (day, time or location filled in); null when the Scout has no unit.
+   */
+  function meetingInfo(m) {
+    if (!m || !str(m.code)) return null;
+    var out = { code: str(m.code) };
+    ['day', 'time', 'location', 'frequency', 'address', 'notes'].forEach(function (k) { out[k] = str(m[k]); });
+    out.known = !!(out.day || out.time || out.location);
+    return out;
+  }
+
   function firstLine(notes) { return str(String(notes == null ? '' : notes).split(/\r?\n/)[0]); }
 
   /**
@@ -125,7 +146,8 @@ var Board = (function () {
         if (!g || !str(r.scout_name)) return;
         var at = t.ageAt === 'ebor' ? (str(r.ebor) || today) : today;
         g.rows.push({ recordId: r.recordId, name: display(r.scout_name, r.preferred_name), unit: str(r.unit), age: age(r.birth, at),
-          approved: str(r.approved), ebor: str(r.ebor), note: firstLine(r.notes), pending: r.pending > 0,
+          approved: str(r.approved), ebor: str(r.ebor), eborDay: dayAbbr(r.ebor), note: firstLine(r.notes), pending: r.pending > 0,
+          meeting: t.cols.indexOf('meeting') >= 0 ? meetingInfo(r.meeting) : null,
           folder: str(r.folderId) ? 'https://drive.google.com/drive/folders/' + str(r.folderId) : '',
           // Closed: why and when ({reason, date, by, from}); closeWhy: "Close?" suggestion text (lib/closing.js), '' = none
           closed: r.closed && str(r.closed.reason) ? { reason: str(r.closed.reason), date: str(r.closed.date), by: str(r.closed.by),
@@ -183,7 +205,7 @@ var Board = (function () {
   }
 
   return { TABS: TABS, age: age, firstLine: firstLine, build: build, congratsOpen: congratsOpen, councilWait: councilWait, councilWaiting: councilWaiting,
-    eborBand: eborBand, monthCounts: monthCounts, nextSessions: nextSessions, SESSION_OF: SESSION_OF };
+    eborBand: eborBand, dayAbbr: dayAbbr, meetingInfo: meetingInfo, monthCounts: monthCounts, nextSessions: nextSessions, SESSION_OF: SESSION_OF };
 })();
 
 if (typeof module !== 'undefined') module.exports = Board;

@@ -77,6 +77,9 @@ function boardRecords_() {
       boardN[id] = Units.boardSize(x.reps, x.board_members, Booking.splitWho);
     });
   } catch (e) { console.warn('board schedule: ' + e); }
+  // Unit meeting day/time/place for the EBoRs tab (2026-11-25). Display values: a typed "7:00 PM" may be a time value.
+  var unitInfo = [];
+  try { unitInfo = unitInfoDisplayRows_(); } catch (e) { console.warn('board unit info: ' + e); }
   var announce = eagleAnnounce_();
   var closeWhy = closeSuggestions_();                        // amber "Close?" tag (lib/closing.js)
   var formsite = {};                                         // red "Formsite" tag: Council Applications rows to check
@@ -94,7 +97,9 @@ function boardRecords_() {
       underReview: !!((Units.find(units, r.unit) || {}).underReview), unitBoard: boardOn[r.recordId] === undefined ? null : boardOn[r.recordId],
       signing: ProposalOutcome.parseSigning(r[ProposalOutcome.SIGNING_COLUMN]),
       boardSize: boardN[r.recordId] === undefined ? null : boardN[r.recordId], sessions: sessions[r.recordId] || null, formsite: formsite[r.recordId] || null,
-      eagleNumber: r.section === 'ebor_booked' ? (announce[r.recordId] || '') : '' };
+      eagleNumber: r.section === 'ebor_booked' ? (announce[r.recordId] || '') : '',
+      meeting: (function () { var c = Units.primary(r.unit); if (!c) return null;
+        var f = UnitDirectory.meetingFor(unitInfo, c).fields; f.code = c; return f; })() };
   });
 }
 

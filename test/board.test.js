@@ -158,4 +158,29 @@ describe('Board sessions (dashboard Session column + Board tag link, 2026-11-03)
       expect(by.E3).toEqual(['svmbc_received']);
     });
   });
+  it('day of the week for the EBoR date: M T W Th F Sa Su', () => {
+    expect(['2026-11-30', '2026-12-01', '2026-12-02', '2026-12-03', '2026-12-04', '2026-12-05', '2026-12-06']
+      .map(Board.dayAbbr)).toEqual(['M', 'T', 'W', 'Th', 'F', 'Sa', 'Su']);
+    expect(Board.dayAbbr('')).toBe('');
+    expect(Board.dayAbbr('12/3/26')).toBe('');
+    const t = Board.build([{ recordId: 'V1', section: 'app_verified', scout_name: 'Scout_6', unit: 'T6', ebor: '2026-12-07' }],
+      SettingsModel.parse([]).sections, '2026-11-25');
+    expect(t.find(x => x.key === 'ebors').groups.find(g => g.key === 'app_verified').rows[0].eborDay).toBe('M');
+  });
+  it('unit meeting info: only on the EBoRs tab; known when day, time or place is filled in', () => {
+    expect(Board.meetingInfo(null)).toBeNull();
+    expect(Board.meetingInfo({ code: '', day: 'Monday' })).toBeNull();
+    expect(Board.meetingInfo({ code: 't999', day: ' Tuesday ', time: '7:00 PM', location: 'Fellowship Hall', frequency: 'Weekly' }))
+      .toEqual({ code: 't999', day: 'Tuesday', time: '7:00 PM', location: 'Fellowship Hall', frequency: 'Weekly', address: '', notes: '', known: true });
+    expect(Board.meetingInfo({ code: 't999', notes: 'Ask the Scoutmaster' }).known).toBe(false);
+    const m = { code: 't999', day: 'Thursday', time: '7:30 PM', location: 'Room 4' };
+    const t = Board.build([
+      { recordId: 'E1', section: 'ebor_booked', scout_name: 'Scout_8', unit: 'T999', ebor: '2026-12-03', meeting: m },
+      { recordId: 'E2', section: 'eagle_earned', scout_name: 'Scout_9', unit: 'T999', ebor: '2026-10-01', meeting: m }
+    ], SettingsModel.parse([]).sections, '2026-11-25');
+    const ebors = t.find(x => x.key === 'ebors');
+    expect(ebors.cols).toContain('meeting');
+    expect(ebors.groups.find(g => g.key === 'ebor_booked').rows[0]).toMatchObject({ eborDay: 'Th', meeting: { day: 'Thursday', known: true } });
+    expect(t.find(x => x.key === 'eagles').groups[0].rows[0].meeting).toBeNull();
+  });
 });

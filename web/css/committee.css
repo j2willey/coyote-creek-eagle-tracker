@@ -138,6 +138,20 @@ table.board tr.stage td { background: color-mix(in srgb, var(--fg) 6%, transpare
 table.board td.note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34rem; color: var(--muted); }
 table.board td.note .notelink { display: block; max-width: 34rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 table.board td.note .notelink.empty { color: var(--muted); text-decoration: none; font-size: .85rem; }
+/* EBoR date: day of the week in front (2026-11-25); fixed width so the dates still line up on the right. */
+table.board td .dow { display: inline-block; width: 1.4em; margin-right: .35em; text-align: left; color: var(--muted); font-weight: 600; }
+/* EBoRs tab, last column: "Last note [switch] Unit meeting info". */
+table.board th.notehead .coltoggle { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; font-weight: 400; }
+table.board th.notehead .coltoggle .on { font-weight: 700; color: var(--fg, inherit); }
+table.board th.notehead input.switch { appearance: none; -webkit-appearance: none; width: 2.1rem; height: 1.1rem; margin: 0; border-radius: 1rem;
+  background: color-mix(in srgb, var(--muted) 45%, transparent); position: relative; cursor: pointer; transition: background .15s; }
+table.board th.notehead input.switch::after { content: ''; position: absolute; top: .15rem; left: .15rem; width: .8rem; height: .8rem; border-radius: 50%;
+  background: #fff; transition: left .15s; }
+table.board th.notehead input.switch:checked { background: var(--link); }
+table.board th.notehead input.switch:checked::after { left: 1.15rem; }
+table.board th.notehead input.switch:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+table.board td.meeting a { color: inherit; }
+table.board td.meeting.unknown, table.board td.meeting.unknown a { color: var(--muted); font-style: italic; }
 table.board td.age.a1 { background: #fdf0c4; color: #1d1d1b; }
 table.board td.age.a2 { background: #f6cdc8; color: #1d1d1b; }
 table.board td.act { width: 3.2rem; padding-right: 0; }
