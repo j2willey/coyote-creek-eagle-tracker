@@ -154,6 +154,35 @@
     const CACHE_KEY = 'ccacHome', TAB_KEY = 'ccacHomeTab';
     let data = null, tab = 'proposals', showClosed = false;   // Exceptions: Closed rows stay hidden until "Show closed (n)"
     try { tab = localStorage.getItem(TAB_KEY) || 'proposals'; } catch {}
+    // EBoRs tab, last column (2026-11-25): Last note, or the unit's meeting day / time / place. Remembered in this browser.
+    const MEET_KEY = 'ccacHomeMeeting';
+    let showMeeting = false;
+    try { showMeeting = localStorage.getItem(MEET_KEY) === '1'; } catch {}
+    const MEET_HEAD = 'Unit meeting info';
+    // The header of the last column: "Last note [switch] Unit meeting info"; the side shown is bold.
+    function noteHead() {
+      const sw = el('input', { type: 'checkbox', className: 'switch', checked: showMeeting,
+        title: 'Show the unit\'s meeting day, time and place instead of the last note' });
+      sw.setAttribute('role', 'switch');
+      sw.setAttribute('aria-label', MEET_HEAD);
+      sw.onchange = () => { showMeeting = sw.checked; try { localStorage.setItem(MEET_KEY, showMeeting ? '1' : '0'); } catch {} renderBoard(); };
+      return el('th', { className: 'notehead' }, el('label', { className: 'coltoggle' },
+        el('span', { className: showMeeting ? '' : 'on', textContent: 'Last note' }), sw,
+        el('span', { className: showMeeting ? 'on' : '', textContent: MEET_HEAD })));
+    }
+    // "Tuesday · 7:00 PM · St. Mark's hall", or "Unknown". Click: the unit on the Units page, to fill it in.
+    function meetingCell(r) {
+      const m = r.meeting;
+      if (!m) return el('td', { className: 'note meeting unknown', textContent: 'Unknown', title: 'No unit on this record' });
+      const href = '/committee/units?u=' + encodeURIComponent(m.code);
+      if (!m.known) return el('td', { className: 'note meeting unknown' }, el('a', { href, textContent: 'Unknown',
+        title: 'No meeting day, time or place for ' + r.unit + ' yet.\n\nClick: fill it in on the Units page.' }));
+      const text = [m.day || 'Day ?', m.time || 'Time ?', m.location || 'Place ?'].join(' · ');
+      const tip = [m.day && 'Day: ' + m.day, m.time && 'Time: ' + m.time, m.frequency && 'How often: ' + m.frequency,
+        m.location && 'Place: ' + m.location, m.address && 'Address: ' + m.address, m.notes && 'Notes: ' + m.notes].filter(Boolean).join('\n');
+      return el('td', { className: 'note meeting' }, el('a', { href, textContent: text,
+        title: r.unit + ' meets\n' + tip + '\n\nClick: open ' + r.unit + ' on the Units page.' }));
+    }
 
     const short = (ymd) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || ''); return m ? +m[2] + '/' + +m[3] + '/' + m[1].slice(2) : ''; };
     const ageCell = (a, locked) => el('td', { className: 'num age' + (!locked && a >= 17.5 ? ' a2' : !locked && a >= 17 ? ' a1' : ''),
@@ -173,9 +202,11 @@
       const t = data.tabs.find(x => x.key === tab) || data.tabs[0];
       const acts = data.actions || {};
       const hasActs = t.groups.some(g => (acts[g.key] || []).length || EMAIL_OK(g.key));
-      const head = [...(hasActs ? ['Action'] : []), 'Candidate', 'Unit', 'Age', ...(t.cols.includes('approved') ? ['Approved'] : []), ...(t.cols.includes('ebor') ? ['EBoR'] : []), ...(t.cols.includes('session') ? ['Session'] : []), 'Last note'];
+      const head = [...(hasActs ? ['Action'] : []), 'Candidate', 'Unit', 'Age', ...(t.cols.includes('approved') ? ['Approved'] : []), ...(t.cols.includes('ebor') ? ['EBoR'] : []), ...(t.cols.includes('session') ? ['Session'] : []), t.cols.includes('meeting') && showMeeting ? MEET_HEAD : 'Last note'];
+      const meetingCol = t.cols.includes('meeting');
       const st = sorts[t.key] || { key: 'arrival', dir: 1 };
       const th = (h) => {
+        if (meetingCol && (h === 'Last note' || h === MEET_HEAD)) return noteHead();
         const cls = ['Age', 'Approved', 'EBoR'].includes(h) ? 'num' : '';
         const key = SORT_OF[h];
         if (!key) return el('th', { textContent: h, className: cls });
@@ -234,13 +265,15 @@
             ...(t.cols.includes('ebor') ? [(() => {
               const tip = r.band === 'this' ? 'This month' : r.band === 'next' ? 'Next month' : r.band === 'past' ? 'Date has passed: record the outcome' : '';
               const td = el('td', { className: 'num' + (r.band ? ' band-' + r.band : '') });
+              // Day of the week in front (M T W Th F Sa Su; 2026-11-25), outside the link, in its own fixed-width box so dates line up.
+              if (r.ebor && r.eborDay) td.append(el('span', { className: 'dow', textContent: r.eborDay }));
               if (r.session && r.ebor) td.append(el('a', { className: 'eborlink', href: sessionHref(r.session.key), textContent: short(r.ebor),
                 title: (tip ? tip + '\n' : '') + 'Click: open the board on the schedule (' + whenShort(r.session.start) + ').' }));
-              else { td.textContent = short(r.ebor); td.title = tip; }
+              else { td.append(short(r.ebor)); td.title = tip; }
               return td;
             })()] : []),
             ...(t.cols.includes('session') ? [sessionCell(r)] : []),
-            el('td', { className: 'note' }, noteLink(r))));
+            meetingCol && showMeeting ? meetingCell(r) : el('td', { className: 'note' }, noteLink(r))));
         });
         table.append(body);
       });
