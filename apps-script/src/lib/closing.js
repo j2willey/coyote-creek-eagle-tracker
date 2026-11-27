@@ -6,6 +6,9 @@
  *   _closed            hidden column, JSON {r: reason, d: 'YYYY-MM-DD', by: initials, from: section key, n: note}; Reopen
  *                      reads `from`; cleared on Reopen
  *   _close_snooze      hidden column, 'YYYY-MM-DD': a "Keep open" decision hides the "Close?" suggestion until then
+ *   _close_flag        hidden column, JSON {r: why, d: 'YYYY-MM-DD', by: initials}: a "Close?" a member set by hand
+ *                      (Jim W., 2026-11-27): the committee has heard the Scout will likely not finish, but isn't ready to
+ *                      close the record. Any open stage; stays until Clear "Close?", Close record… or Reopen…
  *   suggestions        humans decide: rows that look terminal get an amber "Close?" tag and a digest line
  *   January archive    Closed rows closed in a past year -> "Closed Archive" tab (no contact details) + folder to
  *                      Archive/Closed + row deleted from the tracking tab
@@ -22,7 +25,7 @@ var Closing = (function () {
   var OTHER = 'Other';
   var DEFAULT_REVIEW_DAYS = 180, DEFAULT_SNOOZE_DAYS = 90;
   var DEFAULT_FOLDER = 'Archive/Closed';
-  var COLUMN = '_closed', SNOOZE_COLUMN = '_close_snooze';
+  var COLUMN = '_closed', SNOOZE_COLUMN = '_close_snooze', FLAG_COLUMN = '_close_flag';
   var DAY = 86400000;
 
   var YMD = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -105,6 +108,41 @@ var Closing = (function () {
   /** "11/10 [JW] Reopened to Proposal Not Approved: new project coming" */
   function reopenLine(shortDate, by, toLabel, reason) {
     return shortDate + ' [' + (str(by) || 'committee') + '] Reopened to ' + str(toLabel) + ': ' + str(reason).replace(/\s+/g, ' ');
+  }
+
+  // ---------- "Close?" set by hand (Mark "Close?"… / Clear "Close?"…) ----------
+
+  /** {r, d, by} -> the JSON cell text ('' when there is no reason). */
+  function flagCell(o) {
+    if (!o || !str(o.r)) return '';
+    return JSON.stringify({ r: str(o.r).replace(/\s+/g, ' ').slice(0, 500), d: str(o.d), by: str(o.by) });
+  }
+
+  /** Cell text -> {why, date, by} or null (empty, or not ours). */
+  function parseFlag(cell) {
+    try {
+      var o = JSON.parse(str(cell) || 'null');
+      if (!o || !str(o.r)) return null;
+      return { why: str(o.r), date: isYmd(o.d) ? str(o.d) : '', by: str(o.by) };
+    } catch (e) { return null; }
+  }
+
+  /** input: {note, today, by, flagged (already set)} -> {errors, flag: {r, d, by}} */
+  function flagPlan(input) {
+    var why = str(input.note).replace(/\s+/g, ' '), errors = [];
+    if (input.flagged) errors.push('This record is already marked "Close?". Reload the page.');
+    if (why.length < 3) errors.push('Say why it may close (who heard what); it goes on the tag and into the log.');
+    return errors.length ? { errors: errors, flag: null } : { errors: [], flag: { r: why.slice(0, 500), d: str(input.today), by: str(input.by) } };
+  }
+
+  /** "11/27 [JW] Marked Close?: told his Scoutmaster he won't finish" */
+  function flagLine(shortDate, by, why) {
+    return shortDate + ' [' + (str(by) || 'committee') + '] Marked Close?: ' + str(why).replace(/\s+/g, ' ');
+  }
+  /** "11/30 [JW] Cleared Close? (was: …); note" */
+  function unflagLine(shortDate, by, was, note) {
+    var n = str(note).replace(/\s+/g, ' ');
+    return shortDate + ' [' + (str(by) || 'committee') + '] Cleared Close?' + (was ? ' (was: ' + str(was) + ')' : '') + (n ? ': ' + n : '');
   }
 
   // ---------- review suggestions (a person decides) ----------
@@ -239,7 +277,8 @@ var Closing = (function () {
 
   return { SECTION: SECTION, FROM_SECTIONS: FROM_SECTIONS, REVIEW_SECTIONS: REVIEW_SECTIONS, REASONS: REASONS, OTHER: OTHER,
     DEFAULT_REVIEW_DAYS: DEFAULT_REVIEW_DAYS, DEFAULT_SNOOZE_DAYS: DEFAULT_SNOOZE_DAYS, DEFAULT_FOLDER: DEFAULT_FOLDER,
-    COLUMN: COLUMN, SNOOZE_COLUMN: SNOOZE_COLUMN,
+    COLUMN: COLUMN, SNOOZE_COLUMN: SNOOZE_COLUMN, FLAG_COLUMN: FLAG_COLUMN,
+    flagCell: flagCell, parseFlag: parseFlag, flagPlan: flagPlan, flagLine: flagLine, unflagLine: unflagLine,
     closedCell: closedCell, parseClosed: parseClosed, reasonKey: reasonKey, closePlan: closePlan, closeLine: closeLine,
     reopenPlan: reopenPlan, reopenLine: reopenLine, ageYears: ageYears, stageSinceDate: stageSinceDate,
     suggest: suggest, suggestions: suggestions,

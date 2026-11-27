@@ -293,7 +293,7 @@ function ensureHiddenColumns_() {
   var top = sh.getRange(1, 1, Math.min(15, sh.getLastRow()), sh.getLastColumn()).getValues();
   var m = SheetModel.findMachineRow(top);
   if (!m) return [];
-  var all = ['_folder_id', '_log_id', '_cc', '_pending_since', '_request', '_stage_since', '_closed', '_close_snooze', '_eagle_no'];
+  var all = ['_folder_id', '_log_id', '_cc', '_pending_since', '_request', '_stage_since', '_closed', '_close_snooze', '_close_flag', '_eagle_no'];
   var want = all.filter(function (n) { return m.map[n] === undefined; });
   if (want.length) {
     var last = sh.getLastColumn();

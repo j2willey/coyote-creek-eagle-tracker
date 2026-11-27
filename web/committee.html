@@ -123,6 +123,7 @@
     const NARROW = () => window.matchMedia('(max-width: 700px)').matches;   // phones: Eagle earned opens its own page
     // Sort per tab, in this page only (each load starts in sheet order = order of arrival in the stage).
     const sorts = {};
+    const EXC_STAGES = ['ebor_paused', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved'];   // where Close record… is offered
     const SORT_OF = { Candidate: 'arrival', Unit: 'unit', Age: 'age', Approved: 'approved', EBoR: 'ebor', Session: 'session' };
     const FIRST_DIR = { arrival: 1, unit: 1, age: -1, approved: 1, ebor: 1, session: 1 };
     // A booked session on the schedule page (opens its details: time, place, members, Unit Board Members).
@@ -242,7 +243,12 @@
               ...(r.closed ? [el('span', { className: 'tag closed', textContent: r.closed.reason.split(':')[0] + (r.closed.date ? ' ' + short(r.closed.date) : ''),
                 title: 'Closed' + (r.closed.date ? ' ' + short(r.closed.date) : '') + (r.closed.by ? ' by ' + r.closed.by : '') + ': ' + r.closed.reason +
                   (r.closed.from ? '\nWas in: ' + r.closed.from : '') + '\n\nReopen is in the Action menu.' }), ' '] : []),
-              ...(r.closeWhy ? [el('span', { className: 'tag closeq', textContent: 'Close?',
+              // "Close?" set by hand (2026-11-27): initials on the tag, the reason on hover; wins over the computed one.
+              ...(r.closeFlag ? [el('span', { className: 'tag closeq flagged', textContent: 'Close?' + (r.closeFlag.by ? ' ' + r.closeFlag.by : ''),
+                title: 'Marked "Close?"' + (r.closeFlag.by ? ' by ' + r.closeFlag.by : '') + (r.closeFlag.date ? ' on ' + short(r.closeFlag.date) : '') +
+                  ':\n' + r.closeFlag.why + (r.closeWhy ? '\n\nAlso: ' + r.closeWhy : '') +
+                  '\n\nAction menu: Clear "Close?"' + (EXC_STAGES.includes(g.key) ? ', or Close record…' : '') + '.' }), ' ']
+              : r.closeWhy ? [el('span', { className: 'tag closeq', textContent: 'Close?',
                 title: r.closeWhy + '\n\nAction menu: Close record…, or Keep open to hide this for a while.' }), ' '] : []),
               ...(r.formsite ? [el(r.formsite.folder ? 'a' : 'span', { className: 'tag formsite', textContent: r.formsite.label || 'Formsite',
                 ...(r.formsite.folder ? { href: r.formsite.folder, target: '_blank', rel: 'noopener' } : {}),
@@ -518,7 +524,7 @@
 
     // ---------- row actions (lib/stageActions.js) ----------
     function actionControl(r, g, list) {
-      list = list.filter(a => (!a.ifPending || r.pending) && (!a.ifSuggest || r.closeWhy) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifCongrats || r.congratsOk) && (!a.ifNot || !r[a.ifNot]));
+      list = list.filter(a => (!a.ifPending || r.pending) && (!a.ifSuggest || r.closeWhy) && (!a.ifFlag || r.closeFlag) && (!a.ifNoFlag || !r.closeFlag) && (!a.ifCouncil || r.councilWait !== null) && (!a.ifCongrats || r.congratsOk) && (!a.ifNot || !r[a.ifNot]));
       const email = EMAIL_OK(g.key);
       if (!list.length && !email && !r.formsite) return [];
       const sel = el('select', { className: 'actsel', title: 'Actions for ' + r.name },
@@ -649,13 +655,15 @@
       // Closed records (lib/closing.js): reason (+ text for Other), or the stage to reopen in; the note is the log reason
       const isClose = a.closing === 'close', isReopen = a.closing === 'reopen', cl = data.closing || { reasons: [], stages: [] };
       $('actCloseBox').hidden = !isClose; $('actToBox').hidden = !isReopen;
-      $('actReason').required = isClose; $('actNote').required = isReopen;
+      const isFlag = a.closing === 'flag';
+      $('actReason').required = isClose; $('actNote').required = isReopen || isFlag;
       $('actReason').replaceChildren(el('option', { value: '', textContent: '— pick the reason —' }), ...cl.reasons.map(x => el('option', { value: x, textContent: x })));
       $('actReasonText').value = ''; $('actReasonText').hidden = true;
       $('actTo').replaceChildren(el('option', { value: '', textContent: r.closed && r.closed.from ? 'Back where it came from: ' + r.closed.from : 'Pick the stage (no record of where it came from)' }),
         ...cl.stages.map(x => el('option', { value: x.key, textContent: x.label })));
       $('actNoteLabel').replaceChildren(a.noteLabel ? a.noteLabel + ' ' : isReopen ? 'Why is it being reopened? ' : a.noteToEmail ? 'What should the Scout change? ' : 'Note ', el('span', { className: 'opt',
-        textContent: a.noteToEmail ? '(goes into the email draft, the Notes cell and the Scout\'s log)' : isReopen ? '(required; goes into the Notes cell and the Scout\'s log)'
+        textContent: a.noteToEmail ? '(goes into the email draft, the Notes cell and the Scout\'s log)' : isFlag ? '(required; shown when you hover the tag, and goes into the Scout\'s log)'
+          : isReopen ? '(required; goes into the Notes cell and the Scout\'s log)'
           : '(optional; goes into the Notes cell and the Scout\'s log)' }));
       $('actNote').value = ''; $('actMsg').textContent = '';
       $('actEmail').textContent = a.emailHint || '';

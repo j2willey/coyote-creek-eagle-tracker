@@ -7,6 +7,9 @@
  *   close      Close record…   reason, date, optional note -> Closed; _closed remembers {reason, date, by, from, note}
  *   reopen     Reopen…         back to where it came from (or a chosen stage); a reason is required
  *   keep       Keep open       hides the "Close?" suggestion for Settings → closeSnoozeDays
+ *   flag       Mark "Close?"…  (2026-11-27) a hand-set "Close?" with a reason, on any open stage; the row stays put and
+ *                              "new files" is left alone (flagging is not a look at the files)
+ *   unflag     Clear "Close?"… takes it off; Close record… and Reopen… clear it too
  * None of them sends an email (members can still use Email…), clears "new files" and writes the Life to Eagle Log.
  * The Scout's folder does NOT move when a record is closed (the January archive moves it).
  */
@@ -21,13 +24,34 @@ function actionClosing_(c, req) {
     throw userError_(rec.fields.scout_name + ' is now in ' + SettingsModel.sectionLabel(s, rec.section) + ', where "' + a.label.replace(/…$/, '') + '" does not apply. Reload the page.');
   }
   var cols = Records.columns();
-  var needCol = a.closing === 'keep' ? Closing.SNOOZE_COLUMN : Closing.COLUMN;
+  var flagging = a.closing === 'flag' || a.closing === 'unflag';
+  var needCol = a.closing === 'keep' ? Closing.SNOOZE_COLUMN : flagging ? Closing.FLAG_COLUMN : Closing.COLUMN;
   if (cols.indexOf(needCol) < 0) throw userError_('The tracking tab has no hidden ' + needCol + ' column yet. Run Admin → Setup / repair tabs, then try again.');
   var by = c.me.initials || c.email, today = todayYmd_(), short = Intake.shortDate(new Date());
   var scout = String(rec.fields.scout_name || '');
   var cleared = {};
   cleared[Closing.COLUMN] = '';
   if (cols.indexOf(Closing.SNOOZE_COLUMN) >= 0) cleared[Closing.SNOOZE_COLUMN] = '';
+  var hadFlag = cols.indexOf(Closing.FLAG_COLUMN) >= 0 ? Closing.parseFlag(rec.fields[Closing.FLAG_COLUMN]) : null;
+  if (cols.indexOf(Closing.FLAG_COLUMN) >= 0) cleared[Closing.FLAG_COLUMN] = '';      // closing or reopening ends a hand-set "Close?"
+
+  if (a.closing === 'flag') {
+    var fp = Closing.flagPlan({ note: req.note, today: today, by: by, flagged: !!hadFlag });
+    if (fp.errors.length) throw userError_(fp.errors.join(' '));
+    var fc = {};
+    fc[Closing.FLAG_COLUMN] = Closing.flagCell(fp.flag);
+    Records.update(rec.recordId, fc);
+    addRecordNote_(rec.recordId, Closing.flagLine(short, by, fp.flag.r));
+    return { message: scout + ': marked "Close?". The row stays where it is; clear it from the Action menu.', outboxId: '' };
+  }
+  if (a.closing === 'unflag') {
+    if (!hadFlag) throw userError_(scout + ' is not marked "Close?" (any more). Reload the page.');
+    var uc = {};
+    uc[Closing.FLAG_COLUMN] = '';
+    Records.update(rec.recordId, uc);
+    addRecordNote_(rec.recordId, Closing.unflagLine(short, by, hadFlag.why, req.note));
+    return { message: scout + ': "Close?" cleared.', outboxId: '' };
+  }
 
   if (a.closing === 'close') {
     var p = Closing.closePlan({ section: rec.section, reason: req.reason, reasonText: req.reasonText, date: req.date, today: today, note: req.note, by: by });

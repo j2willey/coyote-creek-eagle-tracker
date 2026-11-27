@@ -153,6 +153,9 @@ var Board = (function () {
           closed: r.closed && str(r.closed.reason) ? { reason: str(r.closed.reason), date: str(r.closed.date), by: str(r.closed.by),
             from: label[r.closed.from] || str(r.closed.from) } : null,
           closeWhy: r.section === 'closed' ? '' : str(r.closeWhy),
+          // "Close?" set by hand (2026-11-27, lib/closing.js parseFlag): {why, date, by}; not on Closed / Eagle Earned rows
+          closeFlag: r.section !== 'closed' && r.section !== 'eagle_earned' && r.closeFlag && str(r.closeFlag.why)
+            ? { why: str(r.closeFlag.why), date: str(r.closeFlag.date), by: str(r.closeFlag.by) } : null,
           congratsOk: congratsOpen(r.section, r.ebor, today, congratsDays),
           councilSent: str(r.signedSent), councilWait: councilWait(r.signedSent, r.svmbcReceived, today),
           councilOverdue: (councilWait(r.signedSent, r.svmbcReceived, today) || 0) >= overdueAfter,
@@ -180,7 +183,7 @@ var Board = (function () {
       var pend = shown.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.pending; }).length; }, 0);
       var council = shown.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.councilWait !== null; }).length; }, 0);
       var closedRows = groups.filter(function (g) { return g.key === t.closedGroup; }).reduce(function (n, g) { return n + g.rows.length; }, 0);
-      var review = shown.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.closeWhy; }).length; }, 0);
+      var review = shown.reduce(function (n, g) { return n + g.rows.filter(function (x) { return x.closeWhy || x.closeFlag; }).length; }, 0);
       return { key: t.key, label: t.label, cols: t.cols, stage: !!t.stage, ageLocked: t.ageAt === 'ebor',
         count: rows, pending: pend, council: council, closedGroup: t.closedGroup || '', closedCount: closedRows, closeReview: review, groups: groups };
     });
