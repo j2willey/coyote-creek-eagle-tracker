@@ -184,3 +184,19 @@ describe('Board sessions (dashboard Session column + Board tag link, 2026-11-03)
     expect(t.find(x => x.key === 'eagles').groups[0].rows[0].meeting).toBeNull();
   });
 });
+
+describe('Board: Close? set by hand (2026-11-27)', () => {
+  const SettingsModel2 = require('../apps-script/src/lib/settingsModel.js');
+  it('passes the flag through and counts it in the tab\'s Close? number; ignored on Eagle Earned', () => {
+    const f = { why: 'heard he will not finish', date: '2026-11-27', by: 'JW' };
+    const t = Board.build([
+      { recordId: 'U1', section: 'proposal_approved', scout_name: 'Scout_1', closeFlag: f },
+      { recordId: 'U2', section: 'proposal_approved', scout_name: 'Scout_2' },
+      { recordId: 'E1', section: 'eagle_earned', scout_name: 'Scout_3', ebor: '2026-11-01', closeFlag: f }
+    ], SettingsModel2.parse([]).sections, '2026-11-27');
+    const u = t.find(x => x.key === 'underway');
+    expect(u.groups[0].rows.map(r => r.closeFlag)).toEqual([f, null]);
+    expect(u.closeReview).toBe(1);
+    expect(t.find(x => x.key === 'eagles').groups[0].rows[0].closeFlag).toBeNull();
+  });
+});

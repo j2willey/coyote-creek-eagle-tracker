@@ -207,7 +207,8 @@ inside functions (`test/gas-load.test.js` checks this and that every entry point
   last request, shown on the Scout's page), `_stage_since` (`<section> <date>`: when the Scout reached the stage; reset
   by the hourly run whenever the section differs, so hand-dragged rows count too), `_closed` (Closed records: JSON
   `{r: reason, d: date, by: initials, from: stage key, n: note}`, so Reopen knows where it came from) and `_close_snooze`
-  (a "Keep open" decision hides the "Close?" suggestion until that date). They travel with the row.
+  (a "Keep open" decision hides the "Close?" suggestion until that date), `_close_flag` (a "Close?" a member set by hand:
+  JSON `{r: why, d: date, by: initials}`). They travel with the row.
 - **Tabs the tool adds:** Settings, Intake Queue, Uploads Log, Committee (Name | Initials | Email | Active), Unit Info
   (Unit | Under Review | … ; any mark in a column titled "Under Review" / "…restrict…" = under review), Unit Contacts,
   Key 3, Activity, Digest Log, Outbox, Unit Requests, Stats History (past years for the Stats page), Closed Archive (January archive of Closed records), `_Sessions` (hidden). The **Eagle Archive** tab (past years' Eagles) is not made by Setup / repair: it began as a copy of the tracking tab, and the January archive creates it from the tracking tab's header rows when it is missing. Setup / repair tabs adds missing tabs,
@@ -585,6 +586,8 @@ Each dashboard row has an **Action** dropdown (⋯) with the actions allowed for
 | **Close record…** | EBoR Paused, Eagle Not Awarded, Beyond Age, Proposal Not Approved | Reason (required: Withdrew, Aged out (no extension), Extension denied, Moved out of district, Duplicate or error, Other + text), date (default today, not future), optional note → hidden `_closed`; clears "new files" | Closed | none (Email… still works). Log line "Closed: <reason> (<note>)". The folder does not move |
 | **Reopen…** | Closed | Reason (required, logged); `_closed` cleared | where it came from (`_closed`), or a stage you pick | none |
 | Keep open | Proposal Not Approved, EBoR Paused, **only rows with a "Close?" tag** | `_close_snooze` = today + `closeSnoozeDays`; logged | | none |
+| Mark "Close?"… | every open stage (not Eagle Earned, not Closed), **only rows not marked yet** | Why (required) → hidden `_close_flag`; amber "Close? <initials>" tag, reason on hover, counted in the tab's "Close?" number; logged. "New files" is left alone | | none |
+| Clear "Close?"… | the same stages, **only marked rows** | `_close_flag` cleared; optional note logged (with what it said). Close record… and Reopen… clear it too | | none |
 | ✓ Checked: nothing to do | any proposal/EBoR stage, **only rows with new files** | | | none (stops the new-files clock) |
 
 Any committee member. Dates default to today, editable, never in the future; a changed date or an odd order is a

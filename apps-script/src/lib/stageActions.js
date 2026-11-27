@@ -58,6 +58,8 @@ var StageActions = (function () {
   var EXCEPTIONS = ['ebor_paused', 'eagle_not_awarded', 'beyond_age', 'proposal_not_approved'];   // lib/closing.js FROM_SECTIONS
   var CLOSE_REVIEW = ['proposal_not_approved', 'ebor_paused'];                                   // lib/closing.js REVIEW_SECTIONS
   // Follow-Up / Consult: every stage except Eagle Earned (same list as CommitteeSchedule.FOLLOWUP_SECTIONS; a test keeps them equal)
+  // "Close?" set by hand (2026-11-27, lib/closing.js FLAG_COLUMN): every open stage (not Eagle Earned, not Closed)
+  var FLAG_STAGES = PROPOSAL_STAGES.concat(EXCEPTIONS);
   var FOLLOWUP_STAGES = PROPOSAL_STAGES.filter(function (k) { return k !== 'eagle_earned'; }).concat(EXCEPTIONS, ['closed']);
 
   // email: 'note' = the member's note goes into the email (draft always in the Outbox); booking: the "Book: <type>"
@@ -123,6 +125,10 @@ var StageActions = (function () {
     { key: 'close', label: 'Close record…', sections: EXCEPTIONS, closing: 'close', dateLabel: 'Date closed', past: 'Record closed' },
     { key: 'keep_open', label: 'Keep open (hide "Close?")', sections: CLOSE_REVIEW, closing: 'keep', ifSuggest: true, past: 'Kept open' },
     { key: 'reopen', label: 'Reopen…', sections: ['closed'], closing: 'reopen', past: 'Record reopened' },
+    // "Close?" by hand (Jim W., 2026-11-27): we've heard the Scout will likely not finish; not ready to close the record
+    { key: 'flag_close', label: 'Mark "Close?"…', sections: FLAG_STAGES, closing: 'flag', ifNoFlag: true, past: 'Marked "Close?"',
+      noteLabel: 'Why may this record close? (who heard what)' },
+    { key: 'unflag_close', label: 'Clear "Close?"…', sections: FLAG_STAGES, closing: 'unflag', ifFlag: true, past: 'Cleared "Close?"' },
     // Follow-Up / Consult (2026-11-11): a page action; the schedule page opens its dialog with this Scout and the type chosen
     { key: 'followup', label: 'Schedule a follow-up / consult…', sections: FOLLOWUP_STAGES, page: '/committee/schedule', pageQuery: 'new=Followup' }
   ];
@@ -152,6 +158,8 @@ var StageActions = (function () {
       if (a.dateDefault) o.dateDefault = a.dateDefault;
       if (a.ifPending) o.ifPending = true;
       if (a.closing) { o.closing = a.closing; if (a.ifSuggest) o.ifSuggest = true; }   // handled by closingActions.js
+      if (a.ifFlag) o.ifFlag = true;                // only rows marked "Close?" by hand
+      if (a.ifNoFlag) o.ifNoFlag = true;            // only rows not marked yet
       if (a.ifCouncil) o.ifCouncil = true;          // only rows waiting on Council's acknowledgement
       if (a.ifCongrats) o.ifCongrats = true;        // only rows whose board was recent (Board congratsOk)
       if (a.ifNot) o.ifNot = a.ifNot;               // hidden when the row already has it (e.g. paperwork sent)
@@ -171,6 +179,9 @@ var StageActions = (function () {
     if (a.email === 'note') return 'Saving drafts the email to the Scout and parent in the Outbox, with your note as the list of changes; check it and send it there.';
     if (a.closing === 'close') return 'No email is sent (use Email… if the family should hear from you). The row moves to Closed and the folder stays where it is; Reopen puts it back.';
     if (a.closing === 'keep') return 'No email is sent. The "Close?" suggestion is hidden for a while (Settings → closeSnoozeDays).';
+    if (a.closing === 'flag') return 'No email is sent and the row stays where it is. An amber "Close?" tag with your initials shows on the row ' +
+      '(hover: your reason) until someone clears it, or the record is closed. The reason goes into the Scout\'s log.';
+    if (a.closing === 'unflag') return 'No email is sent. The hand-set "Close?" tag goes away; the note (optional) goes into the Scout\'s log.';
     if (a.closing === 'reopen') return 'No email is sent. The row goes back to the stage you pick, and the reason goes into the log.';
     if (a.key === 'eagle_earned' && paperworkSent) return 'The signed paperwork has already gone to Council, so only the congratulations is drafted: ' +
       'to the Scout, family, unit and board (with the photos), in the Outbox. Saving also paints the EBoR date green and moves the row to Eagle Earned.';

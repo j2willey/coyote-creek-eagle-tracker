@@ -101,9 +101,9 @@ describe('Closing row actions', () => {
       expect(StageActions.forSection(k).find(a => a.key === 'close')).toMatchObject({ closing: 'close', dateLabel: 'Date closed' }));
     expect(StageActions.forSection('closed').map(a => a.key)).toEqual(['reopen', 'followup']);
     expect(StageActions.forSection('proposal_not_approved').find(a => a.key === 'keep_open')).toMatchObject({ closing: 'keep', ifSuggest: true });
-    expect(StageActions.forSection('beyond_age').map(a => a.key)).toEqual(['close', 'followup']);
+    expect(StageActions.forSection('beyond_age').map(a => a.key)).toEqual(['close', 'flag_close', 'unflag_close', 'followup']);
     expect(StageActions.forSection('eagle_earned').some(a => a.closing)).toBe(false);
-    expect(StageActions.forSection('proposal_received').some(a => a.closing)).toBe(false);
+    expect(StageActions.forSection('proposal_received').filter(a => a.closing).map(a => a.key)).toEqual(['flag_close', 'unflag_close']);   // hand-set Close? (2026-11-27)
   });
   it('none of them sends an email', () => {
     ['close', 'keep_open', 'reopen'].forEach(k => {
@@ -282,5 +282,27 @@ describe('Closing: Stats', () => {
   it('Closed Scouts are not on the age-out watch', () => {
     const cur = Stats.current([{ recordId: 'a', section: 'closed', birth: '2008-11-01', unit: 'T910' }, { recordId: 'b', section: 'app_verified', birth: '2008-11-01', unit: 'T910' }], '2026-06-01');
     expect(cur.ageWatch.count).toBe(1);
+  });
+});
+
+describe('Close? set by hand (2026-11-27)', () => {
+  it('cell round-trips; junk or empty is no flag', () => {
+    const cell = Closing.flagCell({ r: '  told  his Scoutmaster he won\'t finish ', d: '2026-11-27', by: 'JW' });
+    expect(Closing.parseFlag(cell)).toEqual({ why: 'told his Scoutmaster he won\'t finish', date: '2026-11-27', by: 'JW' });
+    expect(Closing.flagCell({ r: '' })).toBe('');
+    expect(Closing.parseFlag('')).toBeNull();
+    expect(Closing.parseFlag('not json')).toBeNull();
+    expect(Closing.parseFlag('{"d":"2026-11-27"}')).toBeNull();
+  });
+  it('needs a reason, and not twice', () => {
+    expect(Closing.flagPlan({ note: ' ', today: '2026-11-27', by: 'JW' }).errors).toHaveLength(1);
+    expect(Closing.flagPlan({ note: 'moving away in spring', today: '2026-11-27', by: 'JW', flagged: true }).errors[0]).toMatch(/already/);
+    expect(Closing.flagPlan({ note: 'moving away\nin spring', today: '2026-11-27', by: 'JW' }))
+      .toEqual({ errors: [], flag: { r: 'moving away in spring', d: '2026-11-27', by: 'JW' } });
+  });
+  it('log lines', () => {
+    expect(Closing.flagLine('11/27', 'JW', 'family says no')).toBe('11/27 [JW] Marked Close?: family says no');
+    expect(Closing.unflagLine('11/30', 'JW', 'family says no', 'he is back on track')).toBe('11/30 [JW] Cleared Close? (was: family says no): he is back on track');
+    expect(Closing.unflagLine('11/30', '', '', '')).toBe('11/30 [committee] Cleared Close?');
   });
 });
