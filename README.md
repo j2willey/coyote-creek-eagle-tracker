@@ -149,7 +149,7 @@ apps-script/              clasp rootDir (pushed to Apps Script)
     statsActions.js       Stats page; Stats History tab
     templatePreviewActions.js  Admin page email preview / send a test copy to yourself
     emailActions.js       "Email…" action: (re)draft a stage's emails into the Outbox
-    unitDirectoryActions.js  Units page / unit page contacts: list, edit, add, remove
+    unitDirectoryActions.js  Units page / unit page contacts: list, edit, add, remove; the sheet tables (unitTables)
     broadcastActions.js   Admin → Email the units (preview, test, send in Bcc batches)
     openTimesActions.js   committee page: several sessions at once (saveSlots), open-times email draft
     scheduleCheckActions.js    Admin → Schedule: check against the tracking sheet
@@ -174,6 +174,7 @@ web/                      Firebase Hosting: index, intake, confirm, proposal-gui
                           boardSort.js (dashboard sorting inside a stage), photos.js (EBoR photo resize + EXIF date),
                           calendarView.js (FullCalendar, loaded on demand: Scout and unit pages),
                           unitContacts.js (unit contacts panel: committee Units page + unit page),
+                          tableSort.js (Units page sheet tables: sort by date / time / day / number / unit, filter),
                           pdfPlan.js (pure: Scout folder file roles, workbook edition, which page is ours, placement math),
                           pdfEngine.js (pdf.js inspection, BSA workbook decryption, sign + flatten with pdf-lib),
                           pdfWorkshop.js (Sign Workshop dialog on the Review page; libraries and fonts loaded on demand),
@@ -1208,6 +1209,13 @@ Self-check is logged on Activity. The menu items call the same functions (`selfC
   from a copy of the tracking tab's header rows and stops (nothing moves) so you can check it. Logged on Activity.
 
 ### Units page (`/committee/units`) and unit contacts on the unit page (`lib/unitDirectory.js`, `unitDirectoryActions.js`, `web/js/unitContacts.js`)
+
+Sub-tabs (2026-11-28): **By unit** (the list and one unit's panel, below) | **Unit Info** | **Key 3** | **Unit Contacts**. The three
+sheet tabs show as dense tables, as the sheet displays them (`lib/unitTables.js`: hidden `_` columns, columns without a
+header, Key 3's machine-name row and empty rows left out; committee only, `unitTables` call). Click a heading to sort
+(`web/js/tableSort.js`: dates with times, times of day, weekdays, numbers, units T41 before T964, then text; empty cells
+last; again to reverse; "Back to sheet order"); the filter keeps rows with every word typed. Read-only: a click on a unit
+opens it under By unit. The tab picked is remembered per browser; a `?u=` link opens By unit.
 
 Key 3 roles that count as unit contacts: **Unit Leader, Cubmaster, Scoutmaster, (Venturing) Crew Advisor** (and Skipper) → the
 unit leader; **Committee Chair**. Chartered Org Rep, assistants and associate advisors are ignored (`Units.key3Role`,

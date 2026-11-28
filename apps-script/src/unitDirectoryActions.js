@@ -5,6 +5,7 @@
  *   unitContactSave   {session, unit, kind, row?, orig?, fields}  kind 'key3' (committee; edit only) | 'contact' (edit, or add without row)
  *   unitContactDelete {session, unit, row, orig}                  unit-provided contacts only
  *   unitMeetingSave   {session, unit, fields, orig}               meeting day/time/frequency/place/notes (Unit Info tab)
+ *   unitTables        {session}                                   committee -> {tables:[{key, label, headers, rows, unitCol, missing}]}
  * Key 3 edits are overwritten by the next Council import (Admin → Unit contacts: import Key 3); the panel says so.
  */
 function unitAccess_(session, unit) {
@@ -59,6 +60,18 @@ function actionUnitDirectory_(req) {
   var c = committeeMe_(req.session);
   return { units: UnitDirectory.directory(units_(), key3Rows_(), readTabOrEmpty_(UNIT_CONTACTS_TAB)),
     canImportKey3: Access.isAdmin(c.me, c.email, getSettings_()) };   // Import Key 3… (Admin role, 2026-11-16)
+}
+
+/** The Units page's sheet tabs (2026-11-28): Unit Info, Key 3, Unit Contacts as the sheet displays them (lib/unitTables.js). */
+function actionUnitTables_(req) {
+  committeeMe_(req.session);
+  return { tables: UnitTables.TABS.map(function (t) {
+    var sh = SpreadsheetApp.getActive().getSheetByName(t.tab);
+    var grid = sh && sh.getLastRow() >= 1 ? sh.getRange(1, 1, sh.getLastRow(), Math.max(sh.getLastColumn(), 1)).getDisplayValues() : [];
+    var x = UnitTables.table(grid);
+    x.key = t.key; x.label = t.label; x.missing = !sh;
+    return x;
+  }) };
 }
 
 function actionUnitContactsGet_(req) {
