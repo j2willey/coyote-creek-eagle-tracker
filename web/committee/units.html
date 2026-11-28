@@ -21,12 +21,22 @@
     <p class="muted env-note" hidden></p>
     <p id="msg" class="muted">Loading…</p>
     <div id="app" hidden>
+      <!-- Sub-tabs (Jim W., 2026-11-28): one unit at a time, or each sheet tab as a dense table to sort. -->
+      <div class="obtabs boardtabs" role="tablist" id="utabs"></div>
+      <div id="byUnit">
       <p class="hint">Each unit's meetings and contacts. The Unit Leader and Committee Chair come from Council's Key 3 (only the committee
         can change them); the other contacts come from the unit. Contacts get the unit's EBoR emails and can sign in to the unit page.
         Units missing a Unit Leader or Committee Chair email are marked.</p>
       <div class="unitgrid">
         <div class="unitlist" id="list"></div>
         <section class="statcard" id="panel"><p class="muted">Pick a unit.</p></section>
+      </div>
+      </div>
+      <div id="tableView" hidden>
+        <p class="hint" id="tblHint"></p>
+        <p class="tblbar"><input type="search" id="tblFilter" placeholder="Filter: any words, e.g. T999 or Tuesday" aria-label="Filter rows">
+          <span class="muted" id="tblCount"></span></p>
+        <div class="boardwrap"><table class="board dense" id="tbl"></table></div>
       </div>
     </div>
     <dialog id="k3Dlg" class="detail">
@@ -44,6 +54,7 @@
     import { $, el, session, renderNav, meText, needSignIn, isSignedOut, actionButton } from '/js/committee.js';
     import { mountUnitContacts } from '/js/unitContacts.js';
     import { xlsxRows } from '/js/xlsx.js';
+    import { sortTable, filterRows, unitCode } from '/js/tableSort.js';
     // Import Key 3… (Admin role, 2026-11-16): shown once the server says this member may import.
     const k3Btn = actionButton({ label: 'Import Key 3…', icon: 'plus', title: 'Replace the Key 3 tab from Council\'s export (.xlsx or CSV)',
       onClick: () => { $('k3File').value = ''; $('k3Out').replaceChildren(); $('k3Apply').hidden = true; $('k3Msg').textContent = ''; $('k3Dlg').showModal(); } });
@@ -60,11 +71,80 @@
         return b;
       }));
     }
+    // ---------- sub-tabs: By unit | Unit Info | Key 3 | Unit Contacts (2026-11-28) ----------
+    const UTAB_KEY = 'ccacUnitsTab';
+    let utab = 'unit', tables = null, tablesLoading = null;
+    const tsorts = {};                                       // per table: {col, dir}; none = sheet order
+    try { if (!new URLSearchParams(location.search).get('u')) utab = localStorage.getItem(UTAB_KEY) || 'unit'; } catch {}
+    function renderUTabs() {
+      const tabs = [{ key: 'unit', label: 'By unit', n: units.length }]
+        .concat((tables || [{ key: 'info', label: 'Unit Info' }, { key: 'key3', label: 'Key 3' }, { key: 'contacts', label: 'Unit Contacts' }])
+          .map(t => ({ key: t.key, label: t.label, n: t.rows ? t.rows.length : null })));
+      $('utabs').replaceChildren(...tabs.map(t => {
+        const b = el('button', { type: 'button', role: 'tab', className: 'obtab' + (t.key === utab ? ' on' : ''),
+          textContent: t.label + (t.n == null ? '' : ' (' + t.n + ')') });
+        b.onclick = () => showUTab(t.key);
+        return b;
+      }));
+    }
+    async function showUTab(key) {
+      utab = key; try { localStorage.setItem(UTAB_KEY, key); } catch {}
+      $('byUnit').hidden = key !== 'unit'; $('tableView').hidden = key === 'unit';
+      renderUTabs();
+      if (key === 'unit') return;
+      if (!tables) {
+        $('tblHint').textContent = 'Loading…'; $('tbl').replaceChildren(); $('tblCount').textContent = '';
+        try { await loadTables(); } catch (e) { $('tblHint').textContent = e.message; $('tblHint').className = 'hint err'; return; }
+        renderUTabs();
+      }
+      renderTable();
+    }
+    function loadTables() {
+      tablesLoading = tablesLoading || api('unitTables', { session }).then(r => { tables = r.tables; }).finally(() => { tablesLoading = null; });
+      return tablesLoading;
+    }
+    function renderTable() {
+      const t = (tables || []).find(x => x.key === utab);
+      if (!t) return;
+      $('tblHint').className = 'hint';
+      $('tblHint').textContent = t.missing ? 'There is no "' + t.label + '" tab in the sheet yet.'
+        : 'As on the "' + t.label + '" tab of the sheet. Click a heading to sort (dates, times and days in order; empty cells last), again to reverse. ' +
+          'Change things in the sheet or under By unit' + (t.unitCol >= 0 ? ' (click a unit to open it there)' : '') + '.';
+      const st = tsorts[t.key];
+      let rows = filterRows(t.rows, $('tblFilter').value);
+      if (st) rows = sortTable(rows, st.col, st.dir, st.col === t.unitCol);
+      $('tblCount').textContent = rows.length === t.rows.length ? t.rows.length + ' rows' : rows.length + ' of ' + t.rows.length + ' rows';
+      const th = (h, i) => {
+        const on = st && st.col === i;
+        const b = el('button', { type: 'button', className: 'sortbtn' + (on ? ' on' : ''), title: 'Sort by ' + h + (on ? ' (click again to reverse)' : '') },
+          h, el('span', { className: 'arrow', textContent: on ? (st.dir === 1 ? ' ▲' : ' ▼') : '' }));
+        b.onclick = () => { tsorts[t.key] = on ? { col: i, dir: -st.dir } : { col: i, dir: 1 }; renderTable(); };
+        return el('th', { ariaSort: on ? (st.dir === 1 ? 'ascending' : 'descending') : 'none' }, b);
+      };
+      const reset = st ? [el('tr', {}, el('td', { colSpan: t.headers.length, className: 'muted' }, (() => {
+        const b = el('button', { type: 'button', className: 'linkbtn', textContent: 'Back to sheet order' });
+        b.onclick = () => { delete tsorts[t.key]; renderTable(); };
+        return b; })()))] : [];
+      $('tbl').replaceChildren(el('thead', {}, el('tr', {}, ...t.headers.map(th))),
+        el('tbody', {}, ...reset, ...rows.map(r => el('tr', {}, ...r.map((v, i) => {
+          if (i === t.unitCol && v) {
+            const b = el('button', { type: 'button', className: 'linkbtn', textContent: v, title: 'Open ' + v + ' under By unit' });
+            b.onclick = () => { const c = units.find(u => u.code === unitCode(v));
+              if (c) { sel = c.code; history.replaceState(null, '', '?u=' + encodeURIComponent(sel)); renderList(); open(); } showUTab('unit'); };
+            return el('td', {}, b);
+          }
+          return el('td', { textContent: v, title: v.length > 40 ? v : '' });
+        })))));
+    }
+    $('tblFilter').addEventListener('input', renderTable);
+
     function open() {
       if (!sel) return;
       mountUnitContacts($('panel'), { session, unit: sel, onChange: refresh });
     }
-    async function refresh() { const r = await api('unitDirectory', { session }); units = r.units; k3Btn.hidden = !r.canImportKey3; renderList(); }
+    // Any change (a contact saved, Key 3 imported) also makes the sheet tables stale: reloaded when next shown.
+    async function refresh() { const r = await api('unitDirectory', { session }); units = r.units; k3Btn.hidden = !r.canImportKey3; tables = null; renderList(); renderUTabs();
+      if (utab !== 'unit' && !$('app').hidden) showUTab(utab); }
 
     let k3File = null;
     const say = (t, cls) => { $('k3Msg').textContent = t; $('k3Msg').className = cls || ''; };
@@ -103,7 +183,7 @@
     if (!session) needSignIn($('msg'));
     else {
       try { const c = JSON.parse(localStorage.getItem('ccacHome') || 'null'); if (c && c.session === session) meLine.textContent = meText(c.d.me, c.d.testMode); } catch {}
-      refresh().then(() => { $('msg').hidden = true; $('app').hidden = false; open(); })
+      refresh().then(() => { $('msg').hidden = true; $('app').hidden = false; open(); showUTab(utab); })
         .catch(e => { if (isSignedOut(e)) needSignIn($('msg'), e.message); else { $('msg').textContent = e.message; $('msg').className = 'err'; } });
     }
   </script>

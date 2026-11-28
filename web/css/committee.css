@@ -270,6 +270,11 @@ a.eborlink { color: inherit; font-weight: inherit; text-decoration: underline; t
 dialog#emDlg { width: min(40rem, calc(100vw - 32px)); }
 .detbar #detEmail { padding: .3rem .8rem; margin-bottom: .3rem; }
 /* Units page */
+/* Units page sheet tables (2026-11-28): dense, long cells cut off (full text on hover). */
+table.board.dense td { max-width: 22rem; overflow: hidden; text-overflow: ellipsis; }
+table.board.dense td button.linkbtn { color: var(--link); }
+.tblbar { display: flex; gap: .8rem; align-items: center; margin: .2rem 0 .6rem; }
+.tblbar input[type=search] { flex: 0 1 24rem; }
 .unitgrid { display: grid; grid-template-columns: 16rem 1fr; gap: 1rem; margin-top: .8rem; align-items: start; }
 .unitlist { max-height: 75vh; overflow: auto; }
 @media (max-width: 700px) { .unitgrid { grid-template-columns: 1fr; } .unitlist { max-height: 40vh; } }
